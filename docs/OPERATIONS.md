@@ -60,15 +60,20 @@ sudo ./install.sh
 A default script is included (which simply echoes text for testing purposes).
 
 To quickly test that everything is working:
-
+1. Review the Configuration File, Set up a key, using the install.sh script.
 1. Start the daemon:
 ```bash
 ./siglatchd
 ```
 
 2. In another terminal, send a test packet with the client:
+* [⚙️ CLIENT\_OPERATIONS.md](CLIENT_OPERATIONS.md) — How to install, configure, run, and maintain siglatch client.
 ```bash
-./knocker "i am a test"
+./knocker localhost 1 1 --dead-drop "i am a test"
+./knocker localhost 1 1 "i am a test"
+./knocker localhost 1 1 --no-encrypt --dead-drop "i am a test"
+./knocker localhost 1 1 --no-encrypt --dead-drop "i am a test"
+
 ```
 
 - This will send a packet to your localhost (127.0.0.1).
