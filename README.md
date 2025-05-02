@@ -55,7 +55,7 @@ In short: all the stuff you want to do securely and surgically **without the blo
 * [📦 FEATURES.md](docs/FEATURES.md) — Full feature specification (current and planned).
 * [🔐 SECURITY.md](docs/SECURITY.md) — Security model, mitigations, and threat considerations.
 * [⚙️ OPERATIONS.md](docs/OPERATIONS.md) — How to install, configure, run, and maintain siglatch.
-* [⚙️ CLIENT\_OPERATIONS.md](docs/CLIENT_OPERATIONS.md) — How to install, configure, run, and maintain siglatch.
+* [⚙️ CLIENT\_OPERATIONS.md](docs/OPERATIONS_CLIENT.md) — How to install, configure, run, and maintain siglatch.
 * [🧠 AI\_DISCLOSURE.md](docs/AI_DISCLOSURE.md) — A short note on the use of AI within this project.
 
 Please read the above documents carefully to understand setup procedures, operational safety, and future plans.
