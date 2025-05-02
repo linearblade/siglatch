@@ -1,0 +1,125 @@
+// HEADER TEMPLATE - SIGLATCH CLIENT
+//
+// Formatting Rules for Header Blurb:
+// - Title line ("Siglatch Client - Secure UDP Knock Packet Sender") = Bold (ANSI: \033[1m ... \033[0m)
+// - Subtitle line ("Send encrypted, signed knock payloads over UDP to a listening server.") = Normal text (no color)
+// - Add one blank line after subtitle to separate from Usage section
+// - Keep the blurb very brief (1-2 lines max)
+// - No additional colors or styles used inside the subtitle
+//
+// Example (colorized):
+//   printf("\033[1mSiglatch Client - Secure UDP Knock Packet Sender\033[0m\n");
+//   printf("Send encrypted, signed knock payloads over UDP to a listening server.\n\n");
+// 
+// Formatting Rules:
+// - Section headers ("Usage:", "Options:", "Examples:") = Bold (ANSI: \033[1m ... \033[0m)
+// - Option flags (e.g., --help) = Cyan (ANSI: \033[36m ... \033[0m)
+// - Description text = Normal (no color)
+// - All color must be reset properly after every line to avoid bleeding
+// - Examples block must show both transmit mode and alias management
+// - Easy to scan for human eyes, aligned to about 2-3 space gaps after options
+// 
+// If regenerating from this:
+//  - Always print headers bold
+//  - Always print flags cyan
+//  - Always reset \033[0m after options
+//  - Maintain spacing and indentation as shown here.
+
+Siglatch Client - Secure UDP Knock Packet Sender
+Send encrypted, signed knock payloads over UDP to a listening server.
+Payloads are required for dead-drop mode (null payloads will not send).
+HMAC signature validation is currently disabled for dead-drop transmission.
+(Signature injection is scheduled for a later date.)
+
+The default configuration directory for each host resides at:
+  ~/.config/siglatch/<host>
+
+Example layout:
+  ~/.config/siglatch/localhost/
+  ├── action.map       # Action alias map
+  ├── hmac.key         # HMAC key (symmetric)
+  ├── server.pub.pem   # Server public key (for encryption)
+  ├── user.pri.pem     # Client private key (optional, for decryption)
+  ├── user.pub.pem     # Client public key (optional, for handshake)
+  └── user.map         # User alias map
+
+Note: The client performs no hostname resolution.
+      (e.g., "localhost" and "127.0.0.1" are treated as separate entries)
+
+Usage:
+  program [options] <host> <user-alias-or-id> <action-alias-or-id> <payload>
+
+  Use --help to display this information.
+
+Options:
+  --help                     Show this help message and exit
+  --port <num>              Override UDP destination port (default: 50000)
+  --hmac-key <path>         Path to HMAC key file
+  --server-key <path>       Path to server public key file
+  --client-key <path>       Path to client private key file
+  --no-hmac                 Disable HMAC signing (for testing)
+  --dummy-hmac              Use dummy HMAC signing (fills signature with 0x42)
+  --stdin                   Read payload from stdin instead of argument
+  --opts-dump               Dump parsed options for debugging
+  --no-encrypt              Disable payload encryption
+  --dead-drop               Send raw payload without structure
+  --verbose <level>         Set log verbosity (0-5, default 3 = INFO)
+  --log <file>              Log output to specified file (optional)
+
+Alias Commands (manage aliases separately):
+  --alias-user <host> <user> <id>
+    Create or update a user alias.
+    Example: program --alias-user localhost root 1
+
+  --alias-action <host> <action> <id>
+    Create or update an action alias.
+    Example: program --alias-action localhost grant_ip 3
+
+  --alias-user-show [<host>]
+    Show all user aliases for a specific host or all hosts if no host is given.
+    Examples:
+      program --alias-user-show localhost
+      program --alias-user-show
+
+  --alias-user-delete <host> <user>
+    Delete a user alias from the specified host.
+    Example: program --alias-user-delete localhost root
+
+  --alias-user-delete-map <host> YES
+    Delete the entire user alias map for the given host.
+    ⚠️  Requires explicit confirmation by typing YES.
+    Example: program --alias-user-delete-map localhost YES
+
+  --alias-action-show [<host>]
+    Show all action aliases for a specific host or for all hosts if none is provided.
+    Examples:
+      program --alias-action-show localhost
+      program --alias-action-show
+
+  --alias-action-delete <host> <action>
+    Delete an action alias from the specified host.
+    Example: program --alias-action-delete localhost grant_ip
+
+  --alias-show <host>
+    Show both user and action aliases for a given host.
+    Example: program --alias-show localhost
+
+  --alias-delete <host> YES
+    Delete both user and action alias maps for a given host.
+    ⚠️  Requires explicit confirmation by typing YES.
+    Example: program --alias-delete localhost YES
+
+  --alias-action-delete-map <host> YES
+    Delete the entire action alias map for the given host.
+    ⚠️  Requires explicit confirmation by typing YES.
+    Example: program --alias-action-delete-map localhost YES
+
+Examples:
+  program localhost root login "Hello World"
+  program myserver.com guest openvpn "Connect to VPN"
+  program --stdin localhost root login < input.txt
+  program --config-dir ~/.config/siglatch admin grant_ip "Temporary access"
+
+  # Manage aliases
+  program --alias-user 127.0.0.1 admin 2
+  program --alias-action 127.0.0.1 grant_ip 3

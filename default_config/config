@@ -1,0 +1,57 @@
+# siglatchd configuration
+log_file = /tmp/siglatch.logzz
+
+[server:secure]
+enabled = yes
+port = 49999
+secure = yes
+priv_key_path = /etc/siglatch/server_priv.pem
+deaddrops = message
+actions = grant_ip, run_script
+logging = yes
+
+[server:insecure]
+enabled = no
+port = 50001
+deaddrops = pubkey
+secure = no
+
+
+[deaddrop:message]
+constructor = /bin/sh path/to/script/here
+require_ascii = yes
+starts_with = message
+exec_split = yes
+
+[deaddrop:pubkey]
+constructor = /directly/exec/script/dont/forget/shebang <#!>
+enabled = no
+starts_with = pubkey,key, public key
+# Global action registry
+[action:grant_ip]
+id = 1
+constructor = /path/to/php /your/path/here.php
+exec_split = 1
+destructor = destro/here
+keepalive_interval = 300
+[action:space_test]
+id = 2
+constructor = /some/path/with a lot of spaces.sh
+exec_split = 0
+destructor = /desctuctor/here
+keepalive_interval = 300
+
+[action:run_script]
+id=3
+enabled=no
+constructor = /usr/local/bin/do_something.sh
+destructor = /usr/local/bin/undo_something.sh
+keepalive_interval = 600
+
+# User access
+[user:root]
+id = 1
+enabled = yes
+key_file = /etc/siglatch/keys/root.pub.pem
+hmac_file = /etc/siglatch/keys/root.hmac.key
+actions = grant_ip, run_script
