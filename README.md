@@ -52,14 +52,15 @@ In short: all the stuff you want to do securely and surgically **without the blo
 
 ## 📚 Documentation
 
-* [📦 FEATURES.md](docs/FEATURE_SPEC.md) — Full feature specification (current and planned).
-* [🔐 SECURITY.md](docs/SECURITY.md) — Security model, mitigations, and threat considerations.
+* [📦 FEATURES](docs/FEATURE_SPEC.md) — Full feature specification (current and planned).
+* [🔐 SECURITY](docs/SECURITY.md) — Security model, mitigations, and threat considerations.
 * [⚙️ INSTALLATION](docs/OPERATIONS_INSTALL.md) — install.sh helpfile
 * [⚙️ OPERATIONS](docs/OPERATIONS.md) — General help for compilation,installation and operations
 * [⚙️ CLIENT\_OPERATIONS](docs/OPERATIONS_CLIENT.md) — detailed client operations
-* [⚙️ DAEMON\_CONFIGURATION](docs/OPERATIONS_DAEMON.md) — config file manual
-* [🚧 Planned Features](docs/PLANNED.md) — planned and upcoming features
+* [⚙️ DAEMON\_CONFIGURATION](docs/OPERATIONS_CONFIG.md) — config file manual
 * [🧠 AI\_DISCLOSURE](docs/AI_DISCLOSURE.md) — A short note on the use of AI within this project.
+* [🚧 PLANNED\_FEATURES](docs/PLANNED.md) — planned and upcoming features
+
 
 Please read the above documents carefully to understand setup procedures, operational safety, and future plans.
 
