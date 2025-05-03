@@ -85,8 +85,9 @@ Expect rapid improvements, especially around:
 *Siglatch is built for operators who need control, security, and minimal exposure.*
 
 ---
-🔒 This project is licensed under the [**MTL-10 License**](LICENSE.md)
-🧑‍💻 [Free for use by teams with ≤10 users](USE_POLICY.md)
-💼 Commercial, resale, or SaaS use requires a license  
-📩 Contact: legal@m7.org
+* 🔒 This project is licensed under the [**MTL-10 License**](LICENSE.md)
+* 🧑‍💻 [Free for use by teams with ≤10 users](USE_POLICY.md)
+* 💼 Commercial, resale, or SaaS use requires a license  
+* 📩 Contact: legal@m7.org
+
 (Updated: 2025)
