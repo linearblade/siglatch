@@ -1,4 +1,4 @@
-SPDX-License-Identifier: MTL-10
+SPDX-License-Identifier: LicenseRef-MTL-10
 
 Moderate Team Source-Available License (MTL-10)
 Version 1.0 – May 2025

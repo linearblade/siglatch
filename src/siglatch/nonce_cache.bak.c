@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
 
 #include "nonce_cache.h"
 #include <string.h>

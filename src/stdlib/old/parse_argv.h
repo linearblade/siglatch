@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
 #ifndef PARSE_ARGV_H
 #define PARSE_ARGV_H
 

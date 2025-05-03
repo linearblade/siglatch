@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
 // payload_digest.c
 
 #include <openssl/core_names.h>  // For "digest" name string

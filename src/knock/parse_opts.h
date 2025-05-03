@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
 #ifndef PARSE_OPTS_H
 #define PARSE_OPTS_H
 

@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h> // for access(), getcwd(), etc.

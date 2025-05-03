@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
 #include "lib.h"
 #include "../stdlib/log.h"
 #include "../stdlib/time.h"

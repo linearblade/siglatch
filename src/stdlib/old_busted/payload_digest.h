@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
 // payload_digest.h
 
 #ifndef SIGLATCH_PAYLOAD_DIGEST_H
