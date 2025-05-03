@@ -1,0 +1,29 @@
+SPDX-License-Identifier: MTL-10
+
+Moderate Team Source-Available License (MTL-10)
+Version 1.0 – May 2025
+Copyright (c) 2025 m7.org
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the “Software”), to use,
+modify, and distribute the Software, subject to the following conditions:
+
+1. The Software may be used for any purpose, including commercial use,
+   provided that the total number of users in the organization does not
+   exceed ten (10). A “user” is any person who installs, maintains, develops,
+   or deploys the Software.
+
+2. The Software may not be offered as a hosted service, software-as-a-service
+   (SaaS), or embedded within a product for resale or third-party use without
+   a separate commercial license.
+
+3. All copies or substantial portions of the Software must retain this license
+   notice, including the SPDX identifier and the copyright notice.
+
+4. The Software is provided “as is”, without warranty of any kind.
+
+For uses outside of these conditions, including commercial deployment with
+teams larger than ten users, a separate license must be obtained from the
+Licensor.
+
+Contact: legal@m7.org

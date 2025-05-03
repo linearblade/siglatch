@@ -60,6 +60,9 @@ In short: all the stuff you want to do securely and surgically **without the blo
 * [⚙️ DAEMON\_CONFIGURATION](docs/OPERATIONS_CONFIG.md) — config file manual
 * [🧠 AI\_DISCLOSURE](docs/AI_DISCLOSURE.md) — A short note on the use of AI within this project.
 * [🚧 PLANNED\_FEATURES](docs/PLANNED.md) — planned and upcoming features
+* [🔒 LICENSE](LICENSE.md) — SOFTWARE LICENSE
+* [🧑‍💻 USE POLICY](USE_POLICY.md) — USE POLICY
+
 
 
 Please read the above documents carefully to understand setup procedures, operational safety, and future plans.
@@ -82,5 +85,8 @@ Expect rapid improvements, especially around:
 *Siglatch is built for operators who need control, security, and minimal exposure.*
 
 ---
-
+🔒 This project is licensed under the [**MTL-10 License**](LICENSE.md)
+🧑‍💻 [Free for use by teams with ≤10 users](USE_POLICY.md)
+💼 Commercial, resale, or SaaS use requires a license  
+📩 Contact: legal@m7.org
 (Updated: 2025)
