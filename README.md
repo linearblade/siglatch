@@ -62,8 +62,8 @@ In short: all the stuff you want to do securely and surgically **without the blo
 * [🚧 PLANNED\_FEATURES](docs/PLANNED.md) — planned and upcoming features
 * [🔒 LICENSE](LICENSE.md) — SOFTWARE LICENSE
 * [🧑‍💻 USE POLICY](USE_POLICY.md) — USE POLICY
-* [🌐 IP_AUTH](docs/modules/IP_AUTH.md) — IP-based authentication module details
-
+* 📦 **Modules**
+  * [🌐 IP_AUTH](docs/modules/IP_AUTH.md) — IP-based authentication module details
 
 Please read the above documents carefully to understand setup procedures, operational safety, and future plans.
 
