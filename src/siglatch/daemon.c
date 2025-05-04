@@ -24,7 +24,7 @@
 
 #define BUF_SIZE 1024
 static int unrecoverable_decrypt_error(int rc);
-ssize_t receiveValidData(int sock, char *buffer, size_t bufsize, struct sockaddr_in *client, char *ip_out);
+ssize_t receiveValidData(int sock, char *buffer, size_t bufsize, struct sockaddr_in *client, char *ip_out,int ip_len);
 int normalizeInboundPayload(
     SiglatchOpenSSLSession *session,
     const uint8_t *input,
@@ -49,7 +49,7 @@ void siglatch_daemon(siglatch_config * cfg, int sock){
   int is_encrypted = server_conf->secure;
 
   while (!should_exit) {
-    ssize_t n = receiveValidData(sock, buffer, BUF_SIZE, &client, ip);
+    ssize_t n = receiveValidData(sock, buffer, BUF_SIZE, &client, ip,sizeof(ip));
     if (n <= 0) continue;
     lib.log.console("RECEIVED SOMETHING\n");
 
@@ -143,7 +143,7 @@ void siglatch_daemon(siglatch_config * cfg, int sock){
  * @return Number of bytes received, or -1 on error.
  *         Fatal errors (e.g., ip_out is NULL) will call exit().
  */
-ssize_t receiveValidData(int sock, char *buffer, size_t bufsize, struct sockaddr_in *client, char *ip_out) {
+ssize_t receiveValidData(int sock, char *buffer, size_t bufsize, struct sockaddr_in *client, char *ip_out,int ip_len) {
   static unsigned long packet_count = 0;
   socklen_t len = sizeof(*client);
   ssize_t n = recvfrom(sock, buffer, bufsize - 1, 0,
@@ -159,17 +159,21 @@ ssize_t receiveValidData(int sock, char *buffer, size_t bufsize, struct sockaddr
     return -1;
   }
 
-  if (!ip_out) {
+  int rv = lib.net.sock_to_ip(client, ip_out, ip_len);
+  switch (rv) {
+  case  1:break;
+  case -2:
     LOGE("☢️ FATAL: ip_out was NULL in receiveValidData() — cannot record client address");
     exit(SL_EXIT_ERR_NETWORK_FATAL);  // Or #define 3
-  }
-  
-
-  ip_out[0] = '\0';  // Ensure safe default
-  if (!inet_ntop(AF_INET, &client->sin_addr, ip_out, INET_ADDRSTRLEN)) {
+    break;
+  case -1: 
+    LOGE("☢️ FATAL: client was NULL in receiveValidData() — cannot record client address");
+    exit(SL_EXIT_ERR_NETWORK_FATAL);  // Or #define 3
+    break;
+  default:
     LOGPERR("inet_ntop");
     return -1;
-  }
+  };
 
   if (n >= bufsize) {
     LOGE("⚠️  Dropping oversized packet (%zd bytes)\n", n);

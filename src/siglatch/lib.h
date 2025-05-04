@@ -14,6 +14,7 @@
 #include "../stdlib/hmac_key.h"
 #include "../stdlib/file.h"
 #include "../stdlib/openssl.h"
+#include "../stdlib/net.h"
 #include "config.h"
 #include "nonce_cache.h"
 
@@ -44,7 +45,7 @@ typedef struct {
   HMACKey hmac;
   FileLib file;
   SiglatchOpenSSL_Lib openssl;
-  
+  NetLib net;
 } Lib;
 
 extern Lib lib;

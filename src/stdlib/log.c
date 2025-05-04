@@ -153,7 +153,7 @@ static void log_console_error(const char *line) {
 static void log_write_line(const char *line) {
   if (!logging_enabled || !log_output )
     return;
-    fputs(line, log_output);
+  fputs(line, log_output);
 }
 
 static const char *log_level_name(LogLevel level) {

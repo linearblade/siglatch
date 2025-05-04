@@ -17,6 +17,7 @@
 #include "../stdlib/openssl.h"
 #include "../stdlib/udp.h"
 #include "../stdlib/parse_argv.h"
+#include "../stdlib/net.h"
 /**
  * @file lib.h
  * @brief Singleton system library registry for siglatch runtime.
@@ -37,6 +38,7 @@ typedef struct {
   SiglatchOpenSSL_Lib openssl;
   UdpLib udp;
   ParseArgvLib parse_argv;
+  NetLib net;
 } Lib;
 
 extern Lib lib;

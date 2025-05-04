@@ -11,6 +11,7 @@
 #include "../stdlib/payload_digest.h"
 #include "../stdlib/random.h"
 #include "../stdlib/hmac_key.h"
+#include "../stdlib/net.h"
 #include "../stdlib/file.h"
 #include "../stdlib/udp.h"
 #include "../stdlib/parse_argv.h"
@@ -23,7 +24,8 @@ Lib lib = {
     .payload_digest = {0},
     .hmac = {0},
     .file = {0},
-    .udp = {0}
+    .udp = {0},
+    .net = {0}
 };
 
 // 🚀 SYSTEM INITIALIZATION ORDER 🚀
@@ -43,6 +45,7 @@ Lib lib = {
 // ───────────────────────────────────────────────
 void init_lib(void) {
     // 🎯 1. Acquire all libraries first (no init yet)
+    lib.net             = *get_lib_net();
     lib.time            = *get_lib_time();
     lib.log             = *get_logger();
     lib.random          = *get_random_lib();
@@ -81,6 +84,7 @@ void init_lib(void) {
     }; 
     // 🎯 3. Initialize all libraries in dependency-safe order
     lib.time.init();             // Time has no dependencies
+    lib.net.init();
     lib.log.init(log_ctx);        // Log depends on time (timestamps)
     lib.random.init();            // Random can be independent
     lib.payload.init();           // Payload is raw logic (no crypto yet)
@@ -122,6 +126,7 @@ void shutdown_lib(void) {
   lib.payload.shutdown();
   lib.random.shutdown();
   lib.log.shutdown();
+  lib.net.shutdown();
   lib.time.shutdown();
 
 }

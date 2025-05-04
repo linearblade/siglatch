@@ -28,7 +28,7 @@ typedef struct {
   void (*init)(void);                         ///< Optional lifecycle setup
   void (*shutdown)(void);                     ///< Optional teardown logic
   time_t (*now)(void);                        ///< time_t
-  long (*unix)(void);                         ///< Unix timestamp as integer
+  long (*unix_ts)(void);                         ///< Unix timestamp as integer
   const char *(*human)(int cache);            ///< ctime-style human string
   const char *(*log)(void);                   ///< ISO 8601 formatted time
   const char *(*unix_string)(void);           ///< Unix timestamp as string

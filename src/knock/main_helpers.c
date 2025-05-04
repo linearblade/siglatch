@@ -50,7 +50,7 @@ int structurePacket(KnockPacket *pkt_out, const uint8_t *payload, size_t len,  u
     memset(pkt_out, 0, sizeof(KnockPacket));
 
     pkt_out->version = 1;
-    pkt_out->timestamp = (uint32_t)lib.time.unix();
+    pkt_out->timestamp = (uint32_t)lib.time.unix_ts();
     pkt_out->user_id = user_id;
     pkt_out->action_id = action_id;
     pkt_out->challenge = lib.random.challenge();
@@ -76,7 +76,7 @@ int structurePacket(KnockPacket *pkt_out, const char *payload_data, uint16_t use
     memset(pkt_out, 0, sizeof(KnockPacket));
 
     pkt_out->version = 1;
-    pkt_out->timestamp = (uint32_t)lib.time.unix();
+    pkt_out->timestamp = (uint32_t)lib.time.unix_ts();
     pkt_out->user_id = user_id;
     pkt_out->action_id = action_id;
     // 🧂 (adding nonce -- replay protection)

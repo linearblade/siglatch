@@ -19,7 +19,8 @@ Lib lib = {
     .payload = {0},
     .payload_digest = {0},
     .hmac = {0},
-    .openssl = {0}
+    .openssl = {0},
+    .net = {0}
 };
 
 // 🚀 SYSTEM INITIALIZATION ORDER 🚀
@@ -41,7 +42,8 @@ void init_lib(void) {
   // 🎯 constructors may not have anything, but we have it if handled for later changes if any, plus we want to libs to all be consistent.
   lib.time = *get_lib_time();
   lib.time.init();
-
+  lib.net             = *get_lib_net();
+  lib.net.init();
 
 
   LogContext ctx = {
@@ -112,5 +114,5 @@ void shutdown_lib(void) {
   lib.config.shutdown();
   lib.log.shutdown();
   lib.time.shutdown();
-
+  lib.net.shutdown();
 }

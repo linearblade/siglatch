@@ -110,7 +110,24 @@ int transmit(Opts *opts){
     }
 
     // -- 👇 Then send it --
-    if (!lib.udp.send(TARGET, opts->port, data, data_len)) {
+    char ip[INET_ADDRSTRLEN];
+    int rv = lib.net.resolve_host_to_ip(opts->host, ip, sizeof(ip));
+
+    switch (rv) {
+    case 1:
+      break;
+    case -2:
+      FAIL_TRANSMIT("Hostname is NULL");
+      break;
+    case -3:
+      FAIL_TRANSMIT("Output buffer is NULL");
+      break;
+    default:
+      FAIL_TRANSMIT("Could not resolve hostname: %s", opts->host);
+      break;
+    }
+    
+    if (!lib.udp.send(ip, opts->port, data, data_len)) {
       FAIL_TRANSMIT("Failed to send UDP packet\n");
     }
 
