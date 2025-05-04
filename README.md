@@ -56,10 +56,10 @@ These guides are being actively updated, check back often for updates!
 * [🔐 SECURITY](docs/SECURITY.md) — Security model, mitigations, and threat considerations.
 * ⚙️ **Installation**
   * 🛠️ [**COMPILING**](docs/OPERATIONS_COMPILE.md) — How to build the project from source.
-  * 📥 [**INSTALLATION**](docs/OPERATIONS_INSTALL.md) — `install.sh` help and setup guide.
-  * 📚 [**OPERATIONS**](docs/OPERATIONS.md) — General guide for compiling, installing, and running.
-  * 🖥️ [**CLIENT_OPERATIONS**](docs/OPERATIONS_CLIENT.md) — Detailed instructions for client-side use.
   * 🧾 [**DAEMON_CONFIGURATION**](docs/OPERATIONS_CONFIG.md) — Manual for configuring the server daemon.
+  * 📥 [**INSTALLATION**](docs/OPERATIONS_INSTALL.md) — `install.sh` help and setup guide.
+  * 📚 [**QUICK START**](docs/OPERATIONS.md) — AFTER you've compiled and configured siglatch!
+  * 🖥️ [**CLIENT_OPERATIONS**](docs/OPERATIONS_CLIENT.md) — Detailed instructions for client-side use.
 * 📦 **Modules**
   * [🌐 IP_AUTH](docs/modules/IP_AUTH.md) — IP-based authentication module details
 * [🧠 AI\_DISCLOSURE](docs/AI_DISCLOSURE.md) — A short note on the use of AI within this project.

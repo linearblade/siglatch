@@ -1,57 +1,7 @@
 # ⚙️ OPERATIONS.md — Operating `siglatch`
 
 ## 🏗️ 1. Installation
-
-### Requirements
-- Linux-based operating system (Debian/Ubuntu, RHEL, etc.)
-- Root or sufficient user privileges for required scripts (e.g., iptables modifications)
-- `gcc`, `make`, and standard build tools
-- OpenSSL libraries (for cryptographic functionality)
-
-### Installation Steps
-1. Clone the project repository.
-2. Navigate to the base directory.
-3. Build binaries using the provided Makefile:
-
-#### Building From Source
-The Makefile provides the following build options:
-
-| Target | Description |
-|:---|:---|
-| `make` | Default: builds both `siglatchd` and `knocker`. |
-| `make build-siglatchd` | Build only the server daemon (`siglatchd`). |
-| `make build-knocker` | Build only the client knock tool (`knocker`). |
-| `make clean` | Remove all compiled binaries. |
-| `make clean-siglatchd` | Remove only the `siglatchd` binary. |
-| `make clean-knocker` | Remove only the `knocker` binary. |
-
-##### Example: Full build
-```bash
-make
-```
-
-##### Example: Build only the server
-```bash
-make build-siglatchd
-```
-
-##### Example: Clean builds
-```bash
-make clean
-```
-
-4. Review the `default_config/` directory. Example configurations and sample user settings are provided.
-5. Run the installation script as root:
-
-```bash
-sudo ./install.sh
-```
-
-- `install.sh` will present a menu of installation options.
-- Current default installation path for `siglatchd` configuration is `/etc/siglatch/`.
-- Future updates may allow a configurable installation target.
-
-6. After installing the base system, edit the configuration to add users individually.
+* [⚙️ COMPILATION.md](OPERATIONS_COMPILE.md) — Please refer to the compilation guide for details on how to build siglatch
 
 ---
 
@@ -67,7 +17,7 @@ To quickly test that everything is working:
 ```
 
 2. In another terminal, send a test packet with the client:
-* [⚙️ CLIENT\_OPERATIONS.md](CLIENT_OPERATIONS.md) — How to install, configure, run, and maintain siglatch client.
+* [⚙️ CLIENT\_OPERATIONS.md](OPERATIONS_CLIENT.md) — Client usage
 ```bash
 ./knocker localhost 1 1 --dead-drop "i am a test"
 ./knocker localhost 1 1 "i am a test"
@@ -82,7 +32,7 @@ To quickly test that everything is working:
 
 ---
 
-## 🛠️ 2. Configuration
+## 🛠️ 2. Server Configuration
 
 ### Core Settings
 - **Actions**: Define available scriptable actions in the configuration.
