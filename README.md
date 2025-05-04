@@ -27,26 +27,52 @@ This project prioritizes **robustness**, **usability**, and **survivability** in
 
 ## 🌎 Real-World Use Cases
 
-Siglatch is designed to enable or disable access to sensitive areas without relying on bulky VPN infrastructure. Examples include:
+Siglatch is designed to **securely enable or disable access to sensitive services**—without relying on bloated VPNs, heavyweight web stacks, or shell hacks.
 
-* **SSH Access Management**:
+Examples include:
 
-  * Grant or revoke specific IP addresses the ability to SSH into critical systems.
-  * Still requires SSH keys for actual authentication.
-  * Perfect for users with shifting IP addresses (public Wi-Fi, mobile hotspots, etc.) or in untrusted networks.
+---
 
-* **Web Service Control**:
+* **SSH Access Management**  
+  Grant or revoke specific IPs the ability to SSH into critical systems.  
+  Still uses SSH keys for authentication—Siglatch simply decides *who gets to knock*.  
+  Ideal for mobile users, dynamic IPs, and zero-trust environments.
 
-  * Enable or disable sensitive web services (admin panels, local database interfaces, etc.) on demand.
-  * Useful for protecting temporary windows of access without exposing services permanently.
+---
 
-* **Dead Drop Communication** (future expansion):
+* **Web Service Control**  
+  Securely toggle access to local dashboards, admin panels, or internal UIs.  
+  Services stay hidden until explicitly enabled, reducing attack surface.
 
-  * Leverage dead drop mode for lightweight, low-profile communication.
-  * Potential applications for anonymous tip lines, whistleblower reporting, or covert data exchanges.
-  * Minimized metadata exposure compared to traditional messaging systems.
+---
 
-In short: all the stuff you want to do securely and surgically **without the bloated complexity, constant babysitting, or heavy footprint of traditional VPNs**.
+* **Dead Drop Communication** *(live)*  
+  Stateless encrypted payload exchange—no sessions, no metadata.  
+  Useful for whistleblowing, anonymous tips, or passive covert delivery.  
+  Siglatch handles this natively with one-way crypto-authenticated packets.
+
+---
+
+* **Interserver Signaling & Command Dispatch**  
+  Push secure instructions (e.g., `reload`, `rotate`, `notify`) between daemons.  
+  Acts as a low-latency, authenticated internal control bus.  
+  Ideal for config sync, health triggers, and lightweight orchestration.
+
+---
+
+* **Log Forwarding & Job Scheduling**  
+  Replace fragile syslog chains and scattered `cron` jobs with centralized, secure triggers.  
+  Log events and timed actions can be dispatched with encrypted, low-cost Siglatch messages.
+
+---
+
+* **Inline C Plugin Support** *(coming soon)*  
+  Drop in `.so` modules to handle requests **without shelling out or restarting the daemon**.  
+  Achieve sub-millisecond response times for logs, access gates, or custom handlers.
+
+---
+
+In short: **everything you want to control surgically and securely—without the babysitting, overhead, or footprint of traditional VPNs, HTTP servers, or orchestration systems.**
 
 ---
 
