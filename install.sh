@@ -4,8 +4,8 @@ set -e
 
 CONFIG_DIR="/etc/siglatch"
 KEY_FILE="$CONFIG_DIR/server_priv.pem"
-CONFIG_FILE="$CONFIG_DIR/config"
-DEFAULT_CONFIG="./default_config/config"
+CONFIG_FILE="$CONFIG_DIR/server.conf"
+DEFAULT_CONFIG="./default_config/server.conf"
 
 function is_macos() {
     [[ "$(uname)" == "Darwin" ]]
@@ -19,6 +19,39 @@ function do_chown() {
     fi
 }
 
+construct_install_dirs() {
+  echo "📦 Creating Siglatch install directories..."
+
+  local base="/etc/siglatch"
+  local scripts_dir="$base/scripts"
+  local log_dir="/var/log/siglatch"
+  local state_dir="/var/lib/siglatch"
+
+  # Create base directories
+  mkdir -p "$scripts_dir"
+  mkdir -p "$log_dir"
+  mkdir -p "$state_dir"
+
+  # Create symlinks inside /etc/siglatch
+  ln -snf "$log_dir" "$base/logs"
+  ln -snf "$state_dir" "$base/state"
+
+  # Copy core daemon binary
+  cp ./siglatchd "$base/" || {
+    echo "❌ Failed to copy siglatchd"
+    return 1
+  }
+
+  # Place `knocker` into system binary path
+  # Recommend: /usr/local/bin (not /etc)
+  cp ./knocker /usr/local/bin/knocker || {
+    echo "❌ Failed to install knocker"
+    return 1
+  }
+  chmod +x /usr/local/bin/knocker
+
+  echo "✅ Install directories and binaries set up successfully."
+}
 validate_key() {
     echo "🔍 Validating private key at $KEY_FILE..."
 
@@ -156,6 +189,7 @@ Key Management:
   export_userkey <user> Output a user's private key (e.g. for email)
   install_userkey <user> [file] [--overwrite]
                         Install a user public key from file or prompt
+  install_ip_auth       installs the ip auth scripts into siglatch installation
   create_userhmac <user> [--force]
                         Generate a new random HMAC key for a user
   export_userhmac <user>
@@ -205,7 +239,9 @@ do_new_key() {
 do_reinstall() {
     echo "♻️  Reinstalling config and regenerating key..."
     mkdir -p "$CONFIG_DIR"
+    construct_install_dirs
     install_config
+    install_ipauth_scripts
     generate_key
     validate_permissions
     validate_key
@@ -219,7 +255,9 @@ do_install() {
     fi
     echo "📁 Creating $CONFIG_DIR..."
     mkdir -p "$CONFIG_DIR"
+    construct_install_dirs
     install_config
+    install_ipauth_scripts
     generate_key
     validate_permissions
     validate_key
@@ -354,6 +392,34 @@ install_userkey() {
     echo "✅ Installed public key to: $dest"
 }
 
+install_ipauth_scripts() {
+    echo "🔧 Installing Siglatch ipAuth scripts..."
+
+    # Define base paths
+    local src_dir="./scripts"
+    local config_src="./default_config/ipAuth"
+    local target_base="/etc/siglatch/scripts"
+    local config_target="$target_base/ipAuth/config"
+
+    # Copy script directory
+    mkdir -p "$target_base"
+    cp -r "$src_dir"/* "$target_base/" || {
+	echo "❌ Failed to copy scripts"
+	return 1
+    }
+
+    # Ensure config directory exists
+    mkdir -p "$config_target"
+
+    # Copy default config files
+    cp "$config_src"/* "$config_target/" || {
+	echo "❌ Failed to copy config files"
+	return 1
+    }
+
+    echo "✅ Scripts and config installed to /etc/siglatch/scripts/ipAuth"
+}
+
 echo "🔐 Installing siglatch system configuration..."
 
 if [[ $EUID -ne 0 ]]; then
@@ -366,6 +432,7 @@ main() {
         repair_key)      do_repair_key ;;
         new_key)         do_new_key ;;
         reinstall)       do_reinstall ;;
+	install_ip_auth) install_ipauth_scripts ;;
         install)         do_install ;;
         export_pubkey)   export_pubkey ;;
         create_userkey)  create_userkey "$2" "$3" ;;

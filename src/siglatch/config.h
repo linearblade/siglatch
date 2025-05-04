@@ -157,6 +157,7 @@ typedef struct {
   const siglatch_deaddrop *(*deaddrop_starts_with_buffer)(const uint8_t *payload, size_t payload_len);
   int (*current_server_deaddrop_available)(const char *deaddrop_name);
   int (*current_server_action_available)(const char *action_name);
+  int (*action_available_by_user)(uint32_t user_id, const char *action);
   const siglatch_deaddrop *(*current_server_deaddrop_starts_with_buffer) (const uint8_t *payload, size_t payload_len, char *match, int match_buf_size, size_t *matched_prefix_len);
   const siglatch_server *  (*set_current_server)(const char * name);
   const siglatch_server*  (*get_current_server)(void);

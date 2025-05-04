@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
   LOGE("🚀 Launching...\n");
   //siglatch_config *cfg = NULL;//    load_config("/etc/siglatch/config");
   
-  lib.config.load("/etc/siglatch/config");
+  lib.config.load("/etc/siglatch/server.conf");
   //lib.config.dump();
   siglatch_config * cfg = (siglatch_config*) lib.config.get();
 

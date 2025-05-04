@@ -1,0 +1,14 @@
+iptables -F
+
+
+##################################
+# ssh blocking
+##################################
+#wire in your off band access , if you have it
+#iptables -A INPUT -p TCP -s 10.0.0.1/32 --dport 22 -j ACCEPT
+#backup for when you fat finger it.
+iptables -A INPUT -p TCP -s 10.0.0.1/32 --dport 22 -j ACCEPT
+
+__DATA__
+
+iptables -A INPUT -p TCP --dport 22 -j DROP

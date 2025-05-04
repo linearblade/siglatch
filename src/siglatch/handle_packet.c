@@ -120,7 +120,11 @@ static int handle_packet( const KnockPacket *pkt, const char *ip_addr,  int vali
     return 0;
   }
   if (!lib.config.current_server_action_available(action->name)) {
-    LOGE("[handle] ❌ Action not permitted on this server.\n");
+    LOGE("[handle] ❌ Action (%s) not permitted on this server.\n",action->name);
+    return 0 ;
+  }
+  if(!lib.config.action_available_by_user(pkt->user_id, action->name) ){
+    LOGE("[handle] ❌ Action (%s) not permitted by this user(%s).\n",action->name,username);
     return 0 ;
   }
   if (!action->enabled){

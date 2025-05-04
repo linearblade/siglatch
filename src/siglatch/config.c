@@ -114,6 +114,22 @@ const siglatch_user *config_user_by_id( uint32_t user_id) {
     return NULL;  // Not found
 }
 
+static int config_action_available_by_user(uint32_t user_id, const char *action) {
+    if (!_config || !action) return 0;
+
+    const siglatch_user *user = config_user_by_id(user_id);
+    if (!user ) return 0;
+
+    for (int i = 0; i < user->action_count; ++i) {
+        const char *a = user->actions[i];
+        if (lib.str.eq(a, action)) {
+            return 1;
+        }
+    }
+
+    return 0;  // Not found
+}
+
 const char * config_username_by_id(uint32_t user_id){
   const siglatch_user * u = config_user_by_id(user_id);
   return u && u->name[0] != '\0'?
@@ -636,11 +652,16 @@ static int load_user_hmac_keys(siglatch_config *cfg) {
         size_t bytes_read = fread(file_buf, 1, sizeof(file_buf), fp);
         fclose(fp);
 
-        if (bytes_read != 32 && bytes_read != 64) {
+        if (bytes_read != 32 && bytes_read == sizeof(file_buf) ) {
             LOGE("❌ Invalid HMAC key file size for user '%s' (%s): read %zu bytes\n", u->name, u->hmac_file, bytes_read);
             return 0;
         }
 
+	/*
+	if (!lib.openssl.session_readHMAC(session, opts->hmac_key_path)) {
+	  lib.log.console("❌ Failed to load HMAC key!\n");
+	  return 0;
+	  }*/
         // Normalize the key (binary or hex) into user struct
         if (!lib.hmac.normalize(file_buf, bytes_read, u->hmac_key)) {
             LOGE("❌ Failed to normalize HMAC key for user '%s'\n", u->name);
@@ -846,6 +867,7 @@ static const ConfigLib config_instance = {
   .current_server_deaddrop_starts_with_buffer = config_current_server_deaddrop_starts_with_buffer,
   .user_by_id = config_user_by_id,
   .action_by_id = config_action_by_id,
+  .action_available_by_user = config_action_available_by_user, 
   .server_by_name = config_server_by_name,
   .deaddrop_by_name = config_deaddrop_by_name,
   .username_by_id = config_username_by_id,
