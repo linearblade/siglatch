@@ -13,6 +13,18 @@ This script sets up and manages cryptographic keys and configuration files for *
 * **Permissions:** All key files must be `600` and owned by `root`
 
 ---
+## 📚 Dependencies
+
+Before installing, ensure your system has the following:
+
+- A **C99-compliant compiler** (`gcc`, `clang`, etc.)
+- [`xxd`](https://linux.die.net/man/1/xxd) (typically included with `vim-common`)
+- **OpenSSL 3.x or higher** (required for modern crypto support)
+- See [`dependencies.md`](./dependencies.md) for full details
+
+> 💡 If the **linker fails** during compilation, run the `find_openssl3.sh` script to locate OpenSSL installations and generate appropriate `CFLAGS` and `LDFLAGS` for your `Makefile`.
+
+---
 
 ## 🚀 Usage
 
