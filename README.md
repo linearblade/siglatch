@@ -51,19 +51,21 @@ In short: all the stuff you want to do securely and surgically **without the blo
 ---
 
 ## 📚 Documentation
-
+These guides are being actively updated, check back often for updates!
 * [📦 FEATURES](docs/FEATURE_SPEC.md) — Full feature specification (current and planned).
 * [🔐 SECURITY](docs/SECURITY.md) — Security model, mitigations, and threat considerations.
-* [⚙️ INSTALLATION](docs/OPERATIONS_INSTALL.md) — install.sh helpfile
-* [⚙️ OPERATIONS](docs/OPERATIONS.md) — General help for compilation,installation and operations
-* [⚙️ CLIENT\_OPERATIONS](docs/OPERATIONS_CLIENT.md) — detailed client operations
-* [⚙️ DAEMON\_CONFIGURATION](docs/OPERATIONS_CONFIG.md) — config file manual
+* ⚙️ **Installation**
+  * 🛠️ [**COMPILING**](docs/OPERATIONS_COMPILE.md) — How to build the project from source.
+  * 📥 [**INSTALLATION**](docs/OPERATIONS_INSTALL.md) — `install.sh` help and setup guide.
+  * 📚 [**OPERATIONS**](docs/OPERATIONS.md) — General guide for compiling, installing, and running.
+  * 🖥️ [**CLIENT_OPERATIONS**](docs/OPERATIONS_CLIENT.md) — Detailed instructions for client-side use.
+  * 🧾 [**DAEMON_CONFIGURATION**](docs/OPERATIONS_CONFIG.md) — Manual for configuring the server daemon.
+* 📦 **Modules**
+  * [🌐 IP_AUTH](docs/modules/IP_AUTH.md) — IP-based authentication module details
 * [🧠 AI\_DISCLOSURE](docs/AI_DISCLOSURE.md) — A short note on the use of AI within this project.
 * [🚧 PLANNED\_FEATURES](docs/PLANNED.md) — planned and upcoming features
 * [🔒 LICENSE](LICENSE.md) — SOFTWARE LICENSE
 * [🧑‍💻 USE POLICY](USE_POLICY.md) — USE POLICY
-* 📦 **Modules**
-  * [🌐 IP_AUTH](docs/modules/IP_AUTH.md) — IP-based authentication module details
 
 Please read the above documents carefully to understand setup procedures, operational safety, and future plans.
 
