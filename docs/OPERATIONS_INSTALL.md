@@ -20,7 +20,7 @@ Before installing, ensure your system has the following:
 - A **C99-compliant compiler** (`gcc`, `clang`, etc.)
 - [`xxd`](https://linux.die.net/man/1/xxd) (typically included with `vim-common`)
 - **OpenSSL 3.x or higher** (required for modern crypto support)
-- See [`dependencies.md`](./dependencies.md) for full details
+- See [`dependencies.md`](./DEPENDENCIES.md) for full details
 
 > 💡 If the **linker fails** during compilation, run the `find_openssl3.sh` script to locate OpenSSL installations and generate appropriate `CFLAGS` and `LDFLAGS` for your `Makefile`.
 
