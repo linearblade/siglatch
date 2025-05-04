@@ -47,6 +47,11 @@ The rest use core modules:
 | `logs/`                  | Runtime logs: `grant_log.json`, etc.  |
 
 ---
+## Installation
+if the installer does not copy the files over , or you wish to reinstall,
+you can type ```sh install.sh install_ip_auth``` . This will copy over the scripts into /etc/siglatch/scripts
+if you want to setup aliases, follow the instructions at  [CLIENT OPERATIONS](../OPERATIONS_CLIENT.md)
+Then you can type things like ```knocker --port 50000 host root grant_ip "message"```
 
 ## ⚙️ Configuration
 
