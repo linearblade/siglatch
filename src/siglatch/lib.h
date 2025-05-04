@@ -15,6 +15,7 @@
 #include "../stdlib/file.h"
 #include "../stdlib/openssl.h"
 #include "../stdlib/net.h"
+#include "../stdlib/str.h"
 #include "config.h"
 #include "nonce_cache.h"
 
@@ -46,6 +47,7 @@ typedef struct {
   FileLib file;
   SiglatchOpenSSL_Lib openssl;
   NetLib net;
+  StrLib str;
 } Lib;
 
 extern Lib lib;

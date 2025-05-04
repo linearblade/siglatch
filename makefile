@@ -80,6 +80,7 @@ SRC_SIGLATCHD = \
     src/stdlib/payload_digest.c \
     src/stdlib/openssl.c \
     src/stdlib/file.c \
+    src/stdlib/str.c \
     src/stdlib/base64.c
 
 SRC_KNOCKER = \

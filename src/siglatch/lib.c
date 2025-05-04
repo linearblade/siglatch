@@ -20,7 +20,8 @@ Lib lib = {
     .payload_digest = {0},
     .hmac = {0},
     .openssl = {0},
-    .net = {0}
+    .net = {0},
+    .str = {0}
 };
 
 // 🚀 SYSTEM INITIALIZATION ORDER 🚀
@@ -44,7 +45,8 @@ void init_lib(void) {
   lib.time.init();
   lib.net             = *get_lib_net();
   lib.net.init();
-
+  lib.str = *get_lib_str();
+  lib.str.init();
 
   LogContext ctx = {
     .time = &lib.time
@@ -115,4 +117,5 @@ void shutdown_lib(void) {
   lib.log.shutdown();
   lib.time.shutdown();
   lib.net.shutdown();
+  lib.str.shutdown();
 }

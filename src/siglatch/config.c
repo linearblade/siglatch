@@ -370,18 +370,18 @@ static siglatch_config *_load_config(const char *path) {
     switch (current_block) {
     case CFG_BLOCK_NONE:
       if (strcmp(key, "priv_key_path") == 0) {
-	strncpy(config->priv_key_path, val, PATH_MAX);
+	lib.str.lcpy(config->priv_key_path, val, PATH_MAX);
       } else if (strcmp(key, "port") == 0) {
 	//config->port = atoi(val);
       } else if (strcmp(key, "log_file") == 0) {
-	strncpy(config->log_file, val, PATH_MAX);
+	lib.str.lcpy(config->log_file, val, PATH_MAX);
       }
       break;
     case CFG_BLOCK_ACTION:
       if (strcmp(key, "constructor") == 0) {
-	strncpy(current_action->constructor, val, PATH_MAX);
+	lib.str.lcpy(current_action->constructor, val, PATH_MAX);
       } else if (strcmp(key, "destructor") == 0) {
-	strncpy(current_action->destructor, val, PATH_MAX);
+	lib.str.lcpy(current_action->destructor, val, PATH_MAX);
       } else if (strcmp(key, "keepalive_interval") == 0) {
 	current_action->keepalive_interval = atoi(val);
       } else if (strcmp(key, "id") == 0) {
@@ -399,15 +399,15 @@ static siglatch_config *_load_config(const char *path) {
       if (strcmp(key, "enabled") == 0) {
 	current_user->enabled = (strcmp(val, "yes") == 0 || strcmp(val, "1") == 0);
       } else if (strcmp(key, "key_file") == 0) {
-	strncpy(current_user->key_file, val, PATH_MAX);
+	lib.str.lcpy(current_user->key_file, val, PATH_MAX);
       } else if (strcmp(key, "hmac_file") == 0) {
-	strncpy(current_user->hmac_file, val, PATH_MAX);
+	lib.str.lcpy(current_user->hmac_file, val, PATH_MAX);
       } else if (strcmp(key, "id") == 0) {
 	current_user->id = atoi(val);
       } else if (strcmp(key, "actions") == 0) {
 	char *tok = strtok(val, ",");
 	while (tok && current_user->action_count < MAX_ACTIONS) {
-	  strncpy(current_user->actions[current_user->action_count++],
+	  lib.str.lcpy(current_user->actions[current_user->action_count++],
 		  trim(tok), MAX_ACTION_NAME);
 	  tok = strtok(NULL, ",");
 	}
@@ -421,11 +421,11 @@ static siglatch_config *_load_config(const char *path) {
       }else if (strcmp(key, "enabled") == 0) {
 	current_server->enabled = (strcmp(val, "yes") == 0 || strcmp(val, "1") == 0);
       } else if (strcmp(key, "name") == 0) {
-	strncpy(current_server->name, val, MAX_SERVER_NAME);
+	lib.str.lcpy(current_server->name, val, MAX_SERVER_NAME);
       } else if (strcmp(key, "priv_key_path") == 0) {
-	strncpy(current_server->priv_key_path, val, PATH_MAX);
+	lib.str.lcpy(current_server->priv_key_path, val, PATH_MAX);
       } else if (strcmp(key, "log_file") == 0) {
-	strncpy(current_server->log_file, val, PATH_MAX);
+	lib.str.lcpy(current_server->log_file, val, PATH_MAX);
       } else if (strcmp(key, "port") == 0) {
 	current_server->port = atoi(val);
       } else if (strcmp(key, "secure") == 0) {
@@ -435,14 +435,14 @@ static siglatch_config *_load_config(const char *path) {
       } else if (strcmp(key, "actions") == 0) {
 	char *tok = strtok(val, ",");
 	while (tok && current_server->action_count < MAX_ACTIONS) {
-	  strncpy(current_server->actions[current_server->action_count++],
+	  lib.str.lcpy(current_server->actions[current_server->action_count++],
 		  trim(tok), MAX_ACTION_NAME);
 	  tok = strtok(NULL, ",");
 	}
       } else if (strcmp(key, "deaddrops") == 0) {
 	char *tok = strtok(val, ",");
 	while (tok && current_server->deaddrop_count < MAX_ACTIONS) {
-	  strncpy(current_server->deaddrops[current_server->deaddrop_count++],
+	  lib.str.lcpy(current_server->deaddrops[current_server->deaddrop_count++],
 		  trim(tok), MAX_ACTION_NAME);
 	  tok = strtok(NULL, ",");
 	}
@@ -457,20 +457,20 @@ static siglatch_config *_load_config(const char *path) {
       if (strcmp(key, "id") == 0) {
 	current_deaddrop->id = atoi(val);
       } else if (strcmp(key, "name") == 0) {
-	strncpy(current_deaddrop->name, val, MAX_DEADDROP_NAME);
+	lib.str.lcpy(current_deaddrop->name, val, MAX_DEADDROP_NAME);
       } else if (strcmp(key, "constructor") == 0) {
-	strncpy(current_deaddrop->constructor, val, MAX_PATH_LEN);
+	lib.str.lcpy(current_deaddrop->constructor, val, MAX_PATH_LEN);
       } else if (strcmp(key, "filter") == 0 || strcmp(key, "filters") == 0) {
 	char *tok = strtok(val, ",");
 	while (tok && current_deaddrop->filter_count < MAX_FILTERS) {
-	  strncpy(current_deaddrop->filters[current_deaddrop->filter_count++],
+	  lib.str.lcpy(current_deaddrop->filters[current_deaddrop->filter_count++],
 		  trim(tok), MAX_FILTER_LEN);
 	  tok = strtok(NULL, ",");
 	}
       } else if (strcmp(key, "starts_with") == 0 || strcmp(key, "starts_with") == 0) {
 	char *tok = strtok(val, ",");
 	while (tok && current_deaddrop->starts_with_count < MAX_FILTERS) {
-	  strncpy(current_deaddrop->starts_with[current_deaddrop->starts_with_count++],
+	  lib.str.lcpy(current_deaddrop->starts_with[current_deaddrop->starts_with_count++],
 		  trim(tok), MAX_FILTER_LEN);
 	  tok = strtok(NULL, ",");
 	}
@@ -583,7 +583,7 @@ static int load_server_keys(siglatch_config *cfg) {
 	if (!s->port) s->port = 50000;
 	// Log file fallback
         if (s->log_file[0] == '\0' && cfg->log_file[0] != '\0') {
-            strncpy(s->log_file, cfg->log_file, PATH_MAX);
+            lib.str.lcpy(s->log_file, cfg->log_file, PATH_MAX);
             LOGW("⚠️  Using fallback log file for server [%s]: %s\n", s->name, s->log_file);
         }
 
