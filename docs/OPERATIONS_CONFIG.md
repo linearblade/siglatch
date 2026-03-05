@@ -16,9 +16,11 @@ Keep in mind the following:&#x20;
 
 ```ini
 log_file = /tmp/siglatch.log
+output_mode = unicode
 ```
 
 * **log\_file**: Specifies the default path where daemon logs will be written. This setting can be overridden within individual server configurations.
+* **output\_mode**: Default console output mode for daemon messages. Valid values: `unicode`, `ascii`.
 
 ---
 
@@ -30,6 +32,7 @@ log_file = /tmp/siglatch.log
 enabled = yes
 port = 50000
 secure = yes
+output_mode = unicode
 priv_key_path = /etc/siglatch/server_priv.pem
 deaddrops = message
 actions = grant_ip, run_script
@@ -45,6 +48,7 @@ log_file = /custom/log/here
 * **actions**: Comma-separated list of `action` modules available.
 * **logging**: Whether to log incoming requests.
 * \*\*log\_file\*\*: Overrides the default global log file path for this specific server instance.
+* **output\_mode**: Overrides global `output_mode` for this server.
 
 ### \[server\:insecure]
 
@@ -100,6 +104,7 @@ hmac_file = /etc/siglatch/keys/root.hmac.key
 
 ## ℹ️ Notes
 
+* Runtime output mode precedence is: `--output-mode` CLI flag, then `SIGLATCH_OUTPUT_MODE`, then server `output_mode`, then global `output_mode`, then compile-time default.
 * All paths should be absolute.
 * Scripts will run without the environment. be aware of this when writing scripts.
 * User keys should be created via `install.sh` or copied securely.

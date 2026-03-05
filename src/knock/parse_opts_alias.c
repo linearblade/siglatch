@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <unistd.h> // for access(), F_OK
@@ -13,6 +14,40 @@
 #include "parse_opts.h"
 #include "parse_opts_alias.h"
 #include "print_help.h"
+#include "../stdlib/output.h"
+
+#define printf(...) sl_printf(__VA_ARGS__)
+
+static int g_cli_hint_printed = 0;
+
+static int cli_message_is_error(const char *fmt) {
+    if (!fmt) {
+        return 0;
+    }
+    return strstr(fmt, "❌") != NULL;
+}
+
+static void cli_print_hint_once(void) {
+    if (!g_cli_hint_printed) {
+        g_cli_hint_printed = 1;
+        sl_fprintf(stderr, "Use --help for usage.\n");
+    }
+}
+
+static int cli_fprintf(FILE *stream, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int rc = sl_vfprintf(stream, fmt, args);
+    va_end(args);
+
+    if (stream == stderr && cli_message_is_error(fmt)) {
+        cli_print_hint_once();
+    }
+
+    return rc;
+}
+
+#define fprintf(...) cli_fprintf(__VA_ARGS__)
 
 static int handle_alias_user(int argc, char *argv[]);
 static int handle_alias_action(int argc, char *argv[]);
@@ -210,7 +245,7 @@ int handle_alias(int argc, char *argv[]) {
 
     // end of alias hell. if you reached the bottom of the pit, your S.O.L.
     fprintf(stderr, "❌ Unknown alias command: %s\n", argv[1]);
-    return 0;
+    exit(2);
 }
 
 

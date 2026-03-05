@@ -94,6 +94,7 @@ typedef struct {
   char log_file[PATH_MAX];
   int port;                                    ///< UDP port
   int secure;                                  ///< 1 = encrypted, 0 = plaintext
+  int output_mode;                             ///< 0=unset, else SL_OUTPUT_MODE_*
 
   EVP_PKEY *priv_key;                          ///< Loaded OpenSSL private key
 
@@ -107,6 +108,7 @@ typedef struct {
   // Global log path (used if no per-server override)
   char log_file[PATH_MAX];
   char priv_key_path[PATH_MAX];
+  int output_mode;                             ///< 0=unset, else SL_OUTPUT_MODE_*
   EVP_PKEY *master_privkey;                          ///< Loaded OpenSSL private key
   // Users and their keys
   siglatch_user users[MAX_USERS];

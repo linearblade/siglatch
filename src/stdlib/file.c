@@ -9,6 +9,7 @@
 #include <errno.h> // Don't forget this at the top of file.c!
 //#include <limits.h> // for PATH_MAX
 #include "file.h"
+#include "output.h"
 
 /**
  * @file file.c
@@ -60,9 +61,9 @@ static void filelib_error_dump(void) {
     }
 
     if (filelib_ctx.allow_unicode) {
-        fprintf(stderr, "%s FileLib Error: %s\n", fail_emoji, filelib_last_error);
+        sl_fprintf(stderr, "%s FileLib Error: %s\n", fail_emoji, filelib_last_error);
     } else {
-        fprintf(stderr, "FileLib Error: %s\n", filelib_last_error);
+        sl_fprintf(stderr, "FileLib Error: %s\n", filelib_last_error);
     }
 }
 static void filelib_error(const char *fmt, ...) {

@@ -14,6 +14,7 @@
 #include "../stdlib/openssl_session.h"
 #include "parse_opts.h"
 #include "print_help.h"
+#include "../stdlib/output.h"
 
 #define PORT 50000
 #define TARGET "127.0.0.1"
@@ -38,8 +39,23 @@ int main(int argc, char *argv[]) {
   Opts opts = {0};
 
   init_lib();
+
+  const char *env_output_value = getenv("SIGLATCH_OUTPUT_MODE");
+  int env_output_mode = sl_output_parse_mode(env_output_value);
+  if (env_output_mode) {
+    sl_output_set_mode(env_output_mode);
+  } else if (env_output_value && *env_output_value) {
+    sl_fprintf(stderr,
+               "❌ Invalid SIGLATCH_OUTPUT_MODE '%s' (expected 'unicode' or 'ascii')\n",
+               env_output_value);
+  }
+
   if (!parseOpts(argc, argv, &opts) ){
-    printHelp();
+    if (argc < 2 || (argc > 1 && strncmp(argv[1], "--help", 6) == 0)) {
+      printHelp();
+    } else {
+      sl_fprintf(stderr, "Use --help for usage.\n");
+    }
     goto cleanup;
   }
   lib.log.open(opts.log_file);
@@ -137,5 +153,3 @@ int transmit(Opts *opts){
   lib.openssl.session_free(&session);
   return status;
 }
-
-

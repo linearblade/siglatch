@@ -50,6 +50,25 @@ The Makefile provides the following build options:
 ##### Example: Clean builds
 ```bash make clean```
 
+### Compile-Time Output Mode Defaults
+
+The Makefile supports compile-time output mode defaults:
+
+* `OUTPUT_MODE` applies to both binaries.
+* `OUTPUT_MODE_SIGLATCHD` applies only to `siglatchd`.
+* `OUTPUT_MODE_KNOCKER` applies only to `knocker`.
+* Valid values are `unicode` and `ascii`.
+
+Examples:
+
+```bash
+make clean && make OUTPUT_MODE=ascii all
+make clean-knocker && make OUTPUT_MODE_KNOCKER=ascii build-knocker
+make clean-siglatchd && make OUTPUT_MODE_SIGLATCHD=ascii build-siglatchd
+```
+
+Runtime flags/env can still override compile-time defaults.
+
 4. Review the `default_config/` directory. Example configurations and sample user settings are provided.
 5. Run the installation script as root:
 

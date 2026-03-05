@@ -6,6 +6,9 @@ $(info -----------------------------------------------------------)
 
 .PHONY: all build-knocker build-siglatchd clean clean-knocker clean-siglatchd
 UNAME_S := $(shell uname -s)
+OUTPUT_MODE ?= unicode
+OUTPUT_MODE_SIGLATCHD ?= $(OUTPUT_MODE)
+OUTPUT_MODE_KNOCKER ?= $(OUTPUT_MODE)
 
 ifeq ($(UNAME_S),Darwin)
     # macOS (Homebrew OpenSSL)
@@ -26,6 +29,20 @@ CC = gcc
 #LDFLAGS = -L/opt/homebrew/opt/openssl@3/lib -lssl -lcrypto
 CFLAGS += -Wall -O2 $(OPENSSL_CFLAGS)
 LDFLAGS += $(OPENSSL_LDFLAGS) -lssl -lcrypto
+
+define modeflag_for
+$(if $(filter ascii,$(1)),-DSL_OUTPUT_MODE_DEFAULT=SL_OUTPUT_MODE_ASCII,$(if $(filter unicode,$(1)),-DSL_OUTPUT_MODE_DEFAULT=SL_OUTPUT_MODE_UNICODE,-DSL_OUTPUT_MODE_DEFAULT=SL_OUTPUT_MODE_UNICODE))
+endef
+
+MODEFLAG_SIGLATCHD := $(call modeflag_for,$(OUTPUT_MODE_SIGLATCHD))
+MODEFLAG_KNOCKER   := $(call modeflag_for,$(OUTPUT_MODE_KNOCKER))
+
+ifneq ($(filter $(OUTPUT_MODE_SIGLATCHD),unicode ascii),$(OUTPUT_MODE_SIGLATCHD))
+$(warning ⚠️ Unknown OUTPUT_MODE_SIGLATCHD='$(OUTPUT_MODE_SIGLATCHD)'; defaulting to unicode)
+endif
+ifneq ($(filter $(OUTPUT_MODE_KNOCKER),unicode ascii),$(OUTPUT_MODE_KNOCKER))
+$(warning ⚠️ Unknown OUTPUT_MODE_KNOCKER='$(OUTPUT_MODE_KNOCKER)'; defaulting to unicode)
+endif
 
 
 # Check if compiler supports C99
@@ -52,6 +69,7 @@ endif
 # Output binaries
 BIN_SIGLATCHD = siglatchd
 BIN_KNOCKER   = knocker
+.PHONY: $(BIN_SIGLATCHD) $(BIN_KNOCKER)
 
 # Source files
 #    src/siglatch/config_debug.c \
@@ -79,6 +97,7 @@ SRC_SIGLATCHD = \
     src/stdlib/payload.c \
     src/stdlib/payload_digest.c \
     src/stdlib/openssl.c \
+    src/stdlib/output.c \
     src/stdlib/file.c \
     src/stdlib/str.c \
     src/stdlib/base64.c
@@ -101,6 +120,7 @@ SRC_KNOCKER = \
     src/stdlib/hmac_key.c \
     src/stdlib/file.c \
     src/stdlib/openssl.c \
+    src/stdlib/output.c \
     src/stdlib/udp.c \
     src/stdlib/utils.c
 
@@ -112,13 +132,13 @@ all: build-siglatchd build-knocker
 build-siglatchd: $(BIN_SIGLATCHD)
 
 $(BIN_SIGLATCHD): $(SRC_SIGLATCHD)
-	$(DEPLOY) $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(DEPLOY) $(CC) $(CFLAGS) $(MODEFLAG_SIGLATCHD) -o $@ $^ $(LDFLAGS)
 
 # Build knocker
 build-knocker: $(BIN_KNOCKER)
 
 $(BIN_KNOCKER): $(SRC_KNOCKER)
-	$(DEPLOY) $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(DEPLOY) $(CC) $(CFLAGS) $(MODEFLAG_KNOCKER) -o $@ $^ $(LDFLAGS)
 
 # Clean targets
 clean:

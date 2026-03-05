@@ -6,10 +6,15 @@
 #include <stdio.h>
 #include <string.h>
 #include "parse_argv.h"
+#include "output.h"
+
+#define printf(...) sl_printf(__VA_ARGS__)
+#define fprintf(...) sl_fprintf(__VA_ARGS__)
 
 // Internal context (defaults to non-strict)
 static ParseArgvContext g_parse_argv_ctx = {
   .strict = 0,
+  .quiet_errors = 0,
   .log = NULL
 };
 
@@ -34,10 +39,15 @@ static void parse_argv_init(const ParseArgvContext *ctx) {
 }
 static void parse_argv_shutdown(void){
   g_parse_argv_ctx.strict = 0;
+  g_parse_argv_ctx.quiet_errors = 0;
   g_parse_argv_ctx.log = NULL;
 }
 
 static void log_error(const char *fmt, ...) {
+    if (g_parse_argv_ctx.quiet_errors) {
+        return;
+    }
+
     va_list args;
     va_start(args, fmt);
 
@@ -46,8 +56,8 @@ static void log_error(const char *fmt, ...) {
         vsnprintf(buffer, sizeof(buffer), fmt, args);
         g_parse_argv_ctx.log->emit(LOG_ERROR, 1, "%s", buffer);
     } else {
-        vfprintf(stderr, fmt, args);
-        fprintf(stderr, "\n");
+        sl_vfprintf(stderr, fmt, args);
+        sl_fprintf(stderr, "\n");
     }
 
     va_end(args);

@@ -4,9 +4,12 @@
  */
 
 #include "udp.h"
+#include "output.h"
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+
+#define printf(...) sl_printf(__VA_ARGS__)
 
 // Static internal context
 static UdpContext g_udp_ctx = {0};

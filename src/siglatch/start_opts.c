@@ -14,21 +14,56 @@
 #include "start_opts.h"
 #include "help.h"
 #include "lib.h"
+#include "../stdlib/output.h"
 
 int start_opts(int argc, char *argv[], siglatch_config *cfg) {
-    if (argc > 1) {
-        if (strcmp(argv[1], "--dump-config") == 0) {
-	  lib.config.dump();
-            shutdown_OK(cfg, -1);
-	    return(0);
-        } else if (strcmp(argv[1], "--help") == 0) {
-            siglatch_help(argc, argv);
-	    shutdown_OK(cfg, -1);
-	    return(0);
-        } else {
-            shutdown_bad_opts(cfg, argc, argv);
-	    return(0);
+    int show_dump = 0;
+    int show_help = 0;
+
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--dump-config") == 0) {
+            show_dump = 1;
+            continue;
         }
+
+        if (strcmp(argv[i], "--help") == 0) {
+            show_help = 1;
+            continue;
+        }
+
+        if (strcmp(argv[i], "--output-mode") == 0) {
+            if (i + 1 >= argc) {
+                shutdown_bad_opts(cfg, argc, argv);
+                return 0;
+            }
+
+            int mode = sl_output_parse_mode(argv[i + 1]);
+            if (!mode) {
+                LOGE("❌ Invalid --output-mode '%s' (expected 'unicode' or 'ascii')\n", argv[i + 1]);
+                shutdown_bad_opts(cfg, argc, argv);
+                return 0;
+            }
+
+            sl_output_set_mode(mode);
+            i++;  // consume mode argument
+            continue;
+        }
+
+        shutdown_bad_opts(cfg, argc, argv);
+        return 0;
     }
+
+    if (show_help) {
+        siglatch_help(argc, argv);
+        shutdown_OK(cfg, -1);
+        return 0;
+    }
+
+    if (show_dump) {
+        lib.config.dump();
+        shutdown_OK(cfg, -1);
+        return 0;
+    }
+
     return 1;  // continue with daemon startup
 }

@@ -18,6 +18,10 @@
 #include "parse_opts_alias.h"
 #include "print_help.h"
 #include "../stdlib/parse_argv.h"
+#include "../stdlib/output.h"
+
+#define printf(...) sl_printf(__VA_ARGS__)
+#define fprintf(...) sl_fprintf(__VA_ARGS__)
 
 
 enum {
@@ -33,6 +37,7 @@ enum {
   OPT_ID_VERBOSE,
   OPT_ID_LOG,
   OPT_ID_STDIN,
+  OPT_ID_OUTPUT_MODE,
 };
 
 static const OptionSpec option_specs[] = {
@@ -48,6 +53,7 @@ static const OptionSpec option_specs[] = {
   { "--dead-drop",   OPT_ID_DEAD_DROP,   0, OPT_FLAG },
   { "--verbose",     OPT_ID_VERBOSE,     1, OPT_KEYED },
   { "--log",         OPT_ID_LOG,         1, OPT_KEYED },
+  { "--output-mode", OPT_ID_OUTPUT_MODE, 1, OPT_KEYED },
   { NULL, 0, 0, OPT_UNKNOWN }
 };
 
@@ -65,6 +71,7 @@ int opts_attach_stdin(Opts *opts);
 int has_stdin(void);
 int opts_read_stdin_explicit(Opts *opts);
 int opts_read_stdin_explicit_multiline(Opts *opts);
+static void opts_apply_cli_output_mode_hint(int argc, char *argv[]);
   
 int ensure_dir_exists(const char *host) {
   char path[PATH_MAX] = {0};
@@ -109,6 +116,9 @@ int parseOpts(int argc, char *argv[], Opts *opts_out) {
   opts_out->hmac_mode =HMAC_MODE_NORMAL ;
   opts_out->encrypt = 1;
   opts_out->verbose = 3;
+  opts_out->output_mode = 0;
+
+  opts_apply_cli_output_mode_hint(argc, argv);
   if (!lib.parse_argv.parse(argc, argv, &parsed, option_specs)) {
     return 0;
   }
@@ -136,6 +146,18 @@ int parseOpts(int argc, char *argv[], Opts *opts_out) {
   }
 
   return 1; // Success
+}
+
+static void opts_apply_cli_output_mode_hint(int argc, char *argv[]) {
+    for (int i = 1; i + 1 < argc; ++i) {
+        if (strcmp(argv[i], "--output-mode") == 0) {
+            int mode = sl_output_parse_mode(argv[i + 1]);
+            if (mode) {
+                sl_output_set_mode(mode);
+            }
+            return;
+        }
+    }
 }
 
 int has_stdin(void) {
@@ -326,6 +348,16 @@ int apply_parsed_opts(const ParsedArgv *parsed, Opts *out) {
     case OPT_ID_STDIN:
       opts_read_stdin_explicit_multiline(out);
       break;
+    case OPT_ID_OUTPUT_MODE: {
+      int mode = sl_output_parse_mode(opt->args[1]);
+      if (!mode) {
+        fprintf(stderr, "❌ Invalid output mode: %s (expected 'unicode' or 'ascii')\n", opt->args[1]);
+        return 0;
+      }
+      out->output_mode = mode;
+      sl_output_set_mode(mode);
+      break;
+    }
     default:
       fprintf(stderr, "⚠️  Unhandled option id %d: %s\n", opt->spec->id, opt->args[0]);
       break;
@@ -562,6 +594,9 @@ void opts_dump(const Opts *opts) {
     printf("  HMAC Mode        : %d\n", opts->hmac_mode);
     printf("  Encrypt Payload  : %s\n", opts->encrypt ? "Yes" : "No");
     printf("  Dead Drop        : %s\n", opts->dead_drop ? "Yes" : "No");
+    printf("  Output Mode      : %s\n",
+           opts->output_mode ? sl_output_mode_name(opts->output_mode)
+                             : sl_output_mode_name(sl_output_get_mode()));
 
     printf("\nUser and Action:\n");
     printf("  User ID          : %u\n", opts->user_id);
@@ -581,4 +616,3 @@ void opts_dump(const Opts *opts) {
     printf("\nMisc:\n");
     printf("  Verbose Level    : %d\n", opts->verbose);
 }
-

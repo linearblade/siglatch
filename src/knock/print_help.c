@@ -4,6 +4,9 @@
  */
 
 #include <stdio.h>
+#include "../stdlib/output.h"
+
+#define printf(...) sl_printf(__VA_ARGS__)
 /*
 Usage:
   program [options] <user-alias-or-id> <action-alias-or-id> <payload>
@@ -89,6 +92,7 @@ void printHelp(void) {
     printf("  \033[36m--dead-drop\033[0m               Send raw payload without structure\n");
     printf("  \033[36m--verbose <level>\033[0m         Set log verbosity (0-5, default 3 = INFO)\n");
     printf("  \033[36m--log <file>\033[0m              Log output to specified file (optional)\n\n");
+    printf("  \033[36m--output-mode <mode>\033[0m      Set output mode: unicode|ascii\n\n");
 
     // Alias Commands
     printf("\033[1mAlias Commands:\033[0m\n");

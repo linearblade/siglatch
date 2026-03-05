@@ -59,6 +59,7 @@ typedef struct {
  */
 typedef struct {
   int strict;  ///< If true, reject unknown options
+  int quiet_errors; ///< If true, suppress detailed parse errors
   const  Logger *log;
 } ParseArgvContext;
 

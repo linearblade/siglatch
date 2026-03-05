@@ -80,6 +80,7 @@ void init_lib(void) {
     };
     ParseArgvContext parse_argv_context = {
       .strict = 1,
+      .quiet_errors = 0,
       .log = &lib.log
     }; 
     // 🎯 3. Initialize all libraries in dependency-safe order

@@ -8,6 +8,7 @@
 #include <openssl/rsa.h>
 #include "openssl.h"
 #include "openssl_context.h"
+#include "output.h"
 
 // Static global pointer to the active library context
 //static SiglatchOpenSSLContext *g_openssl_ctx = NULL;
@@ -68,7 +69,7 @@ static int siglatch_openssl_session_free(SiglatchOpenSSLSession *session) {
     _session_free_evp_key(&session->private_key);
 
     if (session->owns_ctx && session->parent_ctx) {
-        fprintf(stderr,
+        sl_fprintf(stderr,
             "☢️☢️☢️  CRITICAL: siglatch OpenSSL session context marked as owned, but you haven't implemented heap context logic! ☢️☢️☢️ \n"
             "-> AUDIT your session allocation path.\n"
             "-> This WILL break log/file/hmac behavior if not handled correctly.\n\n"
@@ -405,7 +406,7 @@ static int siglatch_openssl_session_decrypt(SiglatchOpenSSLSession *session,
     (void)output;
     (void)output_len;
 
-    fprintf(stderr, "🛑 session_decrypt() is not yet implemented.\n");
+    sl_fprintf(stderr, "🛑 session_decrypt() is not yet implemented.\n");
     return 0;
 }
 */

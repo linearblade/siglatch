@@ -46,3 +46,6 @@ Thumbs.db
 *.flv
 *.mov
 *.wmv
+
+# Local notes scratch space
+__tmp/

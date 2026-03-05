@@ -14,6 +14,7 @@
 
 #include "log.h"
 #include "log_context.h"
+#include "output.h"
 #include "utils.h"  // for timestamp_now()
 
 
@@ -96,7 +97,7 @@ static const char *default_time_log() {
 // -- destructor
 static void log_shutdown(void) {
     if (log_output_owned && log_output) {
-        fprintf(log_output, "🔻 Logger shutting down\n");
+        sl_fprintf(log_output, "🔻 Logger shutting down\n");
      }
     log_close_file();
 }
@@ -138,14 +139,14 @@ static void log_console_line(const char *line) {
     if (!debug_to_stdout )
         return;
 
-    fputs(line, stdout);
+    sl_fprintf(stdout, "%s", line);
 }
 
 static void log_console_error(const char *line) {
   if (!error_to_stderr ){
     log_console_line(line);
   }else {
-    fputs(line, stderr);
+    sl_fprintf(stderr, "%s", line);
   }
 }
 
@@ -153,7 +154,7 @@ static void log_console_error(const char *line) {
 static void log_write_line(const char *line) {
   if (!logging_enabled || !log_output )
     return;
-  fputs(line, log_output);
+  sl_fprintf(log_output, "%s", line);
 }
 
 static const char *log_level_name(LogLevel level) {

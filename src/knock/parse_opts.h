@@ -47,6 +47,7 @@ typedef struct {
   HmacMode hmac_mode;   // Strongly typed!
   int encrypt;          // 0 = no encryption, 1 = encrypt
   int dead_drop;        // 0 = structured, 1 = dead drop
+  int output_mode;      // 0 = unset, else SL_OUTPUT_MODE_*
 
   //User,  Action and Payload
   uint32_t user_id;   // Resolved numeric user ID after parsing

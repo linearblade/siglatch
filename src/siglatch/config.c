@@ -12,12 +12,14 @@
 #include <openssl/rsa.h>
 #include "config.h"
 #include "lib.h"
+#include "../stdlib/output.h"
 
 #define TIMEOUT_SEC 5
 
 static void config_free(siglatch_config *config);
 static void config_dump_ptr(const siglatch_config *cfg) ;
 static siglatch_config *_load_config(const char *path) ;
+static int parse_output_mode_key(const char *value, const char *scope_label);
 
 static int load_user_hmac_keys(siglatch_config *cfg) ;
 static int load_server_keys(siglatch_config *cfg) ;
@@ -98,6 +100,18 @@ static int config_load(const char *path) {
     config_attach(cfg);  // takes ownership, frees any prior
     return 1;
   }
+  return 0;
+}
+
+static int parse_output_mode_key(const char *value, const char *scope_label) {
+  int mode = sl_output_parse_mode(value);
+  if (mode) {
+    return mode;
+  }
+
+  LOGW("⚠️  Invalid output_mode '%s' in %s (expected 'unicode' or 'ascii')\n",
+       value ? value : "(null)",
+       scope_label ? scope_label : "config");
   return 0;
 }
 
@@ -391,6 +405,8 @@ static siglatch_config *_load_config(const char *path) {
 	//config->port = atoi(val);
       } else if (strcmp(key, "log_file") == 0) {
 	lib.str.lcpy(config->log_file, val, PATH_MAX);
+      } else if (strcmp(key, "output_mode") == 0) {
+        config->output_mode = parse_output_mode_key(val, "[global]");
       }
       break;
     case CFG_BLOCK_ACTION:
@@ -444,12 +460,14 @@ static siglatch_config *_load_config(const char *path) {
 	lib.str.lcpy(current_server->log_file, val, PATH_MAX);
       } else if (strcmp(key, "port") == 0) {
 	current_server->port = atoi(val);
-      } else if (strcmp(key, "secure") == 0) {
-	current_server->secure = (strcmp(val, "yes") == 0 || strcmp(val, "1") == 0);
-      } else if (strcmp(key, "logging") == 0) {
-	current_server->logging = (strcmp(val, "yes") == 0 || strcmp(val, "1") == 0);
-      } else if (strcmp(key, "actions") == 0) {
-	char *tok = strtok(val, ",");
+	      } else if (strcmp(key, "secure") == 0) {
+		current_server->secure = (strcmp(val, "yes") == 0 || strcmp(val, "1") == 0);
+	      } else if (strcmp(key, "logging") == 0) {
+		current_server->logging = (strcmp(val, "yes") == 0 || strcmp(val, "1") == 0);
+              } else if (strcmp(key, "output_mode") == 0) {
+                current_server->output_mode = parse_output_mode_key(val, current_server->name);
+	      } else if (strcmp(key, "actions") == 0) {
+		char *tok = strtok(val, ",");
 	while (tok && current_server->action_count < MAX_ACTIONS) {
 	  lib.str.lcpy(current_server->actions[current_server->action_count++],
 		  trim(tok), MAX_ACTION_NAME);
@@ -732,6 +750,8 @@ static void config_dump_ptr(const siglatch_config *cfg) {
 
     lib.log.console("  Master log file: %s\n", cfg->log_file);
     lib.log.console("  Private key path: %s\n", cfg->priv_key_path);
+    lib.log.console("  Output mode: %s\n",
+                    cfg->output_mode ? sl_output_mode_name(cfg->output_mode) : "(unset)");
     if (cfg->master_privkey) {
         lib.log.console("  ✅ Master private key loaded from %s\n", cfg->priv_key_path);
     } else {
@@ -792,6 +812,8 @@ static void config_dump_ptr(const siglatch_config *cfg) {
         lib.log.console("      Secure   : %s\n", s->secure ? "yes" : "no");
         lib.log.console("      Port     : %d\n", s->port);
         lib.log.console("      Log file : %s\n", s->log_file[0] ? s->log_file : "(none)");
+        lib.log.console("      Output Mode : %s\n",
+                        s->output_mode ? sl_output_mode_name(s->output_mode) : "(unset)");
 
         lib.log.console("      Private key: %s\n", s->priv_key_path[0] ? s->priv_key_path : "(inherited)");
         if (s->priv_key) {
@@ -876,4 +898,3 @@ static const ConfigLib config_instance = {
 const ConfigLib *get_lib_config(void) {
   return &config_instance;
 }
-

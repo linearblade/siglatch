@@ -57,6 +57,29 @@ You may also pipe a payload via `--stdin`, or manage aliases separately.
 | `--dead-drop`            | Send raw binary payload (no structure) |
 | `--verbose <0-5>`        | Verbosity level (default: `3`) |
 | `--log <file>`           | Enable logging to specified file |
+| `--output-mode <mode>`   | Output symbols mode: `unicode` or `ascii` |
+
+---
+
+## 🖨️ Output Mode
+
+`knocker` supports two output modes for terminal messages:
+
+* `unicode` (default)
+* `ascii`
+
+You can select mode at runtime:
+
+```bash
+program --output-mode ascii <host> <user> <action> <payload>
+SIGLATCH_OUTPUT_MODE=ascii program <host> <user> <action> <payload>
+```
+
+Precedence order is:
+
+1. `--output-mode`
+2. `SIGLATCH_OUTPUT_MODE`
+3. compile-time default from `make`
 
 ---
 

@@ -17,6 +17,7 @@
 #include "daemon.h"
 #include "start_opts.h"
 #include "lib.h"
+#include "../stdlib/output.h"
 
 volatile sig_atomic_t should_exit = 0;
 
@@ -27,6 +28,16 @@ int main(int argc, char *argv[]) {
   lib.log.set_enabled(1);
   lib.log.set_debug(1);
   lib.log.set_level(LOG_TRACE);
+
+  const char *env_output_value = getenv("SIGLATCH_OUTPUT_MODE");
+  int env_output_mode = sl_output_parse_mode(env_output_value);
+  if (env_output_mode) {
+    sl_output_set_mode(env_output_mode);
+  } else if (env_output_value && *env_output_value) {
+    LOGW("⚠️  Invalid SIGLATCH_OUTPUT_MODE='%s' (expected 'unicode' or 'ascii')\n",
+         env_output_value);
+  }
+
   LOGE("🚀 Launching...\n");
   //siglatch_config *cfg = NULL;//    load_config("/etc/siglatch/config");
   
@@ -38,7 +49,24 @@ int main(int argc, char *argv[]) {
     shutdown_config_error();
     exit(EXIT_FAILURE);
   }
-  lib.config.set_current_server("secure");
+  if (!lib.config.set_current_server("secure")) {
+    LOGE("❌ Server block 'secure' not found in config\n");
+    shutdown_config_error();
+    exit(EXIT_FAILURE);
+  }
+
+  if (!env_output_mode) {
+    int config_output_mode = 0;
+    if (cfg->current_server && cfg->current_server->output_mode) {
+      config_output_mode = cfg->current_server->output_mode;
+    } else if (cfg->output_mode) {
+      config_output_mode = cfg->output_mode;
+    }
+
+    if (config_output_mode) {
+      sl_output_set_mode(config_output_mode);
+    }
+  }
 
   LOGT("loaded config\n");
   
@@ -59,4 +87,3 @@ int main(int argc, char *argv[]) {
   
   return shutdown_OK(cfg,sock);
 }
-
