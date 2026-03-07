@@ -50,6 +50,31 @@ int start_opts(int argc, char *argv[], siglatch_config *cfg) {
             continue;
         }
 
+        if (strcmp(argv[i], "--server") == 0) {
+            const char *server_name = NULL;
+            char err_buf[160];
+
+            if (i + 1 >= argc) {
+                shutdown_bad_opts_msg(cfg, argc, argv, "Missing value for --server");
+                return 0;
+            }
+
+            server_name = argv[i + 1];
+            if (!server_name || server_name[0] == '\0') {
+                shutdown_bad_opts_msg(cfg, argc, argv, "Invalid --server value (empty)");
+                return 0;
+            }
+
+            if (!lib.config.set_current_server(server_name)) {
+                snprintf(err_buf, sizeof(err_buf), "Unknown or disabled server: %s", server_name);
+                shutdown_bad_opts_msg(cfg, argc, argv, err_buf);
+                return 0;
+            }
+
+            i++;
+            continue;
+        }
+
         shutdown_bad_opts(cfg, argc, argv);
         return 0;
     }

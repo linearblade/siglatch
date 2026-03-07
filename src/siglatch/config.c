@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <ctype.h>
 #include <openssl/pem.h>
 #include <openssl/evp.h>
@@ -19,9 +20,18 @@ static void config_free(siglatch_config *config);
 static void config_dump_ptr(const siglatch_config *cfg) ;
 static siglatch_config *_load_config(const char *path) ;
 static int parse_output_mode_key(const char *value, const char *scope_label);
+static siglatch_payload_overflow_policy parse_payload_overflow_key(
+    const char *value,
+    const char *scope_label,
+    int allow_inherit,
+    siglatch_payload_overflow_policy fallback);
+static const char *payload_overflow_policy_name(siglatch_payload_overflow_policy policy);
+static siglatch_payload_overflow_policy config_resolve_payload_overflow_by_action(uint32_t action_id);
+static int validate_unique_server_names(const siglatch_config *cfg);
 
 static int load_user_hmac_keys(siglatch_config *cfg) ;
 static int load_server_keys(siglatch_config *cfg) ;
+static void apply_server_runtime_defaults(siglatch_config *cfg);
 static int load_user_keys(siglatch_config *cfg) ;
 static int load_master_key(siglatch_config *cfg);
 
@@ -114,6 +124,43 @@ static int parse_output_mode_key(const char *value, const char *scope_label) {
   return 0;
 }
 
+static siglatch_payload_overflow_policy parse_payload_overflow_key(
+    const char *value,
+    const char *scope_label,
+    int allow_inherit,
+    siglatch_payload_overflow_policy fallback) {
+  if (value && strcasecmp(value, "reject") == 0) {
+    return SL_PAYLOAD_OVERFLOW_REJECT;
+  }
+
+  if (value && strcasecmp(value, "clamp") == 0) {
+    return SL_PAYLOAD_OVERFLOW_CLAMP;
+  }
+
+  if (allow_inherit && value && strcasecmp(value, "inherit") == 0) {
+    return SL_PAYLOAD_OVERFLOW_INHERIT;
+  }
+
+  LOGW("Invalid payload_overflow '%s' in %s (expected '%s')\n",
+       value ? value : "(null)",
+       scope_label ? scope_label : "config",
+       allow_inherit ? "reject|clamp|inherit" : "reject|clamp");
+  return fallback;
+}
+
+static const char *payload_overflow_policy_name(siglatch_payload_overflow_policy policy) {
+  switch (policy) {
+  case SL_PAYLOAD_OVERFLOW_REJECT:
+    return "reject";
+  case SL_PAYLOAD_OVERFLOW_CLAMP:
+    return "clamp";
+  case SL_PAYLOAD_OVERFLOW_INHERIT:
+    return "inherit";
+  default:
+    return "unknown";
+  }
+}
+
 const siglatch_user *config_user_by_id( uint32_t user_id) {
     if (!_config) return NULL;
 
@@ -161,6 +208,87 @@ const siglatch_action * config_action_by_id(uint32_t action_id){
   return NULL;
 }
 
+static siglatch_payload_overflow_policy normalize_payload_overflow_effective(
+    siglatch_payload_overflow_policy policy) {
+  switch (policy) {
+  case SL_PAYLOAD_OVERFLOW_REJECT:
+  case SL_PAYLOAD_OVERFLOW_CLAMP:
+    return policy;
+  default:
+    return SL_PAYLOAD_OVERFLOW_REJECT;
+  }
+}
+
+static siglatch_payload_overflow_policy config_resolve_payload_overflow_by_action(uint32_t action_id) {
+  siglatch_payload_overflow_policy effective = SL_PAYLOAD_OVERFLOW_REJECT;
+
+  if (!_config) {
+    return effective;
+  }
+
+  effective = normalize_payload_overflow_effective(_config->payload_overflow);
+
+  if (_config->current_server &&
+      _config->current_server->payload_overflow != SL_PAYLOAD_OVERFLOW_INHERIT) {
+    effective = normalize_payload_overflow_effective(_config->current_server->payload_overflow);
+  }
+
+  {
+    const siglatch_action *action = config_action_by_id(action_id);
+    if (action && action->payload_overflow != SL_PAYLOAD_OVERFLOW_INHERIT) {
+      effective = normalize_payload_overflow_effective(action->payload_overflow);
+    }
+  }
+
+  return effective;
+}
+
+static void apply_server_runtime_defaults(siglatch_config *cfg) {
+  if (!cfg) {
+    return;
+  }
+
+  for (int i = 0; i < cfg->server_count; ++i) {
+    siglatch_server *s = &cfg->servers[i];
+
+    if (!s->port) {
+      s->port = 50000;
+    }
+
+    if (s->log_file[0] == '\0' && cfg->log_file[0] != '\0') {
+      lib.str.lcpy(s->log_file, cfg->log_file, PATH_MAX);
+      LOGW("Using fallback log file for server [%s]: %s\n", s->name, s->log_file);
+    }
+  }
+}
+
+static int validate_unique_server_names(const siglatch_config *cfg) {
+  if (!cfg) {
+    return 0;
+  }
+
+  for (int i = 0; i < cfg->server_count; ++i) {
+    const siglatch_server *a = &cfg->servers[i];
+
+    if (a->name[0] == '\0') {
+      LOGE("Invalid server config: server entry #%d has empty effective name\n", i + 1);
+      return 0;
+    }
+
+    for (int j = i + 1; j < cfg->server_count; ++j) {
+      const siglatch_server *b = &cfg->servers[j];
+
+      if (strcmp(a->name, b->name) == 0) {
+        LOGE("Invalid server config: duplicate effective server name '%s' (entries #%d and #%d)\n",
+             a->name, i + 1, j + 1);
+        return 0;
+      }
+    }
+  }
+
+  return 1;
+}
+
 
 const siglatch_deaddrop *config_deaddrop_by_name(const char *name) {
   if (!_config || !name) return NULL;
@@ -192,6 +320,8 @@ const siglatch_server * config_set_current_server(const char * name){
 
   const siglatch_server * current = config_server_by_name(name);
   if(!current)
+    return NULL;
+  if (!current->enabled)
     return NULL;
   _config->current_server = (siglatch_server *)current;
   return _config->current_server;
@@ -336,6 +466,7 @@ static siglatch_config *_load_config(const char *path) {
 
   // Set defaults
   strncpy(config->priv_key_path, "/etc/siglatch/server_priv.pem", PATH_MAX);
+  config->payload_overflow = SL_PAYLOAD_OVERFLOW_REJECT;
   //config->port = 50000;
 
   char line[512];
@@ -367,6 +498,7 @@ static siglatch_config *_load_config(const char *path) {
       current_action->enabled = 1;
       current_action->require_ascii = 0;
       current_action->exec_split = 1;
+      current_action->payload_overflow = SL_PAYLOAD_OVERFLOW_INHERIT;
 
       continue;
     }
@@ -376,6 +508,8 @@ static siglatch_config *_load_config(const char *path) {
       current_block = CFG_BLOCK_SERVER;
       current_server = &config->servers[config->server_count++];
       sscanf(trimmed, "[server:%63[^]]", current_server->name);
+      lib.str.lcpy(current_server->label, current_server->name, MAX_SERVER_NAME);
+      current_server->payload_overflow = SL_PAYLOAD_OVERFLOW_INHERIT;
       continue;
     }
 
@@ -402,10 +536,15 @@ static siglatch_config *_load_config(const char *path) {
 	lib.str.lcpy(config->priv_key_path, val, PATH_MAX);
       } else if (strcmp(key, "port") == 0) {
 	//config->port = atoi(val);
+      } else if (strcmp(key, "default_server") == 0) {
+	lib.str.lcpy(config->default_server, val, MAX_SERVER_NAME);
       } else if (strcmp(key, "log_file") == 0) {
 	lib.str.lcpy(config->log_file, val, PATH_MAX);
       } else if (strcmp(key, "output_mode") == 0) {
 	config->output_mode = parse_output_mode_key(val, "[global]");
+      } else if (strcmp(key, "payload_overflow") == 0) {
+	config->payload_overflow = parse_payload_overflow_key(
+	    val, "[global]", 0, config->payload_overflow);
       }
       break;
     case CFG_BLOCK_ACTION:
@@ -423,6 +562,9 @@ static siglatch_config *_load_config(const char *path) {
 	current_action->require_ascii = (strcmp(val, "yes") == 0 || strcmp(val, "1") == 0);
       }else if (strcmp(key, "exec_split") == 0) {
 	current_action->exec_split = (strcmp(val, "yes") == 0 || strcmp(val, "1") == 0);
+      }else if (strcmp(key, "payload_overflow") == 0) {
+	current_action->payload_overflow = parse_payload_overflow_key(
+	    val, current_action->name, 1, current_action->payload_overflow);
       }
       break;
     case CFG_BLOCK_USER:
@@ -451,8 +593,12 @@ static siglatch_config *_load_config(const char *path) {
 	current_server->id = atoi(val);
       }else if (strcmp(key, "enabled") == 0) {
 	current_server->enabled = (strcmp(val, "yes") == 0 || strcmp(val, "1") == 0);
+      } else if (strcmp(key, "label") == 0) {
+	lib.str.lcpy(current_server->label, val, MAX_SERVER_NAME);
       } else if (strcmp(key, "name") == 0) {
-	lib.str.lcpy(current_server->name, val, MAX_SERVER_NAME);
+	lib.str.lcpy(current_server->label, val, MAX_SERVER_NAME);
+	LOGW("Deprecated key 'name' in [server:%s]; use 'label' instead (server identity remains section label)\n",
+	     current_server->name);
       } else if (strcmp(key, "priv_key_path") == 0) {
 	lib.str.lcpy(current_server->priv_key_path, val, PATH_MAX);
       } else if (strcmp(key, "log_file") == 0) {
@@ -465,6 +611,9 @@ static siglatch_config *_load_config(const char *path) {
 	current_server->logging = (strcmp(val, "yes") == 0 || strcmp(val, "1") == 0);
       } else if (strcmp(key, "output_mode") == 0) {
 	current_server->output_mode = parse_output_mode_key(val, current_server->name);
+      } else if (strcmp(key, "payload_overflow") == 0) {
+	current_server->payload_overflow = parse_payload_overflow_key(
+	    val, current_server->name, 1, current_server->payload_overflow);
       } else if (strcmp(key, "actions") == 0) {
 	char *tok = strtok(val, ",");
 	while (tok && current_server->action_count < MAX_ACTIONS) {
@@ -521,6 +670,11 @@ static siglatch_config *_load_config(const char *path) {
   }
 
   fclose(fp);
+  if (!validate_unique_server_names(config)) {
+    config_free(config);
+    return NULL;
+  }
+
   if (!load_master_key(config)) {
     config_free(config);
     return NULL;
@@ -531,6 +685,7 @@ static siglatch_config *_load_config(const char *path) {
     config_free(config);
     return NULL;
   }
+  apply_server_runtime_defaults(config);
   if (!load_server_keys(config)) {
     LOGE("Failed to server  keys\n" );
     config_free(config);
@@ -613,12 +768,6 @@ static int load_server_keys(siglatch_config *cfg) {
         siglatch_server *s = &cfg->servers[i];
         if (!s->secure) continue;
         if (!s->enabled) continue;
-	if (!s->port) s->port = 50000;
-	// Log file fallback
-        if (s->log_file[0] == '\0' && cfg->log_file[0] != '\0') {
-            lib.str.lcpy(s->log_file, cfg->log_file, PATH_MAX);
-            LOGW("Using fallback log file for server [%s]: %s\n", s->name, s->log_file);
-        }
 
 	// Optional: Emit this info even for insecure/disabled if needed:
         if (s->logging) {
@@ -749,8 +898,12 @@ static void config_dump_ptr(const siglatch_config *cfg) {
 
     lib.log.console("  Master log file: %s\n", cfg->log_file);
     lib.log.console("  Private key path: %s\n", cfg->priv_key_path);
+    lib.log.console("  Default server: %s\n",
+                    cfg->default_server[0] ? cfg->default_server : "(unset)");
     lib.log.console("  Output mode: %s\n",
                     cfg->output_mode ? lib.print.output_mode_name(cfg->output_mode) : "(unset)");
+    lib.log.console("  Payload overflow policy: %s\n",
+                    payload_overflow_policy_name(cfg->payload_overflow));
     if (cfg->master_privkey) {
         lib.log.console("  Master private key loaded from %s\n", cfg->priv_key_path);
     } else {
@@ -767,6 +920,8 @@ static void config_dump_ptr(const siglatch_config *cfg) {
 	lib.log.console("      Enabled  : %s\n", a->enabled ? "yes" : "no");
 	lib.log.console("      Require Ascii Message  : %s\n", a->require_ascii ? "yes" : "no");
 	lib.log.console("      exec_split  : %s\n", a->exec_split ? "yes" : "no");
+	lib.log.console("      Payload overflow policy : %s\n",
+	               payload_overflow_policy_name(a->payload_overflow));
 
     }
 
@@ -813,6 +968,8 @@ static void config_dump_ptr(const siglatch_config *cfg) {
         lib.log.console("      Log file : %s\n", s->log_file[0] ? s->log_file : "(none)");
         lib.log.console("      Output Mode : %s\n",
                         s->output_mode ? lib.print.output_mode_name(s->output_mode) : "(unset)");
+	lib.log.console("      Payload overflow policy : %s\n",
+	               payload_overflow_policy_name(s->payload_overflow));
 
         lib.log.console("      Private key: %s\n", s->priv_key_path[0] ? s->priv_key_path : "(inherited)");
         if (s->priv_key) {
@@ -888,6 +1045,7 @@ static const ConfigLib config_instance = {
   .current_server_deaddrop_starts_with_buffer = config_current_server_deaddrop_starts_with_buffer,
   .user_by_id = config_user_by_id,
   .action_by_id = config_action_by_id,
+  .resolve_payload_overflow_by_action = config_resolve_payload_overflow_by_action,
   .action_available_by_user = config_action_available_by_user, 
   .server_by_name = config_server_by_name,
   .deaddrop_by_name = config_deaddrop_by_name,

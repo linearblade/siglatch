@@ -31,8 +31,8 @@ int session_init_for_server(const siglatch_config *cfg, SiglatchOpenSSLSession *
         return 0;
     }
 
-    if (!cfg || !cfg->current_server || !cfg->current_server->priv_key) {
-        lib.log.console("Invalid configuration passed - missing master private key\n");
+    if (!cfg || !cfg->current_server) {
+        lib.log.console("Invalid configuration passed - missing current server\n");
         return 0;
     }
 
@@ -41,9 +41,19 @@ int session_init_for_server(const siglatch_config *cfg, SiglatchOpenSSLSession *
         return 0;
     }
 
-    // Directly assign the already-loaded private key into the session
-    session->private_key = cfg->current_server->priv_key;
-    // Optional: clear any previous contexts, if needed
+    /*
+     * Only secure servers require private-key assignment for RSA decrypt.
+     * Insecure servers must not fail startup due to missing private key.
+     */
+    if (cfg->current_server->secure) {
+        if (!cfg->current_server->priv_key) {
+            lib.log.console("Secure server selected but private key is missing\n");
+            return 0;
+        }
+        session->private_key = cfg->current_server->priv_key;
+    } else {
+        session->private_key = NULL;
+    }
 
     return 1;
 }

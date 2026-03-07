@@ -16,5 +16,6 @@ int shutdown_config_error();
 void shutdown_socket_error(siglatch_config *cfg);
 int shutdown_OK(siglatch_config *cfg, int sock);
 int shutdown_bad_opts(siglatch_config *cfg, int argc, char *argv[]);
+int shutdown_bad_opts_msg(siglatch_config *cfg, int argc, char *argv[], const char *msg);
 
 #endif // SIGLATCH_SHUTDOWN_H

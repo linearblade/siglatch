@@ -25,7 +25,7 @@ All critical input surfaces are hardened against crashes, buffer overflows, and 
 | **HMAC Validation** | Each payload includes a SHA-256 HMAC signature (excluding the signature field itself) to ensure payload integrity before decryption. Invalid signatures are rejected immediately. |
 | **RSA Encryption** | After HMAC signing, the entire packet (payload + metadata) is encrypted using RSA-2048 public key encryption. Only packets correctly decrypted with the private key are processed. |
 | **Decryption Safety** | Only properly RSA-encrypted packets are accepted. Malformed or oversized packets are rejected without processing. |
-| **Structure Validation** | Incoming decrypted packets are versioned and timestamp-validated to prevent stale or out-of-spec data injection. |
+| **Structure Validation** | Incoming decrypted packets are versioned and timestamp-validated to prevent stale or out-of-spec data injection. Malformed structured `payload_len` values are enforced by `payload_overflow` policy (`reject` or `clamp`). |
 | **Replay Attack Protection** | Nonce cache ensures that identical packets cannot be reused to repeat an access or attack. |
 | **External Script Handling** | When external scripts are started, payload data is passed as base64-encoded text to avoid direct binary injection risks. require_ascii flag for additional security|
 | **Crash Safety** | All memory access paths are guarded. Invalid inputs or cryptographic failures are logged and skipped without causing daemon instability. |
@@ -91,6 +91,9 @@ This structure is signed via HMAC-SHA256 (excluding the `hmac` field itself) bef
   - It is also easier for anonymous messaging to be accepted. Ex: whistleblowers and anonymous senders may wish to contact you without HMAC signing, via a forged return addresses.
   - Future revisions will allow for pubkey / hmac transmissions as well.
 - Structured packet payloads are limited to 199 bytes, there is a slight overhead for data structure (see above packet, if you have questions just drop it into chatgpt / grok / whatever, and it will break the packet down)
+- Malformed structured packets with `payload_len > 199` are handled by config policy:
+  - `payload_overflow=reject`: packet is dropped.
+  - `payload_overflow=clamp`: length is clamped to 199 and packet continues through structured validation (including signature checks).
 - Unstrucutred data (dead drops) carry about a 25% larger payload capacity, at the expense of default signing and validation. It is STRONGLY reccomended you utilize this primarily as a fall back for invalid data capture, or
   - for anonymous contact requests (which you should clearly verify later).
 - Payload limitations. to stay under the MTU, siglatch packets are limited to 245 bytes, which ends up encoding alittle large than this.

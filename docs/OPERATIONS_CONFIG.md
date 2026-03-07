@@ -17,10 +17,15 @@ Keep in mind the following:&#x20;
 ```ini
 log_file = /tmp/siglatch.log
 output_mode = unicode
+payload_overflow = reject
 ```
 
 * **log\_file**: Specifies the default path where daemon logs will be written. This setting can be overridden within individual server configurations.
 * **output\_mode**: Default console output mode for daemon messages. Valid values: `unicode`, `ascii`.
+* **payload\_overflow**: Default policy for malformed structured packets whose `payload_len` exceeds the packet payload buffer.
+  * Global values: `reject`, `clamp`
+  * `reject`: Drop packet immediately.
+  * `clamp`: Force `payload_len` to the payload buffer size and continue structured validation/dispatch flow.
 
 ---
 
@@ -30,9 +35,11 @@ output_mode = unicode
 
 ```ini
 enabled = yes
+label = Secure Server
 port = 50000
 secure = yes
 output_mode = unicode
+payload_overflow = inherit
 priv_key_path = /etc/siglatch/server_priv.pem
 deaddrops = message
 actions = grant_ip, run_script
@@ -41,6 +48,7 @@ log_file = /custom/log/here
 ```
 
 * **enabled**: Enables the secure server instance.
+* **label**: Optional human-readable display label. This does not affect server selection.
 * **port**: TCP port to listen on.
 * **secure**: Enforces encrypted key validation.
 * **priv\_key\_path**: Path to the server's private RSA key.
@@ -49,11 +57,15 @@ log_file = /custom/log/here
 * **logging**: Whether to log incoming requests.
 * \*\*log\_file\*\*: Overrides the default global log file path for this specific server instance.
 * **output\_mode**: Overrides global `output_mode` for this server.
+* **payload\_overflow**: Overrides global `payload_overflow` for this server. Values: `reject`, `clamp`, `inherit`.
+* **server identity**: The section header `[server:<name>]` is the machine identifier used by `--server`, `SIGLATCH_SERVER`, and `default_server`.
+* **deprecated alias**: `name = ...` maps to `label` only; it no longer renames the server identifier.
 
 ### \[server\:insecure]
 
 ```ini
 enabled = no
+label = Insecure Server
 port = 50001
 deaddrops = pubkey
 secure = no
@@ -86,6 +98,26 @@ exec_split = yes
 
 ---
 
+## ⚙️ Action Definitions
+
+### \[action\:grant\_ip]
+
+```ini
+id = 1
+enabled = yes
+constructor = /usr/bin/perl /etc/siglatch/scripts/ipAuth/grant.pl
+exec_split = yes
+payload_overflow = inherit
+```
+
+* **id**: Numeric action identifier used by clients.
+* **enabled**: Enables or disables this action.
+* **constructor**: Executable path and optional command prefix.
+* **exec\_split**: Whether constructor should be split into command + args before exec.
+* **payload\_overflow**: Per-action override for malformed structured payload length handling. Values: `reject`, `clamp`, `inherit`.
+
+---
+
 ## 👤 User Access Control
 
 ### \[user\:root]
@@ -105,6 +137,10 @@ hmac_file = /etc/siglatch/keys/root.hmac.key
 ## ℹ️ Notes
 
 * Runtime output mode precedence is: `--output-mode` CLI flag, then `SIGLATCH_OUTPUT_MODE`, then server `output_mode`, then global `output_mode`, then compile-time default.
+* Runtime `payload_overflow` precedence is: action setting, then server setting, then global setting.
+* Overflow enforcement applies to structured packet deserialization only.
+* With `reject`, malformed structured packets are dropped and never dispatched to action scripts.
+* With `clamp`, malformed structured packets are length-clamped and continue through normal structured checks (including signature validation) before dispatch.
 * All paths should be absolute.
 * Scripts will run without the environment. be aware of this when writing scripts.
 * User keys should be created via `install.sh` or copied securely.

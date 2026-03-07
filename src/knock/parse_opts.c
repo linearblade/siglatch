@@ -74,11 +74,52 @@ int opts_read_stdin_explicit_multiline(Opts *opts);
 static void opts_apply_cli_output_mode_hint(int argc, char *argv[]);
 static int handle_output_mode_default_command(int argc, char *argv[]);
 static char *trim_ws(char *value);
+static const char *knocker_home_or_error(void);
+static int build_host_config_path(char *out, size_t out_size, const char *host, const char *filename);
 static int build_client_config_parent_dir_path(char *out, size_t out_size);
 static int build_client_config_dir_path(char *out, size_t out_size);
 static int build_client_config_file_path(char *out, size_t out_size);
 static int ensure_dir_path_exists(const char *path);
 static int ensure_client_config_dir_exists(void);
+
+static const char *knocker_home_or_error(void) {
+  const char *home = getenv("HOME");
+
+  if (!home || !*home) {
+    lib.print.uc_fprintf(stderr, "err", "HOME environment variable not set\n");
+    return NULL;
+  }
+
+  return home;
+}
+
+static int build_host_config_path(char *out, size_t out_size, const char *host, const char *filename) {
+  const char *home = NULL;
+  int written = 0;
+
+  if (!out || out_size == 0 || !host || !*host) {
+    lib.print.uc_fprintf(stderr, "err", "Invalid host config path request\n");
+    return 0;
+  }
+
+  home = knocker_home_or_error();
+  if (!home) {
+    return 0;
+  }
+
+  if (filename && *filename) {
+    written = snprintf(out, out_size, "%s/.config/siglatch/%s/%s", home, host, filename);
+  } else {
+    written = snprintf(out, out_size, "%s/.config/siglatch/%s", home, host);
+  }
+
+  if (written < 0 || (size_t)written >= out_size) {
+    lib.print.uc_fprintf(stderr, "err", "Config path too long for host '%s'\n", host);
+    return 0;
+  }
+
+  return 1;
+}
 
 static char *trim_ws(char *value) {
   char *end;
@@ -317,7 +358,9 @@ static int handle_output_mode_default_command(int argc, char *argv[]) {
   
 int ensure_dir_exists(const char *host) {
   char path[PATH_MAX] = {0};
-  snprintf(path, sizeof(path), "%s/.config/siglatch/%s", getenv("HOME"), host);
+  if (!build_host_config_path(path, sizeof(path), host, NULL)) {
+    return 0;
+  }
 
   struct stat st = {0};
   if (stat(path, &st) == -1) {
@@ -499,17 +542,15 @@ int opts_validate(Opts *opts) {
         valid = 0;
     }
     // Derive default key paths if missing
-    if (opts->hmac_key_path[0] == '\0') {
-      const char *home = getenv("HOME");
-      if (home) {
-        snprintf(opts->hmac_key_path, PATH_MAX, "%s/.config/siglatch/%s/hmac.key", home, opts->host);
+    if (opts->host[0] != '\0' && opts->hmac_key_path[0] == '\0') {
+      if (!build_host_config_path(opts->hmac_key_path, PATH_MAX, opts->host, "hmac.key")) {
+        valid = 0;
       }
     }
 
-    if (opts->server_pubkey_path[0] == '\0') {
-      const char *home = getenv("HOME");
-      if (home) {
-        snprintf(opts->server_pubkey_path, PATH_MAX, "%s/.config/siglatch/%s/server.pub.pem", home, opts->host);
+    if (opts->host[0] != '\0' && opts->server_pubkey_path[0] == '\0') {
+      if (!build_host_config_path(opts->server_pubkey_path, PATH_MAX, opts->host, "server.pub.pem")) {
+        valid = 0;
       }
     }
     
@@ -668,7 +709,9 @@ int apply_parsed_opts(const ParsedArgv *parsed, Opts *out) {
 
 uint32_t resolve_action_alias(const char *host, const char *name) {
     char path[PATH_MAX];
-    snprintf(path, sizeof(path), "%s/.config/siglatch/%s/action.map", getenv("HOME"), host);
+    if (!build_host_config_path(path, sizeof(path), host, "action.map")) {
+      return 0;
+    }
 
     AliasEntry *list = NULL;
     size_t count = 0;
@@ -691,7 +734,9 @@ uint32_t resolve_action_alias(const char *host, const char *name) {
 
 uint32_t resolve_user_alias(const char *host, const char *name) {
     char path[PATH_MAX];
-    snprintf(path, sizeof(path), "%s/.config/siglatch/%s/user.map", getenv("HOME"), host);
+    if (!build_host_config_path(path, sizeof(path), host, "user.map")) {
+      return 0;
+    }
 
     AliasEntry *list = NULL;
     size_t count = 0;

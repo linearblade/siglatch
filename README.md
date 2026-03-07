@@ -1,5 +1,9 @@
 # 📖 README.md — `siglatch`
 
+> [!WARNING]
+> `v1.1` is a development release.
+> For stable production use, pin to the `1.0` tag.
+
 ## 🔒 Project Overview
 
 **Siglatch** — Tight, scriptable, and cryptographically enforced access controller for connectionless protocols and remote infrastructure management in hostile network environments.
@@ -79,6 +83,7 @@ In short: **everything you want to control surgically and securely—without the
 ## 📚 Documentation
 These guides are being actively updated, check back often for updates!
 * [📦 FEATURES](docs/FEATURE_SPEC.md) — Full feature specification (current and planned).
+* [📝 CHANGELOG (2026-03-07)](docs/CHANGELOG_2026-03-07.md) — Recent development changes since `1.0`.
 * [🔐 SECURITY](docs/SECURITY.md) — Security model, mitigations, and threat considerations.
 * ⚙️ **Installation**
   * 🛠️ [**COMPILING**](docs/OPERATIONS_COMPILE.md) — How to build the project from source.

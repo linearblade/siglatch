@@ -24,6 +24,8 @@
 
 #define BUF_SIZE 1024
 static int unrecoverable_decrypt_error(int rc);
+static const char *payload_overflow_policy_name(siglatch_payload_overflow_policy policy);
+static int enforce_payload_overflow_policy(KnockPacket *pkt);
 ssize_t receiveValidData(int sock, char *buffer, size_t bufsize, struct sockaddr_in *client, char *ip_out,int ip_len);
 int normalizeInboundPayload(
     SiglatchOpenSSLSession *session,
@@ -32,6 +34,53 @@ int normalizeInboundPayload(
     uint8_t *normalized_out,
     size_t *normalized_len
 			    );
+
+static const char *payload_overflow_policy_name(siglatch_payload_overflow_policy policy) {
+  switch (policy) {
+  case SL_PAYLOAD_OVERFLOW_REJECT:
+    return "reject";
+  case SL_PAYLOAD_OVERFLOW_CLAMP:
+    return "clamp";
+  case SL_PAYLOAD_OVERFLOW_INHERIT:
+    return "inherit";
+  default:
+    return "unknown";
+  }
+}
+
+static int enforce_payload_overflow_policy(KnockPacket *pkt) {
+  siglatch_payload_overflow_policy policy = SL_PAYLOAD_OVERFLOW_REJECT;
+  unsigned int raw_len;
+  unsigned int max_len = (unsigned int)sizeof(pkt->payload);
+
+  if (!pkt) {
+    return 0;
+  }
+
+  if (pkt->payload_len <= sizeof(pkt->payload)) {
+    return 1;
+  }
+
+  raw_len = pkt->payload_len;
+
+  if (lib.config.resolve_payload_overflow_by_action) {
+    policy = lib.config.resolve_payload_overflow_by_action(pkt->action_id);
+  }
+
+  if (policy == SL_PAYLOAD_OVERFLOW_CLAMP) {
+    pkt->payload_len = (uint16_t)sizeof(pkt->payload);
+    LOGW("[deserialize] payload_overflow=clamp action_id=%u payload_len=%u->%u\n",
+         pkt->action_id, raw_len, (unsigned int)pkt->payload_len);
+    return 1;
+  }
+
+  LOGW("[deserialize] payload_overflow=%s action_id=%u payload_len=%u max=%u; dropping packet\n",
+       payload_overflow_policy_name(policy),
+       pkt->action_id,
+       raw_len,
+       max_len);
+  return 0;
+}
 
 void siglatch_daemon(siglatch_config * cfg, int sock){
   char buffer[BUF_SIZE];
@@ -90,7 +139,18 @@ void siglatch_daemon(siglatch_config * cfg, int sock){
 	   is_encrypted? "encrypted" : "unencrypted", pkt.user_id, pkt.action_id);
       handle_structured_payload( &pkt, &session, ip);
       continue;
-    } else {
+    }
+
+    if (payloadRC == SL_PAYLOAD_ERR_OVERFLOW) {
+      if (enforce_payload_overflow_policy(&pkt)) {
+        LOGT("[deserialize] Overflow packet accepted by policy - User ID: %u, Action ID: %u, payload_len=%u\n",
+             pkt.user_id, pkt.action_id, (unsigned int)pkt.payload_len);
+        handle_structured_payload(&pkt, &session, ip);
+      }
+      continue;
+    }
+
+    {
       LOGW("[deserialize] Error: encrypted=%d; %s\n", is_encrypted, lib.payload.deserialize_strerror(payloadRC));
       handle_unstructured_payload( normalized_buffer, normalized_len,   ip );
     }

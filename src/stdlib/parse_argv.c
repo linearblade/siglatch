@@ -75,6 +75,8 @@ static void log_error(const char *fmt, ...) {
 
 static int parse_argv(const int argc, char *argv[], ParsedArgv *parsed_out, const OptionSpec *spec_table) {
   int i = 1;
+  const int max_options = (int)(sizeof(parsed_out->options) / sizeof(parsed_out->options[0]));
+  const int max_positionals = (int)(sizeof(parsed_out->positionals) / sizeof(parsed_out->positionals[0]));
   parsed_out->num_options = 0;
   parsed_out->num_positionals = 0;
   parsed_out->spec = spec_table;
@@ -92,14 +94,33 @@ static int parse_argv(const int argc, char *argv[], ParsedArgv *parsed_out, cons
       }
     }
 
-    if (i + opt->num_args >= argc) {
+    if (opt->num_args < 0) {
+      log_error("Invalid option spec for %s: negative arg count\n", opt->name);
+      return 0;
+    }
+
+    if (opt->num_args > (argc - i - 1)) {
       log_error( "Not enough arguments for option: %s\n", argv[i]);
+      return 0;
+    }
+
+    if (parsed_out->num_options >= max_options) {
+      log_error("Too many options (max %d)\n", max_options);
       return 0;
     }
 
     ParsedOption *po = &parsed_out->options[parsed_out->num_options++];
     po->spec = opt;
     po->num_args = 1 + opt->num_args;
+
+    {
+      const int max_opt_args = (int)(sizeof(po->args) / sizeof(po->args[0]));
+      if (po->num_args > max_opt_args) {
+        log_error("Too many arguments for option: %s (max %d)\n", opt->name, max_opt_args - 1);
+        return 0;
+      }
+    }
+
     for (int j = 0; j < po->num_args; j++) {
       po->args[j] = argv[i + j];
     }
@@ -108,6 +129,10 @@ static int parse_argv(const int argc, char *argv[], ParsedArgv *parsed_out, cons
   }
 
   while (i < argc) {
+    if (parsed_out->num_positionals >= max_positionals) {
+      log_error("Too many positional arguments (max %d)\n", max_positionals);
+      return 0;
+    }
     parsed_out->positionals[parsed_out->num_positionals++] = argv[i++];
   }
 

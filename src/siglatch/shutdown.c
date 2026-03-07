@@ -32,8 +32,15 @@ int shutdown_OK(siglatch_config * cfg, int sock){
 }
 
 int shutdown_bad_opts(siglatch_config *cfg, int argc, char *argv[]){
-  if (argc > 1) {
-    LOGE( "Unknown option: %s\n", argv[1]);
+  return shutdown_bad_opts_msg(cfg, argc, argv, NULL);
+}
+
+int shutdown_bad_opts_msg(siglatch_config *cfg, int argc, char *argv[], const char *msg){
+  (void)cfg;
+  if (msg && msg[0] != '\0') {
+    LOGE("%s\n", msg);
+  } else if (argc > 1 && argv && argv[1]) {
+    LOGE("Unknown option: %s\n", argv[1]);
   }
   siglatch_help(argc,argv);
   shutdown_lib();

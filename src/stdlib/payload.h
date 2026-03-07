@@ -39,5 +39,6 @@ const Payload *get_payload_lib(void);
 #define SL_PAYLOAD_ERR_NULL_PTR   -1
 #define SL_PAYLOAD_ERR_UNPACK     -2
 #define SL_PAYLOAD_ERR_VALIDATE   -3
+#define SL_PAYLOAD_ERR_OVERFLOW   -4
 
 #endif // SIGLATCH_PAYLOAD_H

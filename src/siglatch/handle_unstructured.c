@@ -38,11 +38,16 @@ static void handle_invalid_payload(const unsigned char *buf, size_t buflen);
 void handle_unstructured_payload(const uint8_t *payload, size_t payload_len, const char *ip_addr) {
 
     LOGD("[payload] [unstructured] processing unstructured data.\n");
+    const siglatch_server * server_conf = lib.config.get_current_server();
+    if (!server_conf) {
+      LOGE("[payload] [unstructured] current server context is NULL; dropping packet.\n");
+      return;
+    }
+
     //1 get deaddrops
     char match[512] = {0};
     size_t match_len = 0;
     const siglatch_deaddrop * deaddrop = lib.config.current_server_deaddrop_starts_with_buffer(payload,payload_len,match,sizeof(match),&match_len);
-    const siglatch_server * server_conf = lib.config.get_current_server();
     if (!deaddrop  ){
       handle_invalid_payload(payload, payload_len);
       return;

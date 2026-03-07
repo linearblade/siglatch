@@ -38,6 +38,12 @@ typedef struct {
   char path[PATH_MAX];
 } siglatch_config_context;
 
+typedef enum {
+  SL_PAYLOAD_OVERFLOW_REJECT = 1,
+  SL_PAYLOAD_OVERFLOW_CLAMP = 2,
+  SL_PAYLOAD_OVERFLOW_INHERIT = 3
+} siglatch_payload_overflow_policy;
+
 typedef struct {
   unsigned int id;
   char name[MAX_ACTION_NAME];
@@ -47,6 +53,7 @@ typedef struct {
   int enabled;
   int require_ascii;
   int exec_split;
+  siglatch_payload_overflow_policy payload_overflow;
 } siglatch_action;
 
 typedef struct {
@@ -86,7 +93,8 @@ typedef struct {
 
 typedef struct {
   unsigned int id;
-  char name[MAX_SERVER_NAME];                  ///< [server:<name>] section label
+  char name[MAX_SERVER_NAME];                  ///< [server:<name>] machine identifier
+  char label[MAX_SERVER_NAME];                 ///< Optional human-readable display label
   char priv_key_path[PATH_MAX];
   int key_owned;
   int enabled;
@@ -95,6 +103,7 @@ typedef struct {
   int port;                                    ///< UDP port
   int secure;                                  ///< 1 = encrypted, 0 = plaintext
   int output_mode;                             ///< 0=unset, else SL_OUTPUT_MODE_*
+  siglatch_payload_overflow_policy payload_overflow;
 
   EVP_PKEY *priv_key;                          ///< Loaded OpenSSL private key
 
@@ -108,7 +117,9 @@ typedef struct {
   // Global log path (used if no per-server override)
   char log_file[PATH_MAX];
   char priv_key_path[PATH_MAX];
+  char default_server[MAX_SERVER_NAME];        ///< Startup default server name (global fallback source)
   int output_mode;                             ///< 0=unset, else SL_OUTPUT_MODE_*
+  siglatch_payload_overflow_policy payload_overflow;
   EVP_PKEY *master_privkey;                          ///< Loaded OpenSSL private key
   // Users and their keys
   siglatch_user users[MAX_USERS];
@@ -165,6 +176,7 @@ typedef struct {
   const siglatch_server*  (*get_current_server)(void);
   const siglatch_user *(*user_by_id)(uint32_t id);
   const siglatch_action *(*action_by_id)(uint32_t id);
+  siglatch_payload_overflow_policy (*resolve_payload_overflow_by_action)(uint32_t action_id);
   const siglatch_server *(*server_by_name)(const char *name);
   const siglatch_deaddrop *(*deaddrop_by_name)(const char *name);
   const char *(*username_by_id)(uint32_t id);

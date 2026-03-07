@@ -31,6 +31,67 @@ static int handle_alias_action_delete_map(int argc, char *argv[]);
 
 static int handle_alias_show(int argc, char *argv[]);
 static int handle_alias_delete(int argc, char *argv[]);
+static const char *alias_home_or_error(void);
+static int build_alias_root_path(char *out, size_t out_size);
+static int build_alias_host_path(char *out, size_t out_size, const char *host, const char *filename);
+
+static const char *alias_home_or_error(void) {
+    const char *home = getenv("HOME");
+
+    if (!home || !*home) {
+        lib.print.uc_fprintf(stderr, "err", "HOME environment variable not set\n");
+        return NULL;
+    }
+
+    return home;
+}
+
+static int build_alias_root_path(char *out, size_t out_size) {
+    const char *home = alias_home_or_error();
+    int written = 0;
+
+    if (!out || out_size == 0) {
+        return 0;
+    }
+
+    if (!home) {
+        return 0;
+    }
+
+    written = snprintf(out, out_size, "%s/.config/siglatch", home);
+    if (written < 0 || (size_t)written >= out_size) {
+        lib.print.uc_fprintf(stderr, "err", "Alias base path too long\n");
+        return 0;
+    }
+
+    return 1;
+}
+
+static int build_alias_host_path(char *out, size_t out_size, const char *host, const char *filename) {
+    const char *home = alias_home_or_error();
+    int written = 0;
+
+    if (!out || out_size == 0 || !host || !*host) {
+        return 0;
+    }
+
+    if (!home) {
+        return 0;
+    }
+
+    if (filename && *filename) {
+        written = snprintf(out, out_size, "%s/.config/siglatch/%s/%s", home, host, filename);
+    } else {
+        written = snprintf(out, out_size, "%s/.config/siglatch/%s", home, host);
+    }
+
+    if (written < 0 || (size_t)written >= out_size) {
+        lib.print.uc_fprintf(stderr, "err", "Alias path too long for host: %s\n", host);
+        return 0;
+    }
+
+    return 1;
+}
 /*
   --alias-user
 --alias-action
@@ -228,7 +289,9 @@ static int handle_alias_user(int argc, char *argv[]) {
     }
 
     char path[PATH_MAX] = {0};
-    snprintf(path, sizeof(path), "%s/.config/siglatch/%s/user.map", getenv("HOME"), host);
+    if (!build_alias_host_path(path, sizeof(path), host, "user.map")) {
+        return 0;
+    }
 
     AliasEntry *aliases = NULL;
     size_t alias_count = 0;
@@ -273,7 +336,9 @@ static int handle_alias_action(int argc, char *argv[]) {
     }
 
     char path[PATH_MAX] = {0};
-    snprintf(path, sizeof(path), "%s/.config/siglatch/%s/action.map", getenv("HOME"), host);
+    if (!build_alias_host_path(path, sizeof(path), host, "action.map")) {
+        return 0;
+    }
 
     AliasEntry *aliases = NULL;
     size_t alias_count = 0;
@@ -314,7 +379,9 @@ static int handle_alias_user_show(int argc, char *argv[]) {
     const char *host = argv[2];
 
     char path[PATH_MAX] = {0};
-    snprintf(path, sizeof(path), "%s/.config/siglatch/%s/user.map", getenv("HOME"), host);
+    if (!build_alias_host_path(path, sizeof(path), host, "user.map")) {
+        return 0;
+    }
 
     AliasEntry *aliases = NULL;
     size_t alias_count = 0;
@@ -352,7 +419,9 @@ static int handle_alias_user_delete(int argc, char *argv[]) {
     const char *user = argv[3];
 
     char path[PATH_MAX] = {0};
-    snprintf(path, sizeof(path), "%s/.config/siglatch/%s/user.map", getenv("HOME"), host);
+    if (!build_alias_host_path(path, sizeof(path), host, "user.map")) {
+        return 0;
+    }
 
     if (access(path, F_OK) != 0) {
         lib.print.uc_fprintf(stderr, "err", "User alias map does not exist: %s\n", path);
@@ -405,7 +474,9 @@ static int handle_alias_action_show(int argc, char *argv[]) {
     const char *host = argv[2];
 
     char path[PATH_MAX] = {0};
-    snprintf(path, sizeof(path), "%s/.config/siglatch/%s/action.map", getenv("HOME"), host);
+    if (!build_alias_host_path(path, sizeof(path), host, "action.map")) {
+        return 0;
+    }
 
     AliasEntry *aliases = NULL;
     size_t alias_count = 0;
@@ -444,7 +515,9 @@ static int handle_alias_action_delete(int argc, char *argv[]) {
     const char *action = argv[3];
 
     char path[PATH_MAX] = {0};
-    snprintf(path, sizeof(path), "%s/.config/siglatch/%s/action.map", getenv("HOME"), host);
+    if (!build_alias_host_path(path, sizeof(path), host, "action.map")) {
+        return 0;
+    }
 
     if (access(path, F_OK) != 0) {
         lib.print.uc_fprintf(stderr, "err", "Action alias map does not exist: %s\n", path);
@@ -493,14 +566,10 @@ static int handle_alias_action_show_all(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
-    const char *home = getenv("HOME");
-    if (!home) {
-        lib.print.uc_fprintf(stderr, "err", "HOME environment variable not set\n");
+    char base_path[PATH_MAX] = {0};
+    if (!build_alias_root_path(base_path, sizeof(base_path))) {
         return 0;
     }
-
-    char base_path[PATH_MAX] = {0};
-    snprintf(base_path, sizeof(base_path), "%s/.config/siglatch", home);
 
     DIR *dir = opendir(base_path);
     if (!dir) {
@@ -547,14 +616,10 @@ static int handle_alias_user_show_all(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
-    const char *home = getenv("HOME");
-    if (!home) {
-        lib.print.uc_fprintf(stderr, "err", "HOME environment variable not set\n");
+    char base_path[PATH_MAX] = {0};
+    if (!build_alias_root_path(base_path, sizeof(base_path))) {
         return 0;
     }
-
-    char base_path[PATH_MAX] = {0};
-    snprintf(base_path, sizeof(base_path), "%s/.config/siglatch", home);
 
     DIR *dir = opendir(base_path);
     if (!dir) {
@@ -641,7 +706,9 @@ static int handle_alias_delete(int argc, char *argv[]) {
     }
 
     char base_path[PATH_MAX] = {0};
-    snprintf(base_path, sizeof(base_path), "%s/.config/siglatch/%s", getenv("HOME"), host);
+    if (!build_alias_host_path(base_path, sizeof(base_path), host, NULL)) {
+        return 0;
+    }
 
     // Target files
     char user_map_path[PATH_MAX] = {0};
@@ -693,7 +760,9 @@ static int handle_alias_user_delete_map(int argc, char *argv[]) {
     }
 
     char path[PATH_MAX] = {0};
-    snprintf(path, sizeof(path), "%s/.config/siglatch/%s/user.map", getenv("HOME"), host);
+    if (!build_alias_host_path(path, sizeof(path), host, "user.map")) {
+        return 0;
+    }
 
     if (access(path, F_OK) != 0) {
         lib.print.uc_fprintf(stderr, "warn", "User map file does not exist: %s\n", path);
@@ -724,7 +793,9 @@ static int handle_alias_action_delete_map(int argc, char *argv[]) {
     }
 
     char path[PATH_MAX] = {0};
-    snprintf(path, sizeof(path), "%s/.config/siglatch/%s/action.map", getenv("HOME"), host);
+    if (!build_alias_host_path(path, sizeof(path), host, "action.map")) {
+        return 0;
+    }
 
     if (access(path, F_OK) != 0) {
         lib.print.uc_fprintf(stderr, "warn", "Action map file does not exist: %s\n", path);

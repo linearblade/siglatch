@@ -60,6 +60,8 @@ static int validate_knock(const KnockPacket *pkt) {
 }
 
 static int deserialize(const uint8_t *decrypted_buffer, size_t decrypted_len, KnockPacket *pkt) {
+    int validate_rc;
+
     if (!pkt) {
         return SL_PAYLOAD_ERR_NULL_PTR;
     }
@@ -68,7 +70,12 @@ static int deserialize(const uint8_t *decrypted_buffer, size_t decrypted_len, Kn
         return SL_PAYLOAD_ERR_UNPACK;
     }
 
-    if (validate_knock(pkt) != 0) {
+    validate_rc = validate_knock(pkt);
+    if (validate_rc == -4) {
+        return SL_PAYLOAD_ERR_OVERFLOW;
+    }
+
+    if (validate_rc != 0) {
         return SL_PAYLOAD_ERR_VALIDATE;
     }
 
@@ -80,6 +87,7 @@ static const char *deserialize_strerror(int code) {
         case SL_PAYLOAD_ERR_NULL_PTR:    return "KnockPacket pointer is null";
         case SL_PAYLOAD_ERR_UNPACK:      return "Failed to unpack knock payload";
         case SL_PAYLOAD_ERR_VALIDATE:    return "Knock packet validation failed";
+        case SL_PAYLOAD_ERR_OVERFLOW:    return "Knock payload_len exceeds payload buffer";
         default:                         return "Unknown payload error";
     }
 }
