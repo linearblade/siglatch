@@ -18,6 +18,8 @@
 #include "../stdlib/udp.h"
 #include "../stdlib/parse_argv.h"
 #include "../stdlib/net.h"
+#include "../stdlib/print.h"
+#include "../stdlib/unicode.h"
 /**
  * @file lib.h
  * @brief Singleton system library registry for siglatch runtime.
@@ -38,6 +40,8 @@ typedef struct {
   SiglatchOpenSSL_Lib openssl;
   UdpLib udp;
   ParseArgvLib parse_argv;
+  PrintLib print;
+  UnicodeLib unicode;
   NetLib net;
 } Lib;
 
@@ -49,26 +53,26 @@ void shutdown_lib(void);
 
 
 /**
- * 🔍 Logging Convenience Macros
+ *  Logging Convenience Macros
  *
  * These macros provide short, readable access to the global logger via `lib.log`.
- * Use them to standardize logging behavior across the codebase — debug to screen,
+ * Use them to standardize logging behavior across the codebase - debug to screen,
  * log to file, or both.
  *
- * 🧾 What These Do:
- * ┌────────┬──────────────────────────────┬────────────────────────────────────┐
- * │ Macro  │ Expands To                   │ 🧠 Use for...                      │
- * ├────────┼──────────────────────────────┼────────────────────────────────────┤
- * │ LOG    │ lib.log                      │ Full access to logger struct       │
- * │ LOGI() │ lib.log.info(...)            │ 📜 Log-only (audit, config, events)│
- * │ LOGD() │ lib.log.debug(...)           │ 🐞 Debug to screen only            │
- * │ LOGB() │ lib.log.info_screen(...)     │ 🔔 Log + screen (critical events)  │
- * └────────┴──────────────────────────────┴────────────────────────────────────┘
+ *  What These Do:
+ * +--------+------------------------------+------------------------------------+
+ * | Macro  | Expands To                   |  Use for...                      |
+ * +--------+------------------------------+------------------------------------+
+ * | LOG    | lib.log                      | Full access to logger struct       |
+ * | LOGI() | lib.log.info(...)            | Log-only (audit, config, events)|
+ * | LOGD() | lib.log.debug(...)           | Debug to screen only            |
+ * | LOGB() | lib.log.info_screen(...)     |  Log + screen (critical events)  |
+ * +--------+------------------------------+------------------------------------+
  *
- * 🧪 Example Usage:
+ * Example Usage:
  *   LOGI("Granted access to %s\n", ip);         // Log only
  *   LOGD("Raw payload: %s\n", hex);             // Debug only
- *   LOGB("🚀 Startup complete on port %d\n", p); // Both
+ *   LOGB("Startup complete on port %d\n", p); // Both
  */
 #define LOG     lib.log
 

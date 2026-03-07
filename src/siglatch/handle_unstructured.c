@@ -37,7 +37,7 @@ static void handle_invalid_payload(const unsigned char *buf, size_t buflen);
 
 void handle_unstructured_payload(const uint8_t *payload, size_t payload_len, const char *ip_addr) {
 
-    LOGD("[payload] [unstructured] ⚠️ processing unstructured data.\n");
+    LOGD("[payload] [unstructured] processing unstructured data.\n");
     //1 get deaddrops
     char match[512] = {0};
     size_t match_len = 0;
@@ -48,7 +48,7 @@ void handle_unstructured_payload(const uint8_t *payload, size_t payload_len, con
       return;
     }
     if (deaddrop->require_ascii && !is_ascii(payload,payload_len) ) {
-      LOGD("[payload] [unstructured] ⚠️  deaddrop matched to %s, but contains non ascii characters.\n",deaddrop->name);
+      LOGD("[payload] [unstructured] deaddrop matched to %s, but contains non ascii characters.\n",deaddrop->name);
       handle_invalid_payload(payload, payload_len);
       return;
     }
@@ -68,7 +68,7 @@ void handle_unstructured_payload(const uint8_t *payload, size_t payload_len, con
     NULL
   };
   //LOGI doesnt work for some reason...
-  LOGD("[handle] ➡️ Routing to script: %s (Ip=%s, Action=%s,encrypted=%s, exec_split=%d)\n", deaddrop->constructor, ip_addr, deaddrop->name,encrypted_str,deaddrop->exec_split);
+  LOGD("[handle] Routing to script: %s (Ip=%s, Action=%s,encrypted=%s, exec_split=%d)\n", deaddrop->constructor, ip_addr, deaddrop->name,encrypted_str,deaddrop->exec_split);
 
   // --- 5. Launch action script ---
   runShell(deaddrop->constructor, 4, argv,deaddrop->exec_split);
@@ -91,10 +91,10 @@ void handle_unstructured_payload(const uint8_t *payload, size_t payload_len, con
 
 static void handle_invalid_payload(const unsigned char *buf, size_t buflen) {
     if (is_ascii(buf, buflen)) {
-        LOGW("[payload] ⚠️ Unmatched deaddrop payload is ASCII, but invalid packet structure.\n");
+        LOGW("[payload] Unmatched deaddrop payload is ASCII, but invalid packet structure.\n");
         printASCII(buf, buflen);
     } else {
-        LOGW("[payload] ⚠️ Unmatched deaddrop  payload is binary/non-ASCII and invalid structure.\n");
+        LOGW("[payload] Unmatched deaddrop  payload is binary/non-ASCII and invalid structure.\n");
         printHEX(buf, buflen);
     }
 
@@ -118,18 +118,18 @@ static int is_ascii(const unsigned char *buf, size_t len) {
 
 static void printASCII(const unsigned char *input, size_t input_len) {
   if (!input || input_len == 0) return;
-    LOGD("⚠️  Printable ASCII payload detected:\n");
+    LOGD("Printable ASCII payload detected:\n");
     LOGD("%.*s\n", (int)input_len, input);
 }
 
 
 static void printHEX(const unsigned char *input, size_t input_len) {
     if (!input || input_len == 0) {
-        LOGW("⚠️  printHEX called with null or empty input");
+        LOGW("printHEX called with null or empty input");
         return;
     }
 
-    LOGD("🔎 Binary (non-ASCII) payload:");
+    LOGD("Binary (non-ASCII) payload:");
 
     char line[256] = {0};
     size_t pos = 0;
@@ -153,10 +153,10 @@ static void printHEX(const unsigned char *input, size_t input_len) {
   
 void printRawIfAscii(const unsigned char *input, size_t input_len){
   if (is_ascii(input, input_len)) {
-    LOGD( "⚠️  Input is entirely printable ASCII — probably unencrypted\n");
-    LOGD("☠️  Unencrypted knock payload: '%s'\n", input);
+    LOGD( "Input is entirely printable ASCII - probably unencrypted\n");
+    LOGD("Unencrypted knock payload: '%s'\n", input);
   }else {
-    LOGD("☠️  ☠️  ☠️  Unencrypted knock payload CONTAINS NON ASCII CHARACTERS☠️  ☠️  ☠️ \n" );
+    LOGD("Unencrypted knock payload CONTAINS NON ASCII CHARACTERS\n" );
     for (size_t i = 0; i < input_len; ++i) {
       LOGD("%02X ", input[i]);
     }
@@ -183,7 +183,7 @@ static float compute_ascii_ratio(const uint8_t *buf, size_t len) {
 /**
  * @brief Chooses the more "likely plaintext" buffer between raw and decrypted.
  *
- * This is a temporary heuristic — currently based on ASCII printable ratio.
+ * This is a temporary heuristic - currently based on ASCII printable ratio.
  *
  * @param raw       The original UDP buffer
  * @param raw_len   Its length

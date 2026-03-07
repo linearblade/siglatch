@@ -6,9 +6,10 @@
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include "openssl.h"
 #include "openssl_context.h"
-#include "output.h"
 
 // Static global pointer to the active library context
 //static SiglatchOpenSSLContext *g_openssl_ctx = NULL;
@@ -16,6 +17,7 @@ static SiglatchOpenSSLContext g_openssl_ctx = {0};
 
 static void _session_free_evp_key(EVP_PKEY **key_ptr) ;
 static void _session_free_evp_ctx(EVP_PKEY_CTX **ctx) ;
+static void openssl_print_err(const char *marker, const char *fmt, ...);
 
 // Internal implementations
 
@@ -47,8 +49,8 @@ static int siglatch_openssl_session_init(SiglatchOpenSSLSession *session) {
         }
         return 0;
     }
-    if ( !g_openssl_ctx.file->read_fn_bytes) { //just check some random ptr to make sure context proper... if you convert this to ptr then  !g_openssl_ctx 
-        fprintf(stderr, "YOU DONE FUCKED UP JIMBO. HOW DID YOU LOSE THE GLOBAL SESSION!?\n");
+    if (!g_openssl_ctx.file || !g_openssl_ctx.file->read_fn_bytes) { //just check some random ptr to make sure context proper... if you convert this to ptr then  !g_openssl_ctx 
+        openssl_print_err("fatal", "YOU DONE FUCKED UP JIMBO. HOW DID YOU LOSE THE GLOBAL SESSION!?\n");
         return 0;
     }
     session->owns_ctx = 0;
@@ -69,11 +71,10 @@ static int siglatch_openssl_session_free(SiglatchOpenSSLSession *session) {
     _session_free_evp_key(&session->private_key);
 
     if (session->owns_ctx && session->parent_ctx) {
-        sl_fprintf(stderr,
-            "☢️☢️☢️  CRITICAL: siglatch OpenSSL session context marked as owned, but you haven't implemented heap context logic! ☢️☢️☢️ \n"
+        openssl_print_err("fatal",
+            "CRITICAL: siglatch OpenSSL session context marked as owned, but heap context logic is not implemented.\n"
             "-> AUDIT your session allocation path.\n"
-            "-> This WILL break log/file/hmac behavior if not handled correctly.\n\n"
-        );
+            "-> This WILL break log/file/hmac behavior if not handled correctly.\n\n");
         free(session->parent_ctx);  // Placeholder for future heap-based context
         session->parent_ctx = NULL;
     }
@@ -87,6 +88,18 @@ static int siglatch_openssl_session_free(SiglatchOpenSSLSession *session) {
     }
 
     return 1;
+}
+
+static void openssl_print_err(const char *marker, const char *fmt, ...) {
+    va_list args;
+
+    va_start(args, fmt);
+    if (g_openssl_ctx.print && g_openssl_ctx.print->uc_vfprintf) {
+        (void)g_openssl_ctx.print->uc_vfprintf(stderr, marker, fmt, args);
+    } else {
+        (void)vfprintf(stderr, fmt, args);
+    }
+    va_end(args);
 }
 
 static int siglatch_openssl_session_readHMAC(SiglatchOpenSSLSession *session, const char *filename) {
@@ -142,7 +155,7 @@ static int siglatch_openssl_session_readPublicKey(SiglatchOpenSSLSession *sessio
     FILE *fp = session->parent_ctx->file->open(filename, "rb");
     if (!fp) {
         if (session->parent_ctx->log) {
-            session->parent_ctx->log->console("❌ Failed to open public key file: %s\n", filename);
+            session->parent_ctx->log->console("Failed to open public key file: %s\n", filename);
         }
         return 0;
     }
@@ -152,7 +165,7 @@ static int siglatch_openssl_session_readPublicKey(SiglatchOpenSSLSession *sessio
 
     if (!pubkey) {
         if (session->parent_ctx->log) {
-            session->parent_ctx->log->console("❌ Failed to read public key from file: %s\n", filename);
+            session->parent_ctx->log->console("Failed to read public key from file: %s\n", filename);
         }
         return 0;
     }
@@ -160,7 +173,7 @@ static int siglatch_openssl_session_readPublicKey(SiglatchOpenSSLSession *sessio
     session->public_key = pubkey; // Set inside the session
 
     if (session->parent_ctx->log) {
-        session->parent_ctx->log->console("✅ Loaded public key from: %s\n", filename);
+        session->parent_ctx->log->console("Loaded public key from: %s\n", filename);
     }
 
     return 1;
@@ -280,7 +293,7 @@ static int siglatch_openssl_session_encrypt(SiglatchOpenSSLSession *session,
   EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new(session->public_key, NULL);
   if (!ctx) {
     if (session->parent_ctx && session->parent_ctx->log) {
-      session->parent_ctx->log->console("❌ Failed to create EVP_PKEY_CTX for encryption\n");
+      session->parent_ctx->log->console("Failed to create EVP_PKEY_CTX for encryption\n");
     }
     return 0;
   }
@@ -289,7 +302,7 @@ static int siglatch_openssl_session_encrypt(SiglatchOpenSSLSession *session,
       EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_PADDING) <= 0) {
     EVP_PKEY_CTX_free(ctx);
     if (session->parent_ctx && session->parent_ctx->log) {
-      session->parent_ctx->log->console("❌ Failed to initialize encryption context or set padding\n");
+      session->parent_ctx->log->console("Failed to initialize encryption context or set padding\n");
     }
     return 0;
   }
@@ -298,7 +311,7 @@ static int siglatch_openssl_session_encrypt(SiglatchOpenSSLSession *session,
   if (EVP_PKEY_encrypt(ctx, NULL, &out_len_tmp, msg, msg_len) <= 0) {
     EVP_PKEY_CTX_free(ctx);
     if (session->parent_ctx && session->parent_ctx->log) {
-      session->parent_ctx->log->console("❌ Failed to estimate encrypted size\n");
+      session->parent_ctx->log->console("Failed to estimate encrypted size\n");
     }
     return 0;
   }
@@ -306,7 +319,7 @@ static int siglatch_openssl_session_encrypt(SiglatchOpenSSLSession *session,
   if (EVP_PKEY_encrypt(ctx, out_buf, &out_len_tmp, msg, msg_len) <= 0) {
     EVP_PKEY_CTX_free(ctx);
     if (session->parent_ctx && session->parent_ctx->log) {
-      session->parent_ctx->log->console("❌ Encryption failed\n");
+      session->parent_ctx->log->console("Encryption failed\n");
     }
     return 0;
   }
@@ -406,7 +419,7 @@ static int siglatch_openssl_session_decrypt(SiglatchOpenSSLSession *session,
     (void)output;
     (void)output_len;
 
-    sl_fprintf(stderr, "🛑 session_decrypt() is not yet implemented.\n");
+    fprintf(stderr, "session_decrypt() is not yet implemented.\n");
     return 0;
 }
 */

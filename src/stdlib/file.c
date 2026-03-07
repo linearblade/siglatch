@@ -9,7 +9,6 @@
 #include <errno.h> // Don't forget this at the top of file.c!
 //#include <limits.h> // for PATH_MAX
 #include "file.h"
-#include "output.h"
 
 /**
  * @file file.c
@@ -20,15 +19,16 @@
  */
 
 static char filelib_last_error[FILELIB_ERRBUF_SIZE];
-static const char *fail_emoji = "❌";
 
 static FileLibContext filelib_ctx = {
+    .print = NULL,
     .allow_unicode = false,
     .auto_print_errors = true
 };
 
 static void filelib_set_defaults(void){
   // Use defaults if NULL passed
+  filelib_ctx.print = NULL;
   filelib_ctx.allow_unicode = false;
   filelib_ctx.auto_print_errors = true;
 }
@@ -60,11 +60,15 @@ static void filelib_error_dump(void) {
         return;
     }
 
-    if (filelib_ctx.allow_unicode) {
-        sl_fprintf(stderr, "%s FileLib Error: %s\n", fail_emoji, filelib_last_error);
-    } else {
-        sl_fprintf(stderr, "FileLib Error: %s\n", filelib_last_error);
+    if (filelib_ctx.print && filelib_ctx.print->uc_fprintf) {
+        (void)filelib_ctx.print->uc_fprintf(stderr, "err", "FileLib Error: %s\n", filelib_last_error);
+        return;
     }
+
+    /* Fallback for standalone use when no print provider is installed. */
+    (void)fputs("FileLib Error: ", stderr);
+    (void)fputs(filelib_last_error, stderr);
+    (void)fputc('\n', stderr);
 }
 static void filelib_error(const char *fmt, ...) {
     va_list args;

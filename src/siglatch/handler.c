@@ -53,7 +53,7 @@ void trigger_dummy_action(const char *ip) {
 void handle_packet(const char *msg, const char *ip) {
   char logbuf[256];
   
-  // 🔹 Log every packet received
+  //  Log every packet received
   snprintf(logbuf, sizeof(logbuf), "Received from %s: '%s'", ip, msg);
   log_message(logbuf);
   
@@ -67,7 +67,7 @@ void handle_packet(const char *msg, const char *ip) {
   ClientState *state = &clients[idx];
   time_t now = time(NULL);
 
-  // 🔹 Reset progress if too much time has passed
+  //  Reset progress if too much time has passed
   if (now - state->last_time > 10) {
     snprintf(logbuf, sizeof(logbuf), "Timeout for %s, resetting sequence", ip);
     log_message(logbuf);
@@ -80,7 +80,7 @@ void handle_packet(const char *msg, const char *ip) {
 	   ip, SEQUENCE[state->progress], msg);
   log_message(logbuf);
 
-  // 🔹 Sequence match logic
+  //  Sequence match logic
   if (strcmp(msg, SEQUENCE[state->progress]) == 0) {
     state->progress++;
     snprintf(logbuf, sizeof(logbuf),

@@ -4,7 +4,7 @@
  */
 
 
-//🧠 “No more logs today.” — Sun Tzu, probably
+// "No more logs today." - Sun Tzu, probably
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -14,7 +14,6 @@
 
 #include "log.h"
 #include "log_context.h"
-#include "output.h"
 #include "utils.h"  // for timestamp_now()
 
 
@@ -41,17 +40,19 @@
  *   log_info("Listening on port %d\n", port);
  *   log_debug("Raw packet: %s\n", hex);
  *
- * Internal state is not exposed — consumers interact via log.h only.
+ * Internal state is not exposed - consumers interact via log.h only.
  */
 
 static void log_close_file(void);
+static void build_log_prefix(char *buffer, size_t bufsize, LogLevel level);
+static int log_stream_write(FILE *stream, const char *line);
 
 
 
 
 // ── static state ─────────────────────────────
 static FILE *log_output = NULL;         // Current log output stream
-static int log_output_owned = 0;        // We opened it — must close
+static int log_output_owned = 0;        // We opened it - must close
 static int logging_enabled = 1;         // Master toggle for logging
 static int debug_to_stdout = 1;         // Should debug() output to terminal?
 static int error_to_stderr = 1;         // errors to std_err
@@ -63,7 +64,7 @@ static const char *default_time() {
     return "1970-01-01 00:00:00";  // fallback in case of no time context
 }
 
-static const char *(*get_time_func)(void) = default_time;  // ← global time provider
+static const char *(*get_time_func)(void) = default_time;  // global time provider
 //static const TimeLib *time_provider = NULL;
 
 // -- constructor 
@@ -97,7 +98,10 @@ static const char *default_time_log() {
 // -- destructor
 static void log_shutdown(void) {
     if (log_output_owned && log_output) {
-        sl_fprintf(log_output, "🔻 Logger shutting down\n");
+        char prefix[128];
+        build_log_prefix(prefix, sizeof(prefix), LOG_INFO);
+        log_stream_write(log_output, prefix);
+        log_stream_write(log_output, "Logger shutting down\n");
      }
     log_close_file();
 }
@@ -135,18 +139,30 @@ static void log_set_handle(FILE *fp)       { log_output = fp; }
 
 // start -- private
 
+static int log_stream_write(FILE *stream, const char *line) {
+    if (!stream || !line) {
+        return 0;
+    }
+
+    if (log_ctx.print && log_ctx.print->uc_fprintf) {
+        return log_ctx.print->uc_fprintf(stream, NULL, "%s", line) >= 0;
+    }
+
+    return fputs(line, stream) != EOF;
+}
+
 static void log_console_line(const char *line) {
     if (!debug_to_stdout )
         return;
 
-    sl_fprintf(stdout, "%s", line);
+    (void)log_stream_write(stdout, line);
 }
 
 static void log_console_error(const char *line) {
   if (!error_to_stderr ){
     log_console_line(line);
   }else {
-    sl_fprintf(stderr, "%s", line);
+    (void)log_stream_write(stderr, line);
   }
 }
 
@@ -154,7 +170,7 @@ static void log_console_error(const char *line) {
 static void log_write_line(const char *line) {
   if (!logging_enabled || !log_output )
     return;
-  sl_fprintf(log_output, "%s", line);
+  (void)log_stream_write(log_output, line);
 }
 
 static const char *log_level_name(LogLevel level) {
@@ -166,6 +182,17 @@ static const char *log_level_name(LogLevel level) {
   case LOG_DEBUG: return "DEBUG";
   case LOG_TRACE: return "TRACE";
   default:        return "LOG";
+  }
+}
+
+static const char *log_level_marker_key(LogLevel level) {
+  switch (level) {
+  case LOG_ERROR: return "err";
+  case LOG_WARN:  return "warn";
+  case LOG_INFO:  return "info";
+  case LOG_DEBUG: return "debug";
+  case LOG_TRACE: return "trace";
+  default:        return "note";
   }
 }
 
@@ -198,11 +225,34 @@ static void log_console(const char *fmt, ...) {
 }
 
 
-static const char *build_log_prefix(LogLevel level) {
-    static char ts[64];  // Thread-unsafe (but fine for single-thread)
+static void build_log_prefix(char *buffer, size_t bufsize, LogLevel level) {
+    char marker[32];
+    const char *marker_key = log_level_marker_key(level);
     const char *tag = log_level_name(level);
-    snprintf(ts, sizeof(ts), "[%s] [%s] ", get_time_func(),tag);
-    return ts;
+
+    if (!buffer || bufsize == 0) {
+        return;
+    }
+
+    marker[0] = '\0';
+    if (log_ctx.print && log_ctx.print->uc_sprintf) {
+        if (log_ctx.print->uc_sprintf(marker, sizeof(marker), marker_key, "") < 0) {
+            marker[0] = '\0';
+        }
+    }
+
+    if (marker[0] == '\0') {
+        switch (level) {
+        case LOG_ERROR: snprintf(marker, sizeof(marker), "[ERR] "); break;
+        case LOG_WARN:  snprintf(marker, sizeof(marker), "[WARN] "); break;
+        case LOG_INFO:  snprintf(marker, sizeof(marker), "[INFO] "); break;
+        case LOG_DEBUG: snprintf(marker, sizeof(marker), "[DBG] "); break;
+        case LOG_TRACE: snprintf(marker, sizeof(marker), "[TRACE] "); break;
+        default:        snprintf(marker, sizeof(marker), "[LOG] "); break;
+        }
+    }
+
+    snprintf(buffer, bufsize, "[%s] [%s] %s", get_time_func(), tag, marker);
 }
 
 /*/
@@ -236,11 +286,12 @@ static void log_console_write(const char *fmt, ...) {
 }
 
 static void log_emit(LogLevel level, int to_console, const char *fmt, ...) {
+  char prefix[128];
 
   if (level > current_level){
-    return;  // 🔒 Level filtering here
+    return;  //  Level filtering here
   }
-    const char * prefix = build_log_prefix(level);
+    build_log_prefix(prefix, sizeof(prefix), level);
 
     char message[1024];
     va_list args;
@@ -249,12 +300,12 @@ static void log_emit(LogLevel level, int to_console, const char *fmt, ...) {
     va_end(args);
 
 
-    if (logging_enabled && log_output){  // ✅ File
+    if (logging_enabled && log_output){  //  File
       log_write_line(prefix);
       log_write_line(message);    
     }
     
-    if (to_console && debug_to_stdout){ // ✅ Terminal
+    if (to_console && debug_to_stdout){ //  Terminal
       if (level == LOG_ERROR){
 	log_console_error(prefix);
 	log_console_error(message);
@@ -303,10 +354,10 @@ const Logger *get_logger(void) {
 }
 
 
-//printf("[%s] 📩 %zd bytes from %s\n", timestr, n, ip);
+//printf("[%s]  %zd bytes from %s\n", timestr, n, ip);
 /*
 void log_with_time(const char *fmt, ...) {
-  //log_with_time("📩 %zd bytes from %s\n", n, ip);
+  //log_with_time(" %zd bytes from %s\n", n, ip);
     time_t now = time(NULL);
     char *timestr = ctime(&now);
     timestr[strcspn(timestr, "\n")] = 0;

@@ -9,17 +9,19 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "log.h" // for Logger
+#include "print.h" // for PrintLib
 
 /**
- * UdpContext – runtime context for UDP operations.
+ * UdpContext - runtime context for UDP operations.
  */
 typedef struct {
     const Logger *log;  ///< Pointer to logging interface (must not be NULL)
+    const PrintLib *print; ///< Pointer to print interface for output rendering
     // Future: persistent socket, timeout config, etc.
 } UdpContext;
 
 /**
- * UdpLib – basic UDP send interface with optional lifecycle and context.
+ * UdpLib - basic UDP send interface with optional lifecycle and context.
  */
 typedef struct {
     /**

@@ -14,6 +14,12 @@ Each target host has its own configuration folder:
 ~/.config/siglatch/<host>
 ```
 
+Client-wide defaults are stored at:
+
+```
+~/.config/siglatch/client.conf
+```
+
 **Sample structure:**
 
 ```
@@ -58,6 +64,7 @@ You may also pipe a payload via `--stdin`, or manage aliases separately.
 | `--verbose <0-5>`        | Verbosity level (default: `3`) |
 | `--log <file>`           | Enable logging to specified file |
 | `--output-mode <mode>`   | Output symbols mode: `unicode` or `ascii` |
+| `--output-mode-default <mode>` | Persist default output mode to `~/.config/siglatch/client.conf` |
 
 ---
 
@@ -73,13 +80,15 @@ You can select mode at runtime:
 ```bash
 program --output-mode ascii <host> <user> <action> <payload>
 SIGLATCH_OUTPUT_MODE=ascii program <host> <user> <action> <payload>
+program --output-mode-default ascii
 ```
 
 Precedence order is:
 
 1. `--output-mode`
 2. `SIGLATCH_OUTPUT_MODE`
-3. compile-time default from `make`
+3. `~/.config/siglatch/client.conf` (`output_mode=unicode|ascii`)
+4. compile-time default from `make`
 
 ---
 

@@ -8,7 +8,7 @@
 #include <time.h>
 
 #define EXPECTED_VERSION 1
-#define TIMESTAMP_FUZZ 300  // ±5 minutes window for freshness
+#define TIMESTAMP_FUZZ 300  // +/-5 minutes window for freshness
 
 // ── Internal implementations ──────────────────────
 
@@ -42,6 +42,10 @@ static int validate_knock(const KnockPacket *pkt) {
 
   if (pkt->version != EXPECTED_VERSION) {
     return -2; // wrong version
+  }
+
+  if (pkt->payload_len > sizeof(pkt->payload)) {
+    return -4; // invalid payload length
   }
 
   time_t now = time(NULL);

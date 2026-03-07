@@ -106,6 +106,8 @@ int write_alias_map(const char *path, AliasEntry *list, size_t count);
  * @return 1 on success, 0 on failure
  */
 int parseOpts(int argc, char *argv[], Opts *opts_out);
+int opts_load_output_mode_default(void);
+int opts_save_output_mode_default(const char *mode_value);
 
 /**
  * Print command-line usage instructions.

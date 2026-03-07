@@ -126,13 +126,13 @@ siglatch_config *load_config(const char *path) {
   }
 
   if (!load_user_keys(config)) {
-    LOGE("❌ Failed to load user keys\n" );
+    LOGE("Failed to load user keys\n" );
     free_config(config);
     return NULL;
   }
 
   if (!load_user_hmac_keys(config)) {
-    LOGE("❌ Failed to load user HMAC keys\n" );
+    LOGE("Failed to load user HMAC keys\n" );
     free_config(config);
     return NULL;
   }

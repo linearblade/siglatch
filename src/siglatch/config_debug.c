@@ -10,17 +10,17 @@
 /*
 void dump_config(const siglatch_config *cfg) {
     if (!cfg) {
-        lib.log.console("❌ No config to dump.\n");
+        lib.log.console("No config to dump.\n");
         return;
     }
 
-    lib.log.console("🔐 siglatch config dump:\n\n");
+    lib.log.console("siglatch config dump:\n\n");
     lib.log.console("  Port: %d\n", cfg->port);
     lib.log.console("  Private key path: %s\n", cfg->priv_key_path);
     if (cfg->master_privkey) {
-      lib.log.console("  ✅ Master private key loaded from %s\n", cfg->priv_key_path);
+      lib.log.console("  Master private key loaded from %s\n", cfg->priv_key_path);
     }else {
-      lib.log.console("  ❌ Master private key not loaded\n");
+      lib.log.console("  Master private key not loaded\n");
     }
     lib.log.console("  Actions (%d):\n", cfg->action_count);
     for (int i = 0; i < cfg->action_count; ++i) {
@@ -38,9 +38,9 @@ void dump_config(const siglatch_config *cfg) {
         lib.log.console("      Enabled : %s\n", u->enabled ? "yes" : "no");
         lib.log.console("      Key file: %s\n", u->key_file);
 	if (u->pubkey) {
-	  lib.log.console("      ✅ User public key loaded from %s\n", u->key_file);
+	  lib.log.console("      User public key loaded from %s\n", u->key_file);
 	}else {
-	  lib.log.console("      ❌ User public key not loaded\n");
+	  lib.log.console("      User public key not loaded\n");
 	}
 
         lib.log.console("      Actions :\n");
@@ -55,17 +55,17 @@ void dump_config(const siglatch_config *cfg) {
 
 void dump_config(const siglatch_config *cfg) {
     if (!cfg) {
-        lib.log.console("❌ No config to dump.\n");
+        lib.log.console("No config to dump.\n");
         return;
     }
 
-    lib.log.console("🔐 siglatch config dump:\n\n");
+    lib.log.console("siglatch config dump:\n\n");
     lib.log.console("  Port: %d\n", cfg->port);
     lib.log.console("  Private key path: %s\n", cfg->priv_key_path);
     if (cfg->master_privkey) {
-        lib.log.console("  ✅ Master private key loaded from %s\n", cfg->priv_key_path);
+        lib.log.console("  Master private key loaded from %s\n", cfg->priv_key_path);
     } else {
-        lib.log.console("  ❌ Master private key not loaded\n");
+        lib.log.console("  Master private key not loaded\n");
     }
     lib.log.console("  Actions (%d):\n", cfg->action_count);
     for (int i = 0; i < cfg->action_count; ++i) {
@@ -83,9 +83,9 @@ void dump_config(const siglatch_config *cfg) {
         lib.log.console("      Enabled : %s\n", u->enabled ? "yes" : "no");
         lib.log.console("      Key file: %s\n", u->key_file);
         if (u->pubkey) {
-            lib.log.console("      ✅ User public key loaded from %s\n", u->key_file);
+            lib.log.console("      User public key loaded from %s\n", u->key_file);
         } else {
-            lib.log.console("      ❌ User public key not loaded\n");
+            lib.log.console("      User public key not loaded\n");
         }
 
         lib.log.console("      HMAC file: %s\n", u->hmac_file);
@@ -98,9 +98,9 @@ void dump_config(const siglatch_config *cfg) {
             }
         }
         if (!all_zero) {
-            lib.log.console("      ✅ HMAC key loaded from %s\n", u->hmac_file);
+            lib.log.console("      HMAC key loaded from %s\n", u->hmac_file);
         } else {
-            lib.log.console("      ❌ HMAC key not loaded\n");
+            lib.log.console("      HMAC key not loaded\n");
         }
 
         lib.log.console("      Actions :\n");

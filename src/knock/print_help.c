@@ -4,9 +4,6 @@
  */
 
 #include <stdio.h>
-#include "../stdlib/output.h"
-
-#define printf(...) sl_printf(__VA_ARGS__)
 /*
 Usage:
   program [options] <user-alias-or-id> <action-alias-or-id> <payload>
@@ -47,8 +44,6 @@ Examples:
   program --alias-action 127.0.0.1 grant_ip 3
  */
 //
-
-#include <stdio.h>
 
 void printHelp(void) {
     // Header
@@ -92,7 +87,9 @@ void printHelp(void) {
     printf("  \033[36m--dead-drop\033[0m               Send raw payload without structure\n");
     printf("  \033[36m--verbose <level>\033[0m         Set log verbosity (0-5, default 3 = INFO)\n");
     printf("  \033[36m--log <file>\033[0m              Log output to specified file (optional)\n\n");
-    printf("  \033[36m--output-mode <mode>\033[0m      Set output mode: unicode|ascii\n\n");
+    printf("  \033[36m--output-mode <mode>\033[0m      Set output mode for this run: unicode|ascii\n");
+    printf("  \033[36m--output-mode-default <mode>\033[0m Save default output mode in ~/.config/siglatch/client.conf\n\n");
+    printf("  Output mode precedence: --output-mode, then SIGLATCH_OUTPUT_MODE, then client.conf default, then compile default.\n\n");
 
     // Alias Commands
     printf("\033[1mAlias Commands:\033[0m\n");

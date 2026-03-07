@@ -17,7 +17,7 @@ int load_user_keys(siglatch_config *cfg) {
 
         FILE *fp = fopen(u->key_file, "r");
         if (!fp) {
-            LOGE( "❌ Failed to open key file for user '%s': %s\n", u->name, u->key_file);
+            LOGE( "Failed to open key file for user '%s': %s\n", u->name, u->key_file);
             return 0;
         }
 
@@ -25,12 +25,12 @@ int load_user_keys(siglatch_config *cfg) {
         fclose(fp);
 
         if (!pkey) {
-            LOGE( "❌ Invalid public key for user '%s' (%s)\n", u->name, u->key_file);
+            LOGE( "Invalid public key for user '%s' (%s)\n", u->name, u->key_file);
             return 0;
         }
 
         if (EVP_PKEY_base_id(pkey) != EVP_PKEY_RSA) {
-            LOGE( "❌ Public key for user '%s' is not RSA\n", u->name);
+            LOGE( "Public key for user '%s' is not RSA\n", u->name);
             EVP_PKEY_free(pkey);
             return 0;
         }
@@ -38,7 +38,7 @@ int load_user_keys(siglatch_config *cfg) {
         // Optional: store pkey or fingerprint
         EVP_PKEY_free(pkey);
 
-        LOGD("✅ Loaded and validated RSA public key for user '%s' (EVP)\n", u->name);
+        LOGD("Loaded and validated RSA public key for user '%s' (EVP)\n", u->name);
     }
     return 1;
 }

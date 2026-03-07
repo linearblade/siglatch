@@ -14,26 +14,26 @@
 
 int init_user_openssl_session(const Opts *opts, SiglatchOpenSSLSession *session) {
     if (!session ) {
-        lib.log.console("❌ NULL pointer passed to OpenSSL session initializer\n");
+        lib.log.console("NULL pointer passed to OpenSSL session initializer\n");
         return 0;
     }
     if (!opts ) {
-        lib.log.console("❌ NULL configuration pointer passed\n");
+        lib.log.console("NULL configuration pointer passed\n");
         return 0;
     }
 
     if (!lib.openssl.session_init(session)) {
-        lib.log.console("❌ Failed to initialize OpenSSL session!\n");
+        lib.log.console("Failed to initialize OpenSSL session!\n");
         return 0;
     }
 
     if (!lib.openssl.session_readHMAC(session, opts->hmac_key_path)) {
-        lib.log.console("❌ Failed to load HMAC key!\n");
+        lib.log.console("Failed to load HMAC key!\n");
         return 0;
     }
 
     if (!lib.openssl.session_readPublicKey(session, opts->server_pubkey_path)) {
-        lib.log.console("❌ Failed to load public key!\n");
+        lib.log.console("Failed to load public key!\n");
         return 0;
     }
 
@@ -43,7 +43,7 @@ int init_user_openssl_session(const Opts *opts, SiglatchOpenSSLSession *session)
 // Clean helper to create and pack a KnockPacket
 int structurePacket(KnockPacket *pkt_out, const uint8_t *payload, size_t len,  uint16_t user_id, uint8_t action_id) {
     if (!pkt_out || !payload) {
-        lib.log.console("❌ structurePacket: Invalid input.\n");
+        lib.log.console("structurePacket: Invalid input.\n");
         return 0;
     }
 
@@ -68,7 +68,7 @@ int structurePacket(KnockPacket *pkt_out, const uint8_t *payload, size_t len,  u
 /*
 int structurePacket(KnockPacket *pkt_out, const char *payload_data, uint16_t user_id, uint8_t action_id, int is_text) {
     if (!pkt_out || !payload_data) {
-        lib.log.console("❌ structurePacket: Invalid input.\n");
+        lib.log.console("structurePacket: Invalid input.\n");
         return 0;
     }
 
@@ -79,7 +79,7 @@ int structurePacket(KnockPacket *pkt_out, const char *payload_data, uint16_t use
     pkt_out->timestamp = (uint32_t)lib.time.unix_ts();
     pkt_out->user_id = user_id;
     pkt_out->action_id = action_id;
-    // 🧂 (adding nonce -- replay protection)
+    // Add nonce for replay protection.
     pkt_out->challenge = lib.random.challenge();
 
     // Calculate message length safely
@@ -145,7 +145,7 @@ int signPacket(SiglatchOpenSSLSession *session, KnockPacket *pkt) {
     uint8_t digest[32] = {0};
 
     if (!lib.payload_digest.generate(pkt, digest)) {
-      lib.log.console("❌ Failed to generate digest in signPacket()\n");
+      lib.log.console("Failed to generate digest in signPacket()\n");
       return 0;
     }
     
@@ -154,7 +154,7 @@ int signPacket(SiglatchOpenSSLSession *session, KnockPacket *pkt) {
 
 
     if (!lib.openssl.sign(session, digest, pkt->hmac)) {
-      lib.log.console("❌ Failed to sign digest in signPacket()\n");
+      lib.log.console("Failed to sign digest in signPacket()\n");
       return 0;
     }
     
@@ -174,12 +174,12 @@ int signWrapper(const Opts *opts, SiglatchOpenSSLSession *session, KnockPacket *
 
     case HMAC_MODE_DUMMY:
       memset(pkt->hmac, 0x42, sizeof(pkt->hmac));  // Arbitrary dummy signature
-      LOGD("🧪 Using dummy HMAC (0x42 padded)\n");
+      LOGD("Using dummy HMAC (0x42 padded)\n");
       break;
 
     case HMAC_MODE_NONE:
       memset(pkt->hmac, 0, sizeof(pkt->hmac));  // Zero signature
-      LOGD("🚫 HMAC signing disabled\n");
+      LOGD("HMAC signing disabled\n");
       break;
 
     default:
@@ -200,11 +200,11 @@ int signWrapper(const Opts *opts, SiglatchOpenSSLSession *session, KnockPacket *
       LOGE("OpenSSL encryption failed\n");
       return 0;
     }
-    LOGD("🔐 Encrypted payload (%zu bytes)\n", *out_len);
+    LOGD("Encrypted payload (%zu bytes)\n", *out_len);
   } else {
     memcpy(out_buf, input, input_len);
     *out_len = input_len;
-    LOGD("📤 Sending raw payload (unencrypted, %zu bytes)\n", input_len);
+    LOGD("Sending raw payload (unencrypted, %zu bytes)\n", input_len);
   }
 
   return 1;
@@ -222,7 +222,7 @@ int structureOrDeadDrop(const Opts *opts, const KnockPacket *pkt,
     memcpy(packed, opts->payload, opts->payload_len);
     *packed_len = (int)opts->payload_len;
 
-    LOGD("📦 Prepared dead-drop payload (%d bytes)", *packed_len);
+    LOGD("Prepared dead-drop payload (%d bytes)", *packed_len);
   } else {
     int len = lib.payload.pack(pkt, packed, 512);
     if (len <= 0) {
@@ -231,7 +231,7 @@ int structureOrDeadDrop(const Opts *opts, const KnockPacket *pkt,
     }
 
     *packed_len = len;
-    LOGD("📦 Packed structured KnockPacket (%d bytes)", len);
+    LOGD("Packed structured KnockPacket (%d bytes)", len);
   }
 
   return 1;

@@ -8,13 +8,13 @@
 #include "../stdlib/log.h"
 #include "../stdlib/time.h"
 
-// 🚨 SYSTEM SHUTDOWN ORDER MATTERS 🚨
+//  SYSTEM SHUTDOWN ORDER MATTERS 
 // ───────────────────────────────────────────────
-// 🔻 Always shutdown in **reverse order** of init
-// 🔁 This ensures:
+//  Always shutdown in **reverse order** of init
+//  This ensures:
 //   - Dependencies are respected
 //   - Essential services (like logging) stay alive
-//   - You don’t kill your ability to debug on exit
+//   - You don't kill your ability to debug on exit
 // ───────────────────────────────────────────────
 
 Lib lib = {
@@ -22,10 +22,10 @@ Lib lib = {
     .time = {0}
 };
 
-// 🚀 SYSTEM INITIALIZATION ORDER 🚀
+//  SYSTEM INITIALIZATION ORDER 
 // ───────────────────────────────────────────────
-// 🟢 Always initialize in **logical dependency order**
-// 🧩 This ensures:
+//  Always initialize in **logical dependency order**
+//  This ensures:
 //   - Systems are online before others depend on them
 //   - Logging is available before any subsystems start
 //   - You avoid undefined behavior or silent failures

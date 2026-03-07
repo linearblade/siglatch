@@ -15,6 +15,8 @@
 #include "../stdlib/file.h"
 #include "../stdlib/udp.h"
 #include "../stdlib/parse_argv.h"
+#include "../stdlib/print.h"
+#include "../stdlib/utils.h"
 // Global lib object
 Lib lib = {
     .log = {0},
@@ -25,26 +27,28 @@ Lib lib = {
     .hmac = {0},
     .file = {0},
     .udp = {0},
+    .print = {0},
+    .unicode = {0},
     .net = {0}
 };
 
-// 🚀 SYSTEM INITIALIZATION ORDER 🚀
+//  SYSTEM INITIALIZATION ORDER 
 // ───────────────────────────────────────────────
-// 🟢 Always initialize in **logical dependency order**
-// 🧩 This ensures:
+//  Always initialize in **logical dependency order**
+//  This ensures:
 //   - Systems are online before others depend on them
 //   - Logging is available before any subsystems start
 //   - You avoid undefined behavior or silent failures
 //
 // Example:
-//   init_logger();     ✅ always first — logs everything
-//   init_config();     ✅ reads settings needed by others
-//   init_network();    ✅ connects using config+logs
+//   init_logger();      always first - logs everything
+//   init_config();      reads settings needed by others
+//   init_network();     connects using config+logs
 //
-// 🔁 This order is the reverse of your shutdown()
+//  This order is the reverse of your shutdown()
 // ───────────────────────────────────────────────
 void init_lib(void) {
-    // 🎯 1. Acquire all libraries first (no init yet)
+    //  1. Acquire all libraries first (no init yet)
     lib.net             = *get_lib_net();
     lib.time            = *get_lib_time();
     lib.log             = *get_logger();
@@ -56,12 +60,16 @@ void init_lib(void) {
     lib.openssl         = *get_siglatch_openssl();
     lib.udp             = *get_udp_lib();
     lib.parse_argv      = *get_lib_parse_argv();
-    // 🎯 2. Build all context structs
+    lib.print           = *get_lib_print();
+    lib.unicode         = *get_lib_unicode();
+    //  2. Build all context structs
     LogContext log_ctx = {
-        .time = &lib.time
+        .time = &lib.time,
+        .print = &lib.print
     };
 
     FileLibContext file_ctx = {
+        .print             = &lib.print,
         .auto_print_errors = true,
         .allow_unicode     = true
     };
@@ -69,23 +77,33 @@ void init_lib(void) {
     SiglatchOpenSSLContext openssl_ctx = {
         .log   = &lib.log,
         .file  = &lib.file,
-        .hmac  = &lib.hmac
+        .hmac  = &lib.hmac,
+        .print = &lib.print
     };
     PayloadDigestContext payload_digest_ctx = {
       .log = &lib.log,
       .openssl = &lib.openssl
     };
     UdpContext udp_ctx = {
-      .log = &lib.log
+      .log = &lib.log,
+      .print = &lib.print
     };
     ParseArgvContext parse_argv_context = {
       .strict = 1,
-      .quiet_errors = 0,
-      .log = &lib.log
-    }; 
-    // 🎯 3. Initialize all libraries in dependency-safe order
+      .log = &lib.log,
+      .print = &lib.print
+    };
+    PrintContext print_ctx = {
+      .unicode = &lib.unicode
+    };
+    UtilsContext utils_ctx = {
+      .print = &lib.print
+    };
+    //  3. Initialize all libraries in dependency-safe order
     lib.time.init();             // Time has no dependencies
     lib.net.init();
+    lib.unicode.init();
+    lib.print.init(&print_ctx);
     lib.log.init(log_ctx);        // Log depends on time (timestamps)
     lib.random.init();            // Random can be independent
     lib.payload.init();           // Payload is raw logic (no crypto yet)
@@ -94,31 +112,35 @@ void init_lib(void) {
     lib.hmac.init();              // HMAC key manager (after OpenSSL ready)
     lib.payload_digest.init(&payload_digest_ctx);
     lib.udp.init(&udp_ctx);
+    get_lib_utils()->init(&utils_ctx);
     lib.parse_argv.init(&parse_argv_context);
 }
 
-// 🚨 SYSTEM SHUTDOWN ORDER MATTERS 🚨
+//  SYSTEM SHUTDOWN ORDER MATTERS 
 // ───────────────────────────────────────────────
-// 🔻 Always shutdown in **reverse order** of init
-// 🔁 This ensures:
+//  Always shutdown in **reverse order** of init
+//  This ensures:
 //   - Dependencies are respected
 //   - Essential services (like logging) stay alive
-//   - You don’t kill your ability to debug on exit
+//   - You don't kill your ability to debug on exit
 //
 // Example:
 //   init_logger();
 //   init_db();
 //   init_network();
 //
-//   shutdown_network();   ✅ no longer needed
-//   shutdown_db();        ✅ flushed, safe
-//   shutdown_logger();    ✅ final logs, last to go
+//   shutdown_network();    no longer needed
+//   shutdown_db();         flushed, safe
+//   shutdown_logger();     final logs, last to go
 //
-// 🧠 Treat it like a stack: LIFO shutdown!
+//  Treat it like a stack: LIFO shutdown!
 // ───────────────────────────────────────────────
 void shutdown_lib(void) {
-  // 🔻 clean close
+  //  clean close
   lib.parse_argv.shutdown();
+  get_lib_utils()->shutdown();
+  lib.print.shutdown();
+  lib.unicode.shutdown();
   lib.udp.shutdown();
   lib.openssl.shutdown();
   lib.file.shutdown();

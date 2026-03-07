@@ -67,7 +67,13 @@ make clean-knocker && make OUTPUT_MODE_KNOCKER=ascii build-knocker
 make clean-siglatchd && make OUTPUT_MODE_SIGLATCHD=ascii build-siglatchd
 ```
 
-Runtime flags/env can still override compile-time defaults.
+Runtime settings can still override compile-time defaults.
+For `knocker`, precedence is:
+
+1. `--output-mode`
+2. `SIGLATCH_OUTPUT_MODE`
+3. `~/.config/siglatch/client.conf` (`output_mode=unicode|ascii`)
+4. compile-time default
 
 4. Review the `default_config/` directory. Example configurations and sample user settings are provided.
 5. Run the installation script as root:

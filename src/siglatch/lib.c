@@ -9,6 +9,9 @@
 #include "../stdlib/log_context.h"
 #include "../stdlib/payload.h"
 #include "../stdlib/payload_digest.h"
+#include "../stdlib/print.h"
+#include "../stdlib/unicode.h"
+#include "../stdlib/utils.h"
 #include "config.h"
 #include "nonce_cache.h"
 
@@ -21,35 +24,49 @@ Lib lib = {
     .hmac = {0},
     .openssl = {0},
     .net = {0},
-    .str = {0}
+    .str = {0},
+    .print = {0},
+    .unicode = {0}
 };
 
-// 🚀 SYSTEM INITIALIZATION ORDER 🚀
+//  SYSTEM INITIALIZATION ORDER 
 // ───────────────────────────────────────────────
-// 🟢 Always initialize in **logical dependency order**
-// 🧩 This ensures:
+//  Always initialize in **logical dependency order**
+//  This ensures:
 //   - Systems are online before others depend on them
 //   - Logging is available before any subsystems start
 //   - You avoid undefined behavior or silent failures
 //
 // Example:
-//   init_logger();     ✅ always first — logs everything
-//   init_config();     ✅ reads settings needed by others
-//   init_network();    ✅ connects using config+logs
+//   init_logger();      always first - logs everything
+//   init_config();      reads settings needed by others
+//   init_network();     connects using config+logs
 //
-// 🔁 This order is the reverse of your shutdown()
+//  This order is the reverse of your shutdown()
 // ───────────────────────────────────────────────
 void init_lib(void) {
-  // 🎯 constructors may not have anything, but we have it if handled for later changes if any, plus we want to libs to all be consistent.
+  //  constructors may not have anything, but we have it if handled for later changes if any, plus we want to libs to all be consistent.
   lib.time = *get_lib_time();
   lib.time.init();
   lib.net             = *get_lib_net();
   lib.net.init();
   lib.str = *get_lib_str();
   lib.str.init();
+  lib.unicode = *get_lib_unicode();
+  lib.unicode.init();
+  lib.print = *get_lib_print();
+  PrintContext print_ctx = {
+    .unicode = &lib.unicode
+  };
+  UtilsContext utils_ctx = {
+    .print = &lib.print
+  };
+  lib.print.init(&print_ctx);
+  get_lib_utils()->init(&utils_ctx);
 
   LogContext ctx = {
-    .time = &lib.time
+    .time = &lib.time,
+    .print = &lib.print
   };
   lib.log = *get_logger();
   lib.log.init(ctx);
@@ -73,6 +90,7 @@ void init_lib(void) {
   lib.hmac.init();
   lib.file            = *get_lib_file();
   FileLibContext file_ctx = {
+    .print             = &lib.print,
     .auto_print_errors = true,
     .allow_unicode     = true
   };
@@ -81,32 +99,33 @@ void init_lib(void) {
   SiglatchOpenSSLContext openssl_ctx = {
         .log   = &lib.log,
         .file  = &lib.file,
-        .hmac  = &lib.hmac
+        .hmac  = &lib.hmac,
+        .print = &lib.print
   };
   lib.openssl.init(&openssl_ctx);
 }
 
-// 🚨 SYSTEM SHUTDOWN ORDER MATTERS 🚨
+//  SYSTEM SHUTDOWN ORDER MATTERS 
 // ───────────────────────────────────────────────
-// 🔻 Always shutdown in **reverse order** of init
-// 🔁 This ensures:
+//  Always shutdown in **reverse order** of init
+//  This ensures:
 //   - Dependencies are respected
 //   - Essential services (like logging) stay alive
-//   - You don’t kill your ability to debug on exit
+//   - You don't kill your ability to debug on exit
 //
 // Example:
 //   init_logger();
 //   init_db();
 //   init_network();
 //
-//   shutdown_network();   ✅ no longer needed
-//   shutdown_db();        ✅ flushed, safe
-//   shutdown_logger();    ✅ final logs, last to go
+//   shutdown_network();    no longer needed
+//   shutdown_db();         flushed, safe
+//   shutdown_logger();     final logs, last to go
 //
-// 🧠 Treat it like a stack: LIFO shutdown!
+//  Treat it like a stack: LIFO shutdown!
 // ───────────────────────────────────────────────
 void shutdown_lib(void) {
-  // 🔻 clean close
+  //  clean close
   lib.openssl.shutdown();
   lib.hmac.shutdown();
   lib.payload_digest.shutdown();
@@ -115,6 +134,9 @@ void shutdown_lib(void) {
 
   lib.config.shutdown();
   lib.log.shutdown();
+  get_lib_utils()->shutdown();
+  lib.print.shutdown();
+  lib.unicode.shutdown();
   lib.time.shutdown();
   lib.net.shutdown();
   lib.str.shutdown();

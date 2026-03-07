@@ -11,6 +11,7 @@
 #include <stdbool.h> // for bool
 #include <limits.h> // for PATH_MAX
 #include <stdarg.h> //va args
+#include "print.h"
 // ---- Public Constants ----
 
 /**
@@ -42,6 +43,7 @@
  */
 
 typedef struct {
+    const PrintLib *print; ///< Optional print provider for formatted output
     bool allow_unicode; ///< Whether Unicode output (emoji) is enabled
     bool auto_print_errors; ///< Whether to automatically fprintf errors when they happen
 } FileLibContext;

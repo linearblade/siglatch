@@ -11,7 +11,7 @@
 #define CHECK_DECRYPT(cfg, inbuf, inlen, outbuf, outlen_ptr)        
 do {                                                            
   if (decrypt_knock((cfg), (inbuf), (inlen), (outbuf), (outlen_ptr)) != 0) { 
-    LOGE("[decrypt] ❌ Decryption failed, skipping packet\n"); 
+    LOGE("[decrypt] Decryption failed, skipping packet\n"); 
     continue;                                               
   }                                                           
  } while (0)

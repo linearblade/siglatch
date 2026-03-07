@@ -41,8 +41,19 @@ void handle_structured_payload(
     SiglatchOpenSSLSession *session,
     const char *ip
 ) {
+    if (!pkt) {
+        LOGE("Null packet passed to structured payload handler\n");
+        return;
+    }
+
+    if (pkt->payload_len > sizeof(pkt->payload)) {
+        LOGE("Dropping packet with invalid payload_len=%u (max=%zu)\n",
+             pkt->payload_len, sizeof(pkt->payload));
+        return;
+    }
+
     if (!validatePayload(pkt)) {
-        LOGW("❌ Packet failed semantic validation (e.g. replay nonce)\n");
+        LOGW("Packet failed semantic validation (e.g. replay nonce)\n");
         return;
     }
 
@@ -51,16 +62,21 @@ void handle_structured_payload(
 
     const siglatch_user *user = lib.config.user_by_id( pkt->user_id);
     if (!user) {
-        LOGW("❌ No matching enabled user for user_id %u\n", pkt->user_id);
+        LOGW("No matching enabled user for user_id %u\n", pkt->user_id);
         return;
     }
 
     if (!session_assign_to_user(session, user)) {
-        LOGE("❌ Failed to assign session to user ID: %u\n", pkt->user_id);
+        LOGE("Failed to assign session to user ID: %u\n", pkt->user_id);
         return;
     }
 
     int signature_valid = validateSignature(session, pkt);
+    if (!signature_valid) {
+        LOGE("Dropping structured packet due to invalid signature (user_id=%u action_id=%u)\n",
+             pkt->user_id, pkt->action_id);
+        return;
+    }
 
     LOGD("routing to handle packet...\n");
     handle_packet( pkt, ip, signature_valid);
@@ -70,13 +86,13 @@ void handle_structured_payload(
 
 static int validatePayload(const KnockPacket *pkt) {
     if (!pkt) {
-        LOGE("[validate] ❌ Null KnockPacket pointer\n");
+        LOGE("[validate] Null KnockPacket pointer\n");
         return 0;
     }
 
     time_t now = lib.time.now();
 
-    // 🧠 Format a nonce string based on challenge and timestamp
+    // Format a nonce string based on challenge and timestamp.
     char nonce_str[64];
     snprintf(nonce_str, sizeof(nonce_str), "%u-%u", pkt->timestamp, pkt->challenge);
 
@@ -84,30 +100,34 @@ static int validatePayload(const KnockPacket *pkt) {
         LOGW("[validate] Replay detected for nonce: %s\n", nonce_str);
         return 0;  // Drop duplicate
     } else {
-        LOGT("[validate] ✅ Nonce accepted: %s\n", nonce_str);
+        LOGT("[validate] Nonce accepted: %s\n", nonce_str);
         lib.nonce.add(nonce_str, now);
     }
 
-    return 1;  // ✅ Passed
+    return 1;  // Passed
 }
 
 
 static int handle_packet( const KnockPacket *pkt, const char *ip_addr,  int valid_signature) {
   LOGD("TRYING HANDLE PACKET\n");
   if ( !pkt || !ip_addr) {
-    LOGE("[handle] ❌ Invalid arguments to handle_packet\n");
+    LOGE("[handle] Invalid arguments to handle_packet\n");
     return 0;
   }
-  if (valid_signature){
-    LOGT("✅ sigature validated");
-  }else {
-    LOGE("⚠️  invalid signature");
+  if (pkt->payload_len > sizeof(pkt->payload)) {
+    LOGE("[handle] Invalid payload_len=%u (max=%zu)\n", pkt->payload_len, sizeof(pkt->payload));
+    return 0;
   }
+  if (!valid_signature) {
+    LOGE("[handle] Invalid signature; dropping packet\n");
+    return 0;
+  }
+  LOGT("signature validated\n");
   // --- 1. Lookup user ---
   const char * username = lib.config.username_by_id( pkt->user_id);
   
-  if (username[0] == '\0') {
-    LOGE("[handle] ⚠️  User found for ID=%u, but username is NULL\n", pkt->user_id);
+  if (!username || username[0] == '\0') {
+    LOGE("[handle] User found for ID=%u, but username is NULL\n", pkt->user_id);
     return 0;
   }
   //const char *username = username;
@@ -116,19 +136,19 @@ static int handle_packet( const KnockPacket *pkt, const char *ip_addr,  int vali
   const siglatch_action * action = lib.config.action_by_id(pkt->action_id);
   
   if (!action || action->constructor[0] == '\0') {
-    LOGW("[handle] ⚠️  Unknown action ID: %u\n", pkt->action_id);
+    LOGW("[handle] Unknown action ID: %u\n", pkt->action_id);
     return 0;
   }
   if (!lib.config.current_server_action_available(action->name)) {
-    LOGE("[handle] ❌ Action (%s) not permitted on this server.\n",action->name);
+    LOGE("[handle] Action (%s) not permitted on this server.\n",action->name);
     return 0 ;
   }
   if(!lib.config.action_available_by_user(pkt->user_id, action->name) ){
-    LOGE("[handle] ❌ Action (%s) not permitted by this user(%s).\n",action->name,username);
+    LOGE("[handle] Action (%s) not permitted by this user(%s).\n",action->name,username);
     return 0 ;
   }
   if (!action->enabled){
-    LOGE("[handle] ❌ Action is disabled.\n");
+    LOGE("[handle] Action is disabled.\n");
     return 0 ;
   }
     
@@ -161,7 +181,7 @@ static int handle_packet( const KnockPacket *pkt, const char *ip_addr,  int vali
     NULL
   };
   //LOGI doesnt work for some reason...
-  LOGD("[handle] ➡️ Routing to script: %s (Ip=%s, User=%s, Action=%s,execSplit = %d)\n", action->constructor, ip_addr,username, action->name,action->exec_split);
+  LOGD("[handle] Routing to script: %s (Ip=%s, User=%s, Action=%s,execSplit = %d)\n", action->constructor, ip_addr,username, action->name,action->exec_split);
 
   // --- 5. Launch action script ---
   return runShell(action->constructor, 7, argv,action->exec_split);
@@ -169,11 +189,11 @@ static int handle_packet( const KnockPacket *pkt, const char *ip_addr,  int vali
 
  int runShell2(const char *script_path, int argc, char *argv[]) {
     if (!script_path || argc < 1 || !argv) {
-        LOGE("[runShell] ❌ Invalid parameters\n");
+        LOGE("[runShell] Invalid parameters\n");
         return 0;
     }
     if (!argv[0]) {
-      LOGE("[runShell] ❌ argv[0] is NULL — invalid script invocation\n");
+      LOGE("[runShell] argv[0] is NULL - invalid script invocation\n");
       return 0;
     }
     pid_t pid = fork();
@@ -184,7 +204,7 @@ static int handle_packet( const KnockPacket *pkt, const char *ip_addr,  int vali
         exit(127);
     } else if (pid > 0) {
         // Parent
-        LOGT("[runShell] 🧵 Spawned child PID: %d\n", pid);
+        LOGT("[runShell] Spawned child PID: %d\n", pid);
         return 1;
     } else {
         // Fork failed
@@ -197,7 +217,7 @@ static int handle_packet( const KnockPacket *pkt, const char *ip_addr,  int vali
 
 int runShell(const char *script_path, int argc, char *argv[], int exec_split) {
   if (!script_path || argc < 1 || !argv || !argv[0]) {
-    LOGE("[runShell] ❌ Invalid parameters\n");
+    LOGE("[runShell] Invalid parameters\n");
     return 0;
   }
 
@@ -210,7 +230,7 @@ int runShell(const char *script_path, int argc, char *argv[], int exec_split) {
     // Split it
     char cmd[128] = {0}, script[256] = {0};
     if (!parseCmd(script_path, strlen(script_path), cmd, sizeof(cmd), script, sizeof(script))) {
-      LOGE("[runShell] ❌ Failed to parse constructor: %s\n", script_path);
+      LOGE("[runShell] Failed to parse constructor: %s\n", script_path);
       return 0;
     }
 
@@ -238,7 +258,7 @@ int runShell(const char *script_path, int argc, char *argv[], int exec_split) {
     exit(127);
   } else if (pid > 0) {
     // Parent
-    LOGT("[runShell] 🧵 Spawned child PID: %d\n", pid);
+    LOGT("[runShell] Spawned child PID: %d\n", pid);
     return 1;
   } else {
     // Fork failed

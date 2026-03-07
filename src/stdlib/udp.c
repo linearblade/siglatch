@@ -4,12 +4,10 @@
  */
 
 #include "udp.h"
-#include "output.h"
 #include <string.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-
-#define printf(...) sl_printf(__VA_ARGS__)
 
 // Static internal context
 static UdpContext g_udp_ctx = {0};
@@ -66,7 +64,7 @@ static int udp_send(const char *target_ip, uint16_t port,
     }
 
     if (g_udp_ctx.log) {
-        g_udp_ctx.log->emit(LOG_INFO, 1, "📤 Sent UDP payload to %s:%u (%zu bytes)\n",
+        g_udp_ctx.log->emit(LOG_INFO, 1, "Sent UDP payload to %s:%u (%zu bytes)\n",
                             target_ip, port, data_len);
     }
 
@@ -76,11 +74,19 @@ static int udp_send(const char *target_ip, uint16_t port,
 
 static void printHEX(const unsigned char *input, size_t input_len) {
     if (!input || input_len == 0) {
-        printf("⚠️  printHEX called with null or empty input");
+        if (g_udp_ctx.print && g_udp_ctx.print->uc_printf) {
+            g_udp_ctx.print->uc_printf("warn", "printHEX called with null or empty input");
+        } else {
+            printf("printHEX called with null or empty input\n");
+        }
         return;
     }
 
-    printf("🔎 Binary (non-ASCII) payload:");
+    if (g_udp_ctx.print && g_udp_ctx.print->uc_printf) {
+        g_udp_ctx.print->uc_printf("debug", "Binary (non-ASCII) payload:");
+    } else {
+        printf("Binary (non-ASCII) payload:");
+    }
 
     char line[256] = {0};
     size_t pos = 0;

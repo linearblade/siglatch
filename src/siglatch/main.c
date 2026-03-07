@@ -17,7 +17,6 @@
 #include "daemon.h"
 #include "start_opts.h"
 #include "lib.h"
-#include "../stdlib/output.h"
 
 volatile sig_atomic_t should_exit = 0;
 
@@ -29,16 +28,18 @@ int main(int argc, char *argv[]) {
   lib.log.set_debug(1);
   lib.log.set_level(LOG_TRACE);
 
-  const char *env_output_value = getenv("SIGLATCH_OUTPUT_MODE");
-  int env_output_mode = sl_output_parse_mode(env_output_value);
-  if (env_output_mode) {
-    sl_output_set_mode(env_output_mode);
-  } else if (env_output_value && *env_output_value) {
-    LOGW("⚠️  Invalid SIGLATCH_OUTPUT_MODE='%s' (expected 'unicode' or 'ascii')\n",
-         env_output_value);
+  {
+    const char *env_output_value = getenv("SIGLATCH_OUTPUT_MODE");
+    int env_output_mode = lib.print.output_parse_mode(env_output_value);
+    if (env_output_mode) {
+      lib.print.output_set_mode(env_output_mode);
+    } else if (env_output_value && *env_output_value) {
+      LOGW("Invalid SIGLATCH_OUTPUT_MODE='%s' (expected 'unicode' or 'ascii')\n",
+           env_output_value);
+    }
   }
 
-  LOGE("🚀 Launching...\n");
+  LOGE("Launching...\n");
   //siglatch_config *cfg = NULL;//    load_config("/etc/siglatch/config");
   
   lib.config.load("/etc/siglatch/server.conf");
@@ -50,21 +51,25 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
   if (!lib.config.set_current_server("secure")) {
-    LOGE("❌ Server block 'secure' not found in config\n");
+    LOGE("Server block 'secure' not found in config\n");
     shutdown_config_error();
     exit(EXIT_FAILURE);
   }
 
-  if (!env_output_mode) {
-    int config_output_mode = 0;
-    if (cfg->current_server && cfg->current_server->output_mode) {
-      config_output_mode = cfg->current_server->output_mode;
-    } else if (cfg->output_mode) {
-      config_output_mode = cfg->output_mode;
-    }
+  {
+    const char *env_output_value = getenv("SIGLATCH_OUTPUT_MODE");
+    int env_output_mode = lib.print.output_parse_mode(env_output_value);
+    if (!env_output_mode) {
+      int config_output_mode = 0;
+      if (cfg->current_server && cfg->current_server->output_mode) {
+        config_output_mode = cfg->current_server->output_mode;
+      } else if (cfg->output_mode) {
+        config_output_mode = cfg->output_mode;
+      }
 
-    if (config_output_mode) {
-      sl_output_set_mode(config_output_mode);
+      if (config_output_mode) {
+        lib.print.output_set_mode(config_output_mode);
+      }
     }
   }
 
@@ -77,7 +82,7 @@ int main(int argc, char *argv[]) {
   if (cfg && cfg->current_server && *cfg->current_server->log_file) {
     lib.log.open(cfg->current_server->log_file);
   }else {
-    LOGW("⚠️  LOG FILE NOT DEFINED IN CONFIG — logging disabled.\n");
+    LOGW("LOG FILE NOT DEFINED IN CONFIG - logging disabled.\n");
     lib.log.set_enabled(0);
   }
 

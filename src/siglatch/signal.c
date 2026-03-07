@@ -13,5 +13,5 @@ void init_signals(){
 
 void handle_signal(int sig) {
     should_exit = 1;
-    LOGT("\n🛑 Caught signal %d — shutting down...\n", sig);
+    LOGT("\nCaught signal %d - shutting down...\n", sig);
 }

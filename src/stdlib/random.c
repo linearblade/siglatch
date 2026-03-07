@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include "random.h"
 static int random_seeded = 0;
-static unsigned int random_current_seed = 0;  // 🆕 Store the actual used seed
+static unsigned int random_current_seed = 0;  //  Store the actual used seed
 static void random_seed_time_pid_addr(void);
 // ── Internal Implementation ─────────────────────────────
 

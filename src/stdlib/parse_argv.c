@@ -6,16 +6,13 @@
 #include <stdio.h>
 #include <string.h>
 #include "parse_argv.h"
-#include "output.h"
-
-#define printf(...) sl_printf(__VA_ARGS__)
-#define fprintf(...) sl_fprintf(__VA_ARGS__)
 
 // Internal context (defaults to non-strict)
 static ParseArgvContext g_parse_argv_ctx = {
   .strict = 0,
   .quiet_errors = 0,
-  .log = NULL
+  .log = NULL,
+  .print = NULL
 };
 
 // Internal lookup
@@ -41,6 +38,19 @@ static void parse_argv_shutdown(void){
   g_parse_argv_ctx.strict = 0;
   g_parse_argv_ctx.quiet_errors = 0;
   g_parse_argv_ctx.log = NULL;
+  g_parse_argv_ctx.print = NULL;
+}
+
+static void parse_argv_print(const char *marker, const char *fmt, ...) {
+    va_list args;
+
+    va_start(args, fmt);
+    if (g_parse_argv_ctx.print && g_parse_argv_ctx.print->uc_vfprintf) {
+        (void)g_parse_argv_ctx.print->uc_vfprintf(stdout, marker, fmt, args);
+    } else {
+        (void)vprintf(fmt, args);
+    }
+    va_end(args);
 }
 
 static void log_error(const char *fmt, ...) {
@@ -56,8 +66,8 @@ static void log_error(const char *fmt, ...) {
         vsnprintf(buffer, sizeof(buffer), fmt, args);
         g_parse_argv_ctx.log->emit(LOG_ERROR, 1, "%s", buffer);
     } else {
-        sl_vfprintf(stderr, fmt, args);
-        sl_fprintf(stderr, "\n");
+        vfprintf(stderr, fmt, args);
+        fprintf(stderr, "\n");
     }
 
     va_end(args);
@@ -75,7 +85,7 @@ static int parse_argv(const int argc, char *argv[], ParsedArgv *parsed_out, cons
     const OptionSpec *opt = find_option_spec(argv[i], spec_table);
     if (!opt) {
       if (g_parse_argv_ctx.strict) {
-        log_error( "❌ Unknown option: %s\n", argv[i]);
+        log_error( "Unknown option: %s\n", argv[i]);
         return 0;
       } else {
         break; // Treat as positional start
@@ -83,7 +93,7 @@ static int parse_argv(const int argc, char *argv[], ParsedArgv *parsed_out, cons
     }
 
     if (i + opt->num_args >= argc) {
-      log_error( "❌ Not enough arguments for option: %s\n", argv[i]);
+      log_error( "Not enough arguments for option: %s\n", argv[i]);
       return 0;
     }
 
@@ -114,17 +124,17 @@ static int parse_argv_has(const ParsedArgv *parsed, const char *flag) {
 }
 
 static void parse_argv_dump(const ParsedArgv *parsed) {
-  printf("🔍 Parsed Options (%d):\n", parsed->num_options);
+  parse_argv_print("debug", "Parsed Options (%d):\n", parsed->num_options);
   for (int i = 0; i < parsed->num_options; i++) {
     const ParsedOption *po = &parsed->options[i];
-    printf("  • %s", po->args[0]);
+    printf("  - %s", po->args[0]);
     for (int j = 1; j < po->num_args; j++) {
       printf(" %s", po->args[j]);
     }
     printf("\n");
   }
 
-  printf("\n📦 Positional Arguments (%d):\n", parsed->num_positionals);
+  parse_argv_print("box", "\nPositional Arguments (%d):\n", parsed->num_positionals);
   for (int i = 0; i < parsed->num_positionals; i++) {
     printf("  [%d] %s\n", i, parsed->positionals[i]);
   }

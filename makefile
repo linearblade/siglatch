@@ -97,7 +97,8 @@ SRC_SIGLATCHD = \
     src/stdlib/payload.c \
     src/stdlib/payload_digest.c \
     src/stdlib/openssl.c \
-    src/stdlib/output.c \
+    src/stdlib/print.c \
+    src/stdlib/unicode.c \
     src/stdlib/file.c \
     src/stdlib/str.c \
     src/stdlib/base64.c
@@ -120,7 +121,8 @@ SRC_KNOCKER = \
     src/stdlib/hmac_key.c \
     src/stdlib/file.c \
     src/stdlib/openssl.c \
-    src/stdlib/output.c \
+    src/stdlib/print.c \
+    src/stdlib/unicode.c \
     src/stdlib/udp.c \
     src/stdlib/utils.c
 

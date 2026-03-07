@@ -22,7 +22,7 @@ int start_udp_listener(const siglatch_config *cfg) {
 
     sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) {
-      LOGPERR("❌ Socket creation failed");
+      LOGPERR("Socket creation failed");
         return -1;
     }
 
@@ -32,7 +32,7 @@ int start_udp_listener(const siglatch_config *cfg) {
     server.sin_port = htons(cfg->current_server->port);  // Use dynamic port from config
 
     if (bind(sock, (struct sockaddr *)&server, sizeof(server)) < 0) {
-        LOGPERR("❌ Bind failed");
+        LOGPERR("Bind failed");
         close(sock);
         return -1;
     }
@@ -40,6 +40,6 @@ int start_udp_listener(const siglatch_config *cfg) {
     struct timeval tv = {TIMEOUT_SEC, 0};
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     
-    LOGW("📡 Daemon started on UDP port %d\n", cfg->current_server->port);
+    LOGW("Daemon started on UDP port %d\n", cfg->current_server->port);
     return sock;
 }

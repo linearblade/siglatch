@@ -18,11 +18,11 @@
 #include "parse_opts_alias.h"
 #include "print_help.h"
 #include "../stdlib/parse_argv.h"
-#include "../stdlib/output.h"
 
-#define printf(...) sl_printf(__VA_ARGS__)
-#define fprintf(...) sl_fprintf(__VA_ARGS__)
-
+#define KNOCKER_CLIENT_CONFIG_DIR ".config/siglatch"
+#define KNOCKER_CLIENT_CONFIG_PARENT ".config"
+#define KNOCKER_CLIENT_CONFIG_FILE "client.conf"
+#define KNOCKER_CLIENT_OUTPUT_MODE_KEY "output_mode"
 
 enum {
   OPT_ID_NONE = 0, //no op. for passing flags to be picked up in parse handler, not set in opts object
@@ -72,6 +72,248 @@ int has_stdin(void);
 int opts_read_stdin_explicit(Opts *opts);
 int opts_read_stdin_explicit_multiline(Opts *opts);
 static void opts_apply_cli_output_mode_hint(int argc, char *argv[]);
+static int handle_output_mode_default_command(int argc, char *argv[]);
+static char *trim_ws(char *value);
+static int build_client_config_parent_dir_path(char *out, size_t out_size);
+static int build_client_config_dir_path(char *out, size_t out_size);
+static int build_client_config_file_path(char *out, size_t out_size);
+static int ensure_dir_path_exists(const char *path);
+static int ensure_client_config_dir_exists(void);
+
+static char *trim_ws(char *value) {
+  char *end;
+
+  if (!value) {
+    return NULL;
+  }
+
+  while (*value != '\0' && isspace((unsigned char)*value)) {
+    value++;
+  }
+
+  if (*value == '\0') {
+    return value;
+  }
+
+  end = value + strlen(value) - 1;
+  while (end > value && isspace((unsigned char)*end)) {
+    *end = '\0';
+    end--;
+  }
+
+  return value;
+}
+
+static int build_client_config_parent_dir_path(char *out, size_t out_size) {
+  const char *home = getenv("HOME");
+
+  if (!home || !*home) {
+    lib.print.uc_fprintf(stderr, "err", "HOME environment variable not set\n");
+    return 0;
+  }
+
+  if ((size_t)snprintf(out, out_size, "%s/%s", home, KNOCKER_CLIENT_CONFIG_PARENT) >= out_size) {
+    lib.print.uc_fprintf(stderr, "err", "Client parent config directory path too long\n");
+    return 0;
+  }
+
+  return 1;
+}
+
+static int build_client_config_dir_path(char *out, size_t out_size) {
+  const char *home = getenv("HOME");
+
+  if (!home || !*home) {
+    lib.print.uc_fprintf(stderr, "err", "HOME environment variable not set\n");
+    return 0;
+  }
+
+  if ((size_t)snprintf(out, out_size, "%s/%s", home, KNOCKER_CLIENT_CONFIG_DIR) >= out_size) {
+    lib.print.uc_fprintf(stderr, "err", "Client config directory path too long\n");
+    return 0;
+  }
+
+  return 1;
+}
+
+static int build_client_config_file_path(char *out, size_t out_size) {
+  char dir_path[PATH_MAX];
+
+  if (!build_client_config_dir_path(dir_path, sizeof(dir_path))) {
+    return 0;
+  }
+
+  if ((size_t)snprintf(out, out_size, "%s/%s", dir_path, KNOCKER_CLIENT_CONFIG_FILE) >= out_size) {
+    lib.print.uc_fprintf(stderr, "err", "Client config file path too long\n");
+    return 0;
+  }
+
+  return 1;
+}
+
+static int ensure_dir_path_exists(const char *path) {
+  struct stat st = {0};
+
+  if (!path || !*path) {
+    return 0;
+  }
+
+  if (stat(path, &st) == 0) {
+    if (!S_ISDIR(st.st_mode)) {
+      lib.print.uc_fprintf(stderr, "err", "Config path exists but is not a directory: %s\n", path);
+      return 0;
+    }
+    return 1;
+  }
+
+  if (mkdir(path, 0700) != 0) {
+    lib.print.uc_fprintf(stderr, "err", "Failed to create config directory: %s (%s)\n", path, strerror(errno));
+    return 0;
+  }
+
+  return 1;
+}
+
+static int ensure_client_config_dir_exists(void) {
+  char parent_path[PATH_MAX];
+  char dir_path[PATH_MAX];
+
+  if (!build_client_config_parent_dir_path(parent_path, sizeof(parent_path))) {
+    return 0;
+  }
+
+  if (!build_client_config_dir_path(dir_path, sizeof(dir_path))) {
+    return 0;
+  }
+
+  if (!ensure_dir_path_exists(parent_path)) {
+    return 0;
+  }
+
+  return ensure_dir_path_exists(dir_path);
+}
+
+int opts_load_output_mode_default(void) {
+  char config_path[PATH_MAX];
+  char line[256];
+  FILE *fp = NULL;
+
+  if (!build_client_config_file_path(config_path, sizeof(config_path))) {
+    return 0;
+  }
+
+  fp = fopen(config_path, "r");
+  if (!fp) {
+    return 0;
+  }
+
+  while (fgets(line, sizeof(line), fp)) {
+    char *entry = trim_ws(line);
+    char *equals = NULL;
+    char *key = NULL;
+    char *value = NULL;
+    int mode = 0;
+
+    if (!entry || *entry == '\0' || *entry == '#' || *entry == ';') {
+      continue;
+    }
+
+    equals = strchr(entry, '=');
+    if (!equals) {
+      continue;
+    }
+
+    *equals = '\0';
+    key = trim_ws(entry);
+    value = trim_ws(equals + 1);
+    if (!key || !value) {
+      continue;
+    }
+
+    if (strcmp(key, KNOCKER_CLIENT_OUTPUT_MODE_KEY) != 0) {
+      continue;
+    }
+
+    mode = lib.print.output_parse_mode(value);
+    if (!mode) {
+      lib.print.uc_fprintf(stderr, "warn",
+                           "Invalid output_mode in %s: %s (expected 'unicode' or 'ascii')\n",
+                           config_path, value);
+      fclose(fp);
+      return 0;
+    }
+
+    fclose(fp);
+    return mode;
+  }
+
+  fclose(fp);
+  return 0;
+}
+
+int opts_save_output_mode_default(const char *mode_value) {
+  int mode = lib.print.output_parse_mode(mode_value);
+  const char *mode_name = NULL;
+  char config_path[PATH_MAX];
+  FILE *fp = NULL;
+
+  if (!mode) {
+    lib.print.uc_fprintf(stderr, "err",
+                         "Invalid output mode default: %s (expected 'unicode' or 'ascii')\n",
+                         mode_value ? mode_value : "(null)");
+    return 0;
+  }
+
+  mode_name = lib.print.output_mode_name(mode);
+  if (!mode_name || strcmp(mode_name, "unknown") == 0) {
+    lib.print.uc_fprintf(stderr, "err", "Unable to resolve output mode name for value: %d\n", mode);
+    return 0;
+  }
+
+  if (!ensure_client_config_dir_exists()) {
+    return 0;
+  }
+
+  if (!build_client_config_file_path(config_path, sizeof(config_path))) {
+    return 0;
+  }
+
+  fp = fopen(config_path, "w");
+  if (!fp) {
+    lib.print.uc_fprintf(stderr, "err", "Failed to write client config: %s (%s)\n", config_path, strerror(errno));
+    return 0;
+  }
+
+  fprintf(fp, "# Siglatch knocker client defaults\n");
+  fprintf(fp, "%s=%s\n", KNOCKER_CLIENT_OUTPUT_MODE_KEY, mode_name);
+
+  if (fclose(fp) != 0) {
+    lib.print.uc_fprintf(stderr, "err", "Failed to close client config: %s (%s)\n", config_path, strerror(errno));
+    return 0;
+  }
+
+  if (chmod(config_path, 0600) != 0) {
+    lib.print.uc_fprintf(stderr, "warn", "Failed to set config permissions on %s (%s)\n", config_path, strerror(errno));
+  }
+
+  lib.print.uc_printf("ok", "Saved default output mode '%s' to %s\n", mode_name, config_path);
+  return 1;
+}
+
+static int handle_output_mode_default_command(int argc, char *argv[]) {
+  if (argc < 3) {
+    lib.print.uc_fprintf(stderr, "err",
+                         "Not enough arguments for --output-mode-default (expected 'unicode' or 'ascii')\n");
+    exit(2);
+  }
+
+  if (!opts_save_output_mode_default(argv[2])) {
+    exit(2);
+  }
+
+  exit(0);
+  return 0;
+}
   
 int ensure_dir_exists(const char *host) {
   char path[PATH_MAX] = {0};
@@ -79,16 +321,16 @@ int ensure_dir_exists(const char *host) {
 
   struct stat st = {0};
   if (stat(path, &st) == -1) {
-    // Directory doesn't exist — try to create
+    // Directory doesn't exist - try to create
     if (mkdir(path, 0700) != 0) {
-      fprintf(stderr, "❌ Failed to create directory: %s (%s)\n", path, strerror(errno));
+      lib.print.uc_fprintf(stderr, "err", "Failed to create directory: %s (%s)\n", path, strerror(errno));
       return 0;
     } else {
-      printf("📂 Created directory: %s\n", path);
+      lib.print.uc_printf("dir", "Created directory: %s\n", path);
     }
   } else {
     // Directory already exists
-    printf("📂 Directory already exists: %s\n", path);
+    lib.print.uc_printf("dir", "Directory already exists: %s\n", path);
   }
   return 1;
 }
@@ -98,6 +340,11 @@ int parseOpts(int argc, char *argv[], Opts *opts_out) {
   if (argc < 2) {
     return 0; // Not enough arguments
   }
+
+  if (strcmp(argv[1], "--output-mode-default") == 0) {
+    return handle_output_mode_default_command(argc, argv);
+  }
+
   // dont for get to add --help
   if (strncmp(argv[1], "--help", 6) == 0)
     return 0;
@@ -151,9 +398,9 @@ int parseOpts(int argc, char *argv[], Opts *opts_out) {
 static void opts_apply_cli_output_mode_hint(int argc, char *argv[]) {
     for (int i = 1; i + 1 < argc; ++i) {
         if (strcmp(argv[i], "--output-mode") == 0) {
-            int mode = sl_output_parse_mode(argv[i + 1]);
+            int mode = lib.print.output_parse_mode(argv[i + 1]);
             if (mode) {
-                sl_output_set_mode(mode);
+                lib.print.output_set_mode(mode);
             }
             return;
         }
@@ -162,17 +409,17 @@ static void opts_apply_cli_output_mode_hint(int argc, char *argv[]) {
 
 int has_stdin(void) {
     if (isatty(STDIN_FILENO)) {
-        printf("🔧 STDIN is a terminal\n");
+        lib.print.uc_printf("debug", "STDIN is a terminal\n");
 	return 0;
     } else {
-        printf("📦 STDIN is piped or redirected\n");
+        lib.print.uc_printf("box", "STDIN is piped or redirected\n");
 	return 1;
     }
 }
 
 int opts_attach_stdin(Opts *opts) {
     if (isatty(STDIN_FILENO)) {
-        // stdin is a terminal → user did NOT pipe data
+        // stdin is a terminal -> user did NOT pipe data
         return 0;
     }
 
@@ -182,27 +429,27 @@ int opts_attach_stdin(Opts *opts) {
         return 1;
     }
 
-    fprintf(stderr, "❌ stdin read failed or was empty\n");
+    lib.print.uc_fprintf(stderr, "err", "stdin read failed or was empty\n");
     return 0;
 }
 
 int opts_read_stdin_explicit(Opts *opts) {
-    fprintf(stderr, "📥 Reading payload from stdin (--stdin)...\n");
+    lib.print.uc_fprintf(stderr, "in", "Reading payload from stdin (--stdin)...\n");
 
     ssize_t n = read(STDIN_FILENO, opts->payload, MAX_PAYLOAD_SIZE);
     if (n <= 0) {
-        fprintf(stderr, "❌ Failed to read from stdin or input was empty\n");
+        lib.print.uc_fprintf(stderr, "err", "Failed to read from stdin or input was empty\n");
         return 0;
     }
 
     opts->payload_len = (size_t)n;
 
-    fprintf(stderr, "✅ Read %zu bytes from stdin\n", opts->payload_len);
+    lib.print.uc_fprintf(stderr, "ok", "Read %zu bytes from stdin\n", opts->payload_len);
     return 1;
 }
 
 int opts_read_stdin_explicit_multiline(Opts *opts) {
-    fprintf(stderr, "📥 Reading multi-line payload from stdin (end with Ctrl+D):\n");
+    lib.print.uc_fprintf(stderr, "in", "Reading multi-line payload from stdin (end with Ctrl+D):\n");
 
     char buffer[256];
     size_t total = 0;
@@ -212,7 +459,7 @@ int opts_read_stdin_explicit_multiline(Opts *opts) {
 
         // Check for overflow
         if (total + len >= MAX_PAYLOAD_SIZE) {
-            fprintf(stderr, "❌ Payload too large (max %d bytes)\n", MAX_PAYLOAD_SIZE);
+            lib.print.uc_fprintf(stderr, "err", "Payload too large (max %d bytes)\n", MAX_PAYLOAD_SIZE);
             return 0;
         }
 
@@ -221,12 +468,12 @@ int opts_read_stdin_explicit_multiline(Opts *opts) {
     }
 
     if (total == 0) {
-        fprintf(stderr, "❌ No input received from stdin\n");
+        lib.print.uc_fprintf(stderr, "err", "No input received from stdin\n");
         return 0;
     }
 
     opts->payload_len = total;
-    fprintf(stderr, "✅ Read %zu bytes from stdin\n", opts->payload_len);
+    lib.print.uc_fprintf(stderr, "ok", "Read %zu bytes from stdin\n", opts->payload_len);
     //opts_dump(opts);
     return 1;
 }
@@ -236,19 +483,19 @@ int opts_validate(Opts *opts) {
 
     // Host must be provided
     if (opts->host[0] == '\0') {
-        fprintf(stderr, "❌ Host not specified!\n");
+        lib.print.uc_fprintf(stderr, "err", "Host not specified!\n");
         valid = 0;
     }
 
     // User ID must be nonzero
     if (opts->user_id == 0) {
-        fprintf(stderr, "❌ Invalid or missing user ID\n");
+        lib.print.uc_fprintf(stderr, "err", "Invalid or missing user ID\n");
         valid = 0;
     }
 
     // Action ID must be nonzero
     if (opts->action_id == 0) {
-        fprintf(stderr, "❌ Invalid or missing action ID\n");
+        lib.print.uc_fprintf(stderr, "err", "Invalid or missing action ID\n");
         valid = 0;
     }
     // Derive default key paths if missing
@@ -286,7 +533,7 @@ int opts_validate(Opts *opts) {
         opts->hmac_mode = HMAC_MODE_NONE;
         //opts->encrypt   = 1; // Dead-drop still encrypts
         if (opts->payload_len == 0) {
-            fprintf(stderr, "❌ Dead drop payload is required \n");
+            lib.print.uc_fprintf(stderr, "err", "Dead drop payload is required \n");
 	    
             valid = 0;
         }
@@ -349,24 +596,26 @@ int apply_parsed_opts(const ParsedArgv *parsed, Opts *out) {
       opts_read_stdin_explicit_multiline(out);
       break;
     case OPT_ID_OUTPUT_MODE: {
-      int mode = sl_output_parse_mode(opt->args[1]);
+      int mode = lib.print.output_parse_mode(opt->args[1]);
       if (!mode) {
-        fprintf(stderr, "❌ Invalid output mode: %s (expected 'unicode' or 'ascii')\n", opt->args[1]);
+        lib.print.uc_fprintf(stderr, "err",
+                             "Invalid output mode: %s (expected 'unicode' or 'ascii')\n",
+                             opt->args[1]);
         return 0;
       }
       out->output_mode = mode;
-      sl_output_set_mode(mode);
+      lib.print.output_set_mode(mode);
       break;
     }
     default:
-      fprintf(stderr, "⚠️  Unhandled option id %d: %s\n", opt->spec->id, opt->args[0]);
+      lib.print.uc_fprintf(stderr, "warn", "Unhandled option id %d: %s\n", opt->spec->id, opt->args[0]);
       break;
     }
   }
 
   // --- Positional args: host, user, action, payload ---
   if (parsed->num_positionals < 3) {
-    fprintf(stderr, "❌ Missing required positional arguments: host, user, action\n");
+    lib.print.uc_fprintf(stderr, "err", "Missing required positional arguments: host, user, action\n");
     return 0;
   }
 
@@ -379,29 +628,29 @@ int apply_parsed_opts(const ParsedArgv *parsed, Opts *out) {
   strncpy(out->host, host_str, sizeof(out->host) - 1);
   //out->port = 50000; // Default port for now (TODO: make configurable)
 
-  // 🧠 User alias resolution
+  //  User alias resolution
   if (isdigit(user_str[0])) {
     out->user_id = (uint32_t)strtoul(user_str, NULL, 10);
   } else {
     out->user_id = resolve_user_alias(host_str, user_str);
     if (out->user_id == 0) {
-      fprintf(stderr, "❌ Unknown user alias: %s\n", user_str);
+      lib.print.uc_fprintf(stderr, "err", "Unknown user alias: %s\n", user_str);
       return 0;
     }
   }
 
-  // 🧠 Action alias resolution
+  //  Action alias resolution
   if (isdigit(action_str[0])) {
     out->action_id = (uint32_t)strtoul(action_str, NULL, 10);
   } else {
     out->action_id = resolve_action_alias(host_str, action_str);
     if (out->action_id == 0) {
-      fprintf(stderr, "❌ Unknown action alias: %s\n", action_str);
+      lib.print.uc_fprintf(stderr, "err", "Unknown action alias: %s\n", action_str);
       return 0;
     }
   }
 
-  // 🧠 Payload (optional)
+  //  Payload (optional)
   if (out->payload_len <= 0) {
     const char *payload    = (parsed->num_positionals >= 4) ? parsed->positionals[3] : NULL;
     if (payload) {
@@ -466,7 +715,7 @@ uint32_t resolve_user_alias(const char *host, const char *name) {
  int read_alias_map(const char *path, AliasEntry **out_list, size_t *out_count) {
     FILE *fp = fopen(path, "r");
     if (!fp) {
-        fprintf(stderr, "❌ Failed to open alias file for reading: %s (%s)\n", path, strerror(errno));
+        lib.print.uc_fprintf(stderr, "err", "Failed to open alias file for reading: %s (%s)\n", path, strerror(errno));
         return 0;
     }
 
@@ -481,7 +730,7 @@ uint32_t resolve_user_alias(const char *host, const char *name) {
         char *id_str = strtok(NULL, ",\n");
 
         if (!name || !host || !id_str) {
-            fprintf(stderr, "⚠️  Skipping invalid alias line: %s\n", line);
+            lib.print.uc_fprintf(stderr, "warn", "Skipping invalid alias line: %s\n", line);
             continue;
         }
 
@@ -489,7 +738,7 @@ uint32_t resolve_user_alias(const char *host, const char *name) {
             size_t new_capacity = (capacity == 0) ? 8 : capacity * 2;
             AliasEntry *new_list = realloc(list, new_capacity * sizeof(AliasEntry));
             if (!new_list) {
-                fprintf(stderr, "❌ Memory allocation failed while reading alias file.\n");
+                lib.print.uc_fprintf(stderr, "err", "Memory allocation failed while reading alias file.\n");
                 free(list);
                 fclose(fp);
                 return 0;
@@ -529,15 +778,15 @@ uint32_t resolve_user_alias(const char *host, const char *name) {
             (*list)[i].host[sizeof((*list)[i].host) - 1] = '\0';
             (*list)[i].id = id;
 
-            printf("🔄 Updated alias: %s -> %s (id=%u)\n", name, host, id);
+            lib.print.uc_printf("update", "Updated alias: %s -> %s (id=%u)\n", name, host, id);
             return 1;
         }
     }
 
-    // Not found — need to append new entry
+    // Not found - need to append new entry
     AliasEntry *new_list = realloc(*list, (*count + 1) * sizeof(AliasEntry));
     if (!new_list) {
-        fprintf(stderr, "❌ Memory allocation failed in update_alias_entry()\n");
+        lib.print.uc_fprintf(stderr, "err", "Memory allocation failed in update_alias_entry()\n");
         return 0;
     }
 
@@ -551,7 +800,7 @@ uint32_t resolve_user_alias(const char *host, const char *name) {
     new_entry->id = id;
 
     (*count)++;
-    printf("🎯 Created new alias: %s -> %s (id=%u)\n", name, host, id);
+    lib.print.uc_printf("target", "Created new alias: %s -> %s (id=%u)\n", name, host, id);
     return 1;
 }
 
@@ -562,7 +811,7 @@ uint32_t resolve_user_alias(const char *host, const char *name) {
 
     FILE *fp = fopen(path, "w");
     if (!fp) {
-        fprintf(stderr, "❌ Failed to open alias map for writing: %s (%s)\n", path, strerror(errno));
+        lib.print.uc_fprintf(stderr, "err", "Failed to open alias map for writing: %s (%s)\n", path, strerror(errno));
         return 0;
     }
 
@@ -572,47 +821,47 @@ uint32_t resolve_user_alias(const char *host, const char *name) {
 
     fclose(fp);
 
-    printf("✅ Alias map written successfully: %s (%zu entries)\n", path, count);
+    lib.print.uc_printf("ok", "Alias map written successfully: %s (%zu entries)\n", path, count);
     return 1;
 }
 
 
 void opts_dump(const Opts *opts) {
-    printf("🔎 Dumping Resolved Opts:\n");
+    lib.print.uc_printf("debug", "Dumping Resolved Opts:\n");
 
-    printf("Paths:\n");
-    printf("  HMAC Key Path    : %s\n", opts->hmac_key_path);
-    printf("  Server PubKey    : %s\n", opts->server_pubkey_path);
-    printf("  Client PrivKey   : %s\n", opts->client_privkey_path);
-    printf("  Log File         : %s\n", opts->log_file);
+    lib.print.uc_printf(NULL, "Paths:\n");
+    lib.print.uc_printf(NULL, "  HMAC Key Path    : %s\n", opts->hmac_key_path);
+    lib.print.uc_printf(NULL, "  Server PubKey    : %s\n", opts->server_pubkey_path);
+    lib.print.uc_printf(NULL, "  Client PrivKey   : %s\n", opts->client_privkey_path);
+    lib.print.uc_printf(NULL, "  Log File         : %s\n", opts->log_file);
 
-    printf("\nTarget:\n");
-    printf("  Host             : %s\n", opts->host);
-    printf("  Port             : %u\n", opts->port);
+    lib.print.uc_printf(NULL, "\nTarget:\n");
+    lib.print.uc_printf(NULL, "  Host             : %s\n", opts->host);
+    lib.print.uc_printf(NULL, "  Port             : %u\n", opts->port);
 
-    printf("\nModes:\n");
-    printf("  HMAC Mode        : %d\n", opts->hmac_mode);
-    printf("  Encrypt Payload  : %s\n", opts->encrypt ? "Yes" : "No");
-    printf("  Dead Drop        : %s\n", opts->dead_drop ? "Yes" : "No");
-    printf("  Output Mode      : %s\n",
-           opts->output_mode ? sl_output_mode_name(opts->output_mode)
-                             : sl_output_mode_name(sl_output_get_mode()));
+    lib.print.uc_printf(NULL, "\nModes:\n");
+    lib.print.uc_printf(NULL, "  HMAC Mode        : %d\n", opts->hmac_mode);
+    lib.print.uc_printf(NULL, "  Encrypt Payload  : %s\n", opts->encrypt ? "Yes" : "No");
+    lib.print.uc_printf(NULL, "  Dead Drop        : %s\n", opts->dead_drop ? "Yes" : "No");
+    lib.print.uc_printf(NULL, "  Output Mode      : %s\n",
+                        opts->output_mode ? lib.print.output_mode_name(opts->output_mode)
+                                          : lib.print.output_mode_name(lib.print.output_get_mode()));
 
-    printf("\nUser and Action:\n");
-    printf("  User ID          : %u\n", opts->user_id);
-    printf("  Action ID        : %u\n", opts->action_id);
+    lib.print.uc_printf(NULL, "\nUser and Action:\n");
+    lib.print.uc_printf(NULL, "  User ID          : %u\n", opts->user_id);
+    lib.print.uc_printf(NULL, "  Action ID        : %u\n", opts->action_id);
 
-    printf("\nPayload (%zu bytes):\n", opts->payload_len);
+    lib.print.uc_printf(NULL, "\nPayload (%zu bytes):\n", opts->payload_len);
     if (opts->payload_len > 0) {
-        printf("  ");
+        lib.print.uc_printf(NULL, "  ");
         for (size_t i = 0; i < opts->payload_len; i++) {
-            printf("%02X ", opts->payload[i]);
+            lib.print.uc_printf(NULL, "%02X ", opts->payload[i]);
         }
-        printf("\n");
+        lib.print.uc_printf(NULL, "\n");
     } else {
-        printf("  (No Payload)\n");
+        lib.print.uc_printf(NULL, "  (No Payload)\n");
     }
 
-    printf("\nMisc:\n");
-    printf("  Verbose Level    : %d\n", opts->verbose);
+    lib.print.uc_printf(NULL, "\nMisc:\n");
+    lib.print.uc_printf(NULL, "  Verbose Level    : %d\n", opts->verbose);
 }

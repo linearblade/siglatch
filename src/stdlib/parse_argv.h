@@ -8,6 +8,7 @@
 
 #include <stddef.h>
 #include "log.h"
+#include "print.h"
 /**
  * @file parse_argv.h
  * @brief Simple argument parsing utility for CLI flags and positionals
@@ -61,6 +62,7 @@ typedef struct {
   int strict;  ///< If true, reject unknown options
   int quiet_errors; ///< If true, suppress detailed parse errors
   const  Logger *log;
+  const PrintLib *print;
 } ParseArgvContext;
 
 typedef struct {

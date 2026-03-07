@@ -6,48 +6,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <stdarg.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <unistd.h> // for access(), F_OK
 #include <dirent.h>
+#include "lib.h"
 #include "parse_opts.h"
 #include "parse_opts_alias.h"
 #include "print_help.h"
-#include "../stdlib/output.h"
-
-#define printf(...) sl_printf(__VA_ARGS__)
-
-static int g_cli_hint_printed = 0;
-
-static int cli_message_is_error(const char *fmt) {
-    if (!fmt) {
-        return 0;
-    }
-    return strstr(fmt, "❌") != NULL;
-}
-
-static void cli_print_hint_once(void) {
-    if (!g_cli_hint_printed) {
-        g_cli_hint_printed = 1;
-        sl_fprintf(stderr, "Use --help for usage.\n");
-    }
-}
-
-static int cli_fprintf(FILE *stream, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    int rc = sl_vfprintf(stream, fmt, args);
-    va_end(args);
-
-    if (stream == stderr && cli_message_is_error(fmt)) {
-        cli_print_hint_once();
-    }
-
-    return rc;
-}
-
-#define fprintf(...) cli_fprintf(__VA_ARGS__)
 
 static int handle_alias_user(int argc, char *argv[]);
 static int handle_alias_action(int argc, char *argv[]);
@@ -85,15 +51,15 @@ int handle_alias(int argc, char *argv[]) {
 
     if (strcmp(argv[1], "--alias-user") == 0) {
         if (argc < 5) {
-            fprintf(stderr, "❌ Not enough arguments for --alias-user\n");
+            lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-user\n");
 	    exit(2);
         }
         if (!ensure_dir_exists(argv[2])) {
-            fprintf(stderr, "❌ Failed to ensure host directory: %s\n", argv[2]);
+            lib.print.uc_fprintf(stderr, "err", "Failed to ensure host directory: %s\n", argv[2]);
 	    exit(2);
         }
         if (!handle_alias_user(argc, argv)) {
-            fprintf(stderr, "❌ Failed to handle alias user\n");
+            lib.print.uc_fprintf(stderr, "err", "Failed to handle alias user\n");
 	    exit(2);
         }
         exit(0); // Graceful die
@@ -101,15 +67,15 @@ int handle_alias(int argc, char *argv[]) {
 
     if (strcmp(argv[1], "--alias-action") == 0) {
         if (argc < 5) {
-            fprintf(stderr, "❌ Not enough arguments for --alias-action\n");
+            lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-action\n");
 	    exit(2);
         }
         if (!ensure_dir_exists(argv[2])) {
-            fprintf(stderr, "❌ Failed to ensure host directory: %s\n", argv[2]);
+            lib.print.uc_fprintf(stderr, "err", "Failed to ensure host directory: %s\n", argv[2]);
 	    exit(2);
         }
         if (!handle_alias_action(argc, argv)) {
-            fprintf(stderr, "❌ Failed to handle alias action\n");
+            lib.print.uc_fprintf(stderr, "err", "Failed to handle alias action\n");
 	    exit(2);
         }
         exit(0); // Graceful die
@@ -118,19 +84,19 @@ int handle_alias(int argc, char *argv[]) {
     if (strcmp(argv[1], "--alias-user-show") == 0) {
       if (argc == 2) {
         if (!handle_alias_user_show_all(argc, argv)) {
-	  fprintf(stderr, "❌ Failed to show all user aliases\n");
+	  lib.print.uc_fprintf(stderr, "err", "Failed to show all user aliases\n");
 	  exit(2);
         }
         exit(0);
       }
 
       if (argc < 3) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-user-show\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-user-show\n");
         exit(2);
       }
 
       if (!handle_alias_user_show(argc, argv)) {
-        fprintf(stderr, "❌ Failed to show user aliases\n");
+        lib.print.uc_fprintf(stderr, "err", "Failed to show user aliases\n");
         exit(2);
       }
       exit(0);
@@ -139,11 +105,11 @@ int handle_alias(int argc, char *argv[]) {
 
     if (strcmp(argv[1], "--alias-user-delete") == 0) {
       if (argc < 4) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-user-delete\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-user-delete\n");
         exit(2);
       }
       if (!handle_alias_user_delete(argc, argv)) {
-        fprintf(stderr, "❌ Failed to delete user alias\n");
+        lib.print.uc_fprintf(stderr, "err", "Failed to delete user alias\n");
         exit(2);
       }
       exit(0); // Graceful die
@@ -151,15 +117,15 @@ int handle_alias(int argc, char *argv[]) {
     
     if (strcmp(argv[1], "--alias-user-delete-map") == 0) {
       if (argc < 4) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-user-delete-map (you must type YES)\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-user-delete-map (you must type YES)\n");
         exit(2);
       }
       if (strcmp(argv[3], "YES") != 0) {
-        fprintf(stderr, "❌ You must confirm map deletion by typing YES\n");
+        lib.print.uc_fprintf(stderr, "err", "You must confirm map deletion by typing YES\n");
         exit(2);
       }
       if (!handle_alias_user_delete_map(argc, argv)) {
-        fprintf(stderr, "❌ Failed to delete user alias map file\n");
+        lib.print.uc_fprintf(stderr, "err", "Failed to delete user alias map file\n");
         exit(2);
       }
       exit(0);
@@ -169,19 +135,19 @@ int handle_alias(int argc, char *argv[]) {
       if (argc == 2) {
         // No host provided -> Show all action aliases
         if (!handle_alias_action_show_all(argc, argv)) {
-	  fprintf(stderr, "❌ Failed to show all action aliases\n");
+	  lib.print.uc_fprintf(stderr, "err", "Failed to show all action aliases\n");
 	  exit(2);
         }
         exit(0);
       }
 
       if (argc < 3) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-action-show\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-action-show\n");
         exit(2);
       }
 
       if (!handle_alias_action_show(argc, argv)) {
-        fprintf(stderr, "❌ Failed to show action aliases\n");
+        lib.print.uc_fprintf(stderr, "err", "Failed to show action aliases\n");
         exit(2);
       }
       exit(0); // Graceful die
@@ -190,11 +156,11 @@ int handle_alias(int argc, char *argv[]) {
 
     if (strcmp(argv[1], "--alias-action-delete") == 0) {
       if (argc < 4) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-action-delete\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-action-delete\n");
         exit(2);
       }
       if (!handle_alias_action_delete(argc, argv)) {
-        fprintf(stderr, "❌ Failed to delete action alias\n");
+        lib.print.uc_fprintf(stderr, "err", "Failed to delete action alias\n");
         exit(2);
       }
       exit(0); // Graceful die
@@ -202,26 +168,26 @@ int handle_alias(int argc, char *argv[]) {
 
     if (strcmp(argv[1], "--alias-show") == 0) {
       if (argc < 3) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-show\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-show\n");
         exit(2);
       }
       if (!handle_alias_show(argc, argv)) {
-        fprintf(stderr, "❌ Failed to show aliases\n");
+        lib.print.uc_fprintf(stderr, "err", "Failed to show aliases\n");
         exit(2);
       }
       exit(0);
     }
     if (strcmp(argv[1], "--alias-delete") == 0) {
       if (argc < 4) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-delete (you must type YES)\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-delete (you must type YES)\n");
         exit(2);
       }
       if (strcmp(argv[3], "YES") != 0) {
-        fprintf(stderr, "❌ You must confirm destructive alias wipe by typing YES\n");
+        lib.print.uc_fprintf(stderr, "err", "You must confirm destructive alias wipe by typing YES\n");
         exit(2);
       }
       if (!handle_alias_delete(argc, argv)) {
-        fprintf(stderr, "❌ Failed to delete all aliases\n");
+        lib.print.uc_fprintf(stderr, "err", "Failed to delete all aliases\n");
         exit(2);
       }
       exit(0);
@@ -229,23 +195,23 @@ int handle_alias(int argc, char *argv[]) {
 
     if (strcmp(argv[1], "--alias-action-delete-map") == 0) {
       if (argc < 4) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-action-delete-map (you must type YES)\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-action-delete-map (you must type YES)\n");
         exit(2);
       }
       if (strcmp(argv[3], "YES") != 0) {
-        fprintf(stderr, "❌ You must confirm map deletion by typing YES\n");
+        lib.print.uc_fprintf(stderr, "err", "You must confirm map deletion by typing YES\n");
         exit(2);
       }
       if (!handle_alias_action_delete_map(argc, argv)) {
-        fprintf(stderr, "❌ Failed to delete action alias map file\n");
+        lib.print.uc_fprintf(stderr, "err", "Failed to delete action alias map file\n");
         exit(2);
       }
       exit(0);
     }
 
     // end of alias hell. if you reached the bottom of the pit, your S.O.L.
-    fprintf(stderr, "❌ Unknown alias command: %s\n", argv[1]);
-    exit(2);
+    lib.print.uc_fprintf(stderr, "err", "Unknown alias command: %s\n", argv[1]);
+    return 0;
 }
 
 
@@ -257,7 +223,7 @@ static int handle_alias_user(int argc, char *argv[]) {
 
     uint32_t user_id = (uint32_t)atoi(id_str);
     if (user_id == 0) {
-        fprintf(stderr, "❌ Invalid user ID: %s\n", id_str);
+        lib.print.uc_fprintf(stderr, "err", "Invalid user ID: %s\n", id_str);
         return 0;
     }
 
@@ -270,7 +236,7 @@ static int handle_alias_user(int argc, char *argv[]) {
     if (access(path, F_OK) == 0) {
         // Alias file exists
         if (!read_alias_map(path, &aliases, &alias_count)) {
-            fprintf(stderr, "❌ Failed to read existing alias file: %s\n", path);
+            lib.print.uc_fprintf(stderr, "err", "Failed to read existing alias file: %s\n", path);
             return 0;
         }
     } else {
@@ -280,16 +246,16 @@ static int handle_alias_user(int argc, char *argv[]) {
     }
 
     if (!update_alias_entry(&aliases, &alias_count, user, host, user_id)) {
-        fprintf(stderr, "❌ Failed to update alias entry in memory\n");
+        lib.print.uc_fprintf(stderr, "err", "Failed to update alias entry in memory\n");
         return 0;
     }
 
     if (!write_alias_map(path, aliases, alias_count)) {
-        fprintf(stderr, "❌ Failed to write alias map back to disk: %s\n", path);
+        lib.print.uc_fprintf(stderr, "err", "Failed to write alias map back to disk: %s\n", path);
         return 0;
     }
 
-    printf("✅ User alias updated successfully: %s -> %s (id=%u)\n", user, host, user_id);
+    lib.print.uc_printf("ok", "User alias updated successfully: %s -> %s (id=%u)\n", user, host, user_id);
     return 1;
 }
 
@@ -302,7 +268,7 @@ static int handle_alias_action(int argc, char *argv[]) {
 
     uint32_t action_id = (uint32_t)atoi(id_str);
     if (action_id == 0) {
-        fprintf(stderr, "❌ Invalid action ID: %s\n", id_str);
+        lib.print.uc_fprintf(stderr, "err", "Invalid action ID: %s\n", id_str);
         return 0;
     }
 
@@ -315,7 +281,7 @@ static int handle_alias_action(int argc, char *argv[]) {
     if (access(path, F_OK) == 0) {
         // Alias file exists
         if (!read_alias_map(path, &aliases, &alias_count)) {
-            fprintf(stderr, "❌ Failed to read existing alias file: %s\n", path);
+            lib.print.uc_fprintf(stderr, "err", "Failed to read existing alias file: %s\n", path);
             return 0;
         }
     } else {
@@ -325,23 +291,23 @@ static int handle_alias_action(int argc, char *argv[]) {
     }
 
     if (!update_alias_entry(&aliases, &alias_count, action, host, action_id)) {
-        fprintf(stderr, "❌ Failed to update alias entry in memory\n");
+        lib.print.uc_fprintf(stderr, "err", "Failed to update alias entry in memory\n");
         return 0;
     }
 
     if (!write_alias_map(path, aliases, alias_count)) {
-        fprintf(stderr, "❌ Failed to write alias map back to disk: %s\n", path);
+        lib.print.uc_fprintf(stderr, "err", "Failed to write alias map back to disk: %s\n", path);
         return 0;
     }
 
-    printf("✅ Action alias updated successfully: %s -> %s (id=%u)\n", action, host, action_id);
+    lib.print.uc_printf("ok", "Action alias updated successfully: %s -> %s (id=%u)\n", action, host, action_id);
     return 1;
 }
 
 
 static int handle_alias_user_show(int argc, char *argv[]) {
     if (argc < 3) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-user-show\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-user-show\n");
         return 0;
     }
 
@@ -354,16 +320,16 @@ static int handle_alias_user_show(int argc, char *argv[]) {
     size_t alias_count = 0;
 
     if (access(path, F_OK) != 0) {
-        fprintf(stderr, "❌ No user aliases found for host: %s\n", host);
+        lib.print.uc_fprintf(stderr, "err", "No user aliases found for host: %s\n", host);
         return 0;
     }
 
     if (!read_alias_map(path, &aliases, &alias_count)) {
-        fprintf(stderr, "❌ Failed to read user alias map: %s\n", path);
+        lib.print.uc_fprintf(stderr, "err", "Failed to read user alias map: %s\n", path);
         return 0;
     }
 
-    printf("👥 User Aliases for %s:\n", host);
+    lib.print.uc_printf("users", "User Aliases for %s:\n", host);
     for (size_t i = 0; i < alias_count; i++) {
         printf("  - %s -> %s (id=%u)\n", aliases[i].name, aliases[i].host, aliases[i].id);
     }
@@ -378,7 +344,7 @@ static int handle_alias_user_show(int argc, char *argv[]) {
 
 static int handle_alias_user_delete(int argc, char *argv[]) {
     if (argc < 4) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-user-delete\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-user-delete\n");
         return 0;
     }
 
@@ -389,7 +355,7 @@ static int handle_alias_user_delete(int argc, char *argv[]) {
     snprintf(path, sizeof(path), "%s/.config/siglatch/%s/user.map", getenv("HOME"), host);
 
     if (access(path, F_OK) != 0) {
-        fprintf(stderr, "❌ User alias map does not exist: %s\n", path);
+        lib.print.uc_fprintf(stderr, "err", "User alias map does not exist: %s\n", path);
         return 0;
     }
 
@@ -397,7 +363,7 @@ static int handle_alias_user_delete(int argc, char *argv[]) {
     size_t alias_count = 0;
 
     if (!read_alias_map(path, &aliases, &alias_count)) {
-        fprintf(stderr, "❌ Failed to read user alias map: %s\n", path);
+        lib.print.uc_fprintf(stderr, "err", "Failed to read user alias map: %s\n", path);
         return 0;
     }
 
@@ -414,25 +380,25 @@ static int handle_alias_user_delete(int argc, char *argv[]) {
     }
 
     if (!found) {
-        fprintf(stderr, "⚠️  Alias not found for user: %s\n", user);
+        lib.print.uc_fprintf(stderr, "warn", "Alias not found for user: %s\n", user);
         free(aliases);
         return 0;
     }
 
     if (!write_alias_map(path, aliases, new_count)) {
-        fprintf(stderr, "❌ Failed to write updated alias map after deletion\n");
+        lib.print.uc_fprintf(stderr, "err", "Failed to write updated alias map after deletion\n");
         free(aliases);
         return 0;
     }
 
-    printf("🗑️  Deleted user alias: %s -> %s\n", user, host);
+    lib.print.uc_printf("del", "Deleted user alias: %s -> %s\n", user, host);
     free(aliases);
     return 1;
 }
 
 static int handle_alias_action_show(int argc, char *argv[]) {
     if (argc < 3) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-action-show\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-action-show\n");
         return 0;
     }
 
@@ -445,16 +411,16 @@ static int handle_alias_action_show(int argc, char *argv[]) {
     size_t alias_count = 0;
 
     if (access(path, F_OK) != 0) {
-        fprintf(stderr, "❌ No action aliases found for host: %s\n", host);
+        lib.print.uc_fprintf(stderr, "err", "No action aliases found for host: %s\n", host);
         return 0;
     }
 
     if (!read_alias_map(path, &aliases, &alias_count)) {
-        fprintf(stderr, "❌ Failed to read action alias map: %s\n", path);
+        lib.print.uc_fprintf(stderr, "err", "Failed to read action alias map: %s\n", path);
         return 0;
     }
 
-    printf("🎯 Action Aliases for %s:\n", host);
+    lib.print.uc_printf("target", "Action Aliases for %s:\n", host);
     for (size_t i = 0; i < alias_count; i++) {
         printf("  - %s -> %s (id=%u)\n", aliases[i].name, aliases[i].host, aliases[i].id);
     }
@@ -470,7 +436,7 @@ static int handle_alias_action_show(int argc, char *argv[]) {
 
 static int handle_alias_action_delete(int argc, char *argv[]) {
     if (argc < 4) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-action-delete\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-action-delete\n");
         return 0;
     }
 
@@ -481,7 +447,7 @@ static int handle_alias_action_delete(int argc, char *argv[]) {
     snprintf(path, sizeof(path), "%s/.config/siglatch/%s/action.map", getenv("HOME"), host);
 
     if (access(path, F_OK) != 0) {
-        fprintf(stderr, "❌ Action alias map does not exist: %s\n", path);
+        lib.print.uc_fprintf(stderr, "err", "Action alias map does not exist: %s\n", path);
         return 0;
     }
 
@@ -489,7 +455,7 @@ static int handle_alias_action_delete(int argc, char *argv[]) {
     size_t alias_count = 0;
 
     if (!read_alias_map(path, &aliases, &alias_count)) {
-        fprintf(stderr, "❌ Failed to read action alias map: %s\n", path);
+        lib.print.uc_fprintf(stderr, "err", "Failed to read action alias map: %s\n", path);
         return 0;
     }
 
@@ -506,18 +472,18 @@ static int handle_alias_action_delete(int argc, char *argv[]) {
     }
 
     if (!found) {
-        fprintf(stderr, "⚠️  Alias not found for action: %s\n", action);
+        lib.print.uc_fprintf(stderr, "warn", "Alias not found for action: %s\n", action);
         free(aliases);
         return 0;
     }
 
     if (!write_alias_map(path, aliases, new_count)) {
-        fprintf(stderr, "❌ Failed to write updated alias map after deletion\n");
+        lib.print.uc_fprintf(stderr, "err", "Failed to write updated alias map after deletion\n");
         free(aliases);
         return 0;
     }
 
-    printf("🗑️  Deleted action alias: %s -> %s\n", action, host);
+    lib.print.uc_printf("del", "Deleted action alias: %s -> %s\n", action, host);
     free(aliases);
     return 1;
 }
@@ -529,7 +495,7 @@ static int handle_alias_action_show_all(int argc, char *argv[]) {
 
     const char *home = getenv("HOME");
     if (!home) {
-        fprintf(stderr, "❌ HOME environment variable not set\n");
+        lib.print.uc_fprintf(stderr, "err", "HOME environment variable not set\n");
         return 0;
     }
 
@@ -538,7 +504,7 @@ static int handle_alias_action_show_all(int argc, char *argv[]) {
 
     DIR *dir = opendir(base_path);
     if (!dir) {
-        fprintf(stderr, "❌ Failed to open siglatch config directory: %s\n", base_path);
+        lib.print.uc_fprintf(stderr, "err", "Failed to open siglatch config directory: %s\n", base_path);
         return 0;
     }
 
@@ -564,14 +530,14 @@ static int handle_alias_action_show_all(int argc, char *argv[]) {
 
         printf("\n");
         if (!handle_alias_action_show(3, fake_argv)) {
-            fprintf(stderr, "⚠️  Failed to show action aliases for host: %s\n", name);
+            lib.print.uc_fprintf(stderr, "warn", "Failed to show action aliases for host: %s\n", name);
         }
     }
 
     closedir(dir);
 
     if (!found_any) {
-        printf("⚠️  No hosts found under: %s\n", base_path);
+        lib.print.uc_printf("warn", "No hosts found under: %s\n", base_path);
     }
 
     return 1;
@@ -583,7 +549,7 @@ static int handle_alias_user_show_all(int argc, char *argv[]) {
 
     const char *home = getenv("HOME");
     if (!home) {
-        fprintf(stderr, "❌ HOME environment variable not set\n");
+        lib.print.uc_fprintf(stderr, "err", "HOME environment variable not set\n");
         return 0;
     }
 
@@ -592,7 +558,7 @@ static int handle_alias_user_show_all(int argc, char *argv[]) {
 
     DIR *dir = opendir(base_path);
     if (!dir) {
-        fprintf(stderr, "❌ Failed to open siglatch config directory: %s\n", base_path);
+        lib.print.uc_fprintf(stderr, "err", "Failed to open siglatch config directory: %s\n", base_path);
         return 0;
     }
 
@@ -618,14 +584,14 @@ static int handle_alias_user_show_all(int argc, char *argv[]) {
 
         printf("\n");
         if (!handle_alias_user_show(3, fake_argv)) {
-            fprintf(stderr, "⚠️  Failed to show user aliases for host: %s\n", name);
+            lib.print.uc_fprintf(stderr, "warn", "Failed to show user aliases for host: %s\n", name);
         }
     }
 
     closedir(dir);
 
     if (!found_any) {
-        printf("⚠️  No hosts found under: %s\n", base_path);
+        lib.print.uc_printf("warn", "No hosts found under: %s\n", base_path);
     }
 
     return 1;
@@ -634,7 +600,7 @@ static int handle_alias_user_show_all(int argc, char *argv[]) {
 
 static int handle_alias_show(int argc, char *argv[]) {
     if (argc < 3) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-show\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-show\n");
         return 0;
     }
 
@@ -646,12 +612,12 @@ static int handle_alias_show(int argc, char *argv[]) {
 
     printf("\n");
     if (!handle_alias_user_show(3, fake_argv_user)) {
-        fprintf(stderr, "⚠️  Failed to show user aliases for host: %s\n", host);
+        lib.print.uc_fprintf(stderr, "warn", "Failed to show user aliases for host: %s\n", host);
     }
 
     printf("\n");
     if (!handle_alias_action_show(3, fake_argv_action)) {
-        fprintf(stderr, "⚠️  Failed to show action aliases for host: %s\n", host);
+        lib.print.uc_fprintf(stderr, "warn", "Failed to show action aliases for host: %s\n", host);
     }
 
     return 1;
@@ -662,7 +628,7 @@ static int handle_alias_show(int argc, char *argv[]) {
 
 static int handle_alias_delete(int argc, char *argv[]) {
     if (argc < 4) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-delete (missing YES confirmation)\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-delete (missing YES confirmation)\n");
         return 0;
     }
 
@@ -670,7 +636,7 @@ static int handle_alias_delete(int argc, char *argv[]) {
     const char *confirmation = argv[3];
 
     if (strcmp(confirmation, "YES") != 0) {
-        fprintf(stderr, "❌ You must confirm alias wipe by typing YES\n");
+        lib.print.uc_fprintf(stderr, "err", "You must confirm alias wipe by typing YES\n");
         return 0;
     }
 
@@ -688,24 +654,24 @@ static int handle_alias_delete(int argc, char *argv[]) {
 
     if (access(user_map_path, F_OK) == 0) {
         if (unlink(user_map_path) != 0) {
-            fprintf(stderr, "❌ Failed to delete user alias file: %s (%s)\n", user_map_path, strerror(errno));
+            lib.print.uc_fprintf(stderr, "err", "Failed to delete user alias file: %s (%s)\n", user_map_path, strerror(errno));
             success = 0;
         } else {
-            printf("🗑️  Deleted user alias file: %s\n", user_map_path);
+            lib.print.uc_printf("del", "Deleted user alias file: %s\n", user_map_path);
         }
     } else {
-        printf("⚠️  User alias file does not exist: %s\n", user_map_path);
+        lib.print.uc_printf("warn", "User alias file does not exist: %s\n", user_map_path);
     }
 
     if (access(action_map_path, F_OK) == 0) {
         if (unlink(action_map_path) != 0) {
-            fprintf(stderr, "❌ Failed to delete action alias file: %s (%s)\n", action_map_path, strerror(errno));
+            lib.print.uc_fprintf(stderr, "err", "Failed to delete action alias file: %s (%s)\n", action_map_path, strerror(errno));
             success = 0;
         } else {
-            printf("🗑️  Deleted action alias file: %s\n", action_map_path);
+            lib.print.uc_printf("del", "Deleted action alias file: %s\n", action_map_path);
         }
     } else {
-        printf("⚠️  Action alias file does not exist: %s\n", action_map_path);
+        lib.print.uc_printf("warn", "Action alias file does not exist: %s\n", action_map_path);
     }
 
     return success;
@@ -714,7 +680,7 @@ static int handle_alias_delete(int argc, char *argv[]) {
 
 static int handle_alias_user_delete_map(int argc, char *argv[]) {
     if (argc < 4) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-user-delete-map\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-user-delete-map\n");
         return 0;
     }
 
@@ -722,7 +688,7 @@ static int handle_alias_user_delete_map(int argc, char *argv[]) {
     const char *confirmation = argv[3];
 
     if (strcmp(confirmation, "YES") != 0) {
-        fprintf(stderr, "❌ You must confirm deletion by typing YES\n");
+        lib.print.uc_fprintf(stderr, "err", "You must confirm deletion by typing YES\n");
         return 0;
     }
 
@@ -730,22 +696,22 @@ static int handle_alias_user_delete_map(int argc, char *argv[]) {
     snprintf(path, sizeof(path), "%s/.config/siglatch/%s/user.map", getenv("HOME"), host);
 
     if (access(path, F_OK) != 0) {
-        fprintf(stderr, "⚠️  User map file does not exist: %s\n", path);
+        lib.print.uc_fprintf(stderr, "warn", "User map file does not exist: %s\n", path);
         return 0;
     }
 
     if (unlink(path) != 0) {
-        fprintf(stderr, "❌ Failed to delete user map file: %s (%s)\n", path, strerror(errno));
+        lib.print.uc_fprintf(stderr, "err", "Failed to delete user map file: %s (%s)\n", path, strerror(errno));
         return 0;
     }
 
-    printf("🗑️  Deleted user map file for host: %s\n", host);
+    lib.print.uc_printf("del", "Deleted user map file for host: %s\n", host);
     return 1;
 }
 
 static int handle_alias_action_delete_map(int argc, char *argv[]) {
     if (argc < 4) {
-        fprintf(stderr, "❌ Not enough arguments for --alias-action-delete-map\n");
+        lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-action-delete-map\n");
         return 0;
     }
 
@@ -753,7 +719,7 @@ static int handle_alias_action_delete_map(int argc, char *argv[]) {
     const char *confirmation = argv[3];
 
     if (strcmp(confirmation, "YES") != 0) {
-        fprintf(stderr, "❌ You must confirm deletion by typing YES\n");
+        lib.print.uc_fprintf(stderr, "err", "You must confirm deletion by typing YES\n");
         return 0;
     }
 
@@ -761,15 +727,15 @@ static int handle_alias_action_delete_map(int argc, char *argv[]) {
     snprintf(path, sizeof(path), "%s/.config/siglatch/%s/action.map", getenv("HOME"), host);
 
     if (access(path, F_OK) != 0) {
-        fprintf(stderr, "⚠️  Action map file does not exist: %s\n", path);
+        lib.print.uc_fprintf(stderr, "warn", "Action map file does not exist: %s\n", path);
         return 0;
     }
 
     if (unlink(path) != 0) {
-        fprintf(stderr, "❌ Failed to delete action map file: %s (%s)\n", path, strerror(errno));
+        lib.print.uc_fprintf(stderr, "err", "Failed to delete action map file: %s (%s)\n", path, strerror(errno));
         return 0;
     }
 
-    printf("🗑️  Deleted action map file for host: %s\n", host);
+    lib.print.uc_printf("del", "Deleted action map file for host: %s\n", host);
     return 1;
 }

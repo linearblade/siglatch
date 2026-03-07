@@ -19,7 +19,7 @@
 /**
  * Initialize a SiglatchOpenSSLSession for decryption on the server.
  * This sets up the session with the server's private key only.
- * No HMAC or user-specific keys are attached — this must be done per packet if needed.
+ * No HMAC or user-specific keys are attached - this must be done per packet if needed.
  *
  * @param cfg     Pointer to global server config (must contain valid master_privkey)
  * @param session Pointer to a session to initialize
@@ -27,17 +27,17 @@
  */
 int session_init_for_server(const siglatch_config *cfg, SiglatchOpenSSLSession *session) {
     if (!session) {
-        lib.log.console("❌ NULL session pointer passed to server OpenSSL initializer\n");
+        lib.log.console("NULL session pointer passed to server OpenSSL initializer\n");
         return 0;
     }
 
-    if (!cfg || !cfg->current_server->priv_key) {
-        lib.log.console("❌ Invalid configuration passed — missing master private key\n");
+    if (!cfg || !cfg->current_server || !cfg->current_server->priv_key) {
+        lib.log.console("Invalid configuration passed - missing master private key\n");
         return 0;
     }
 
     if (!lib.openssl.session_init(session)) {
-        lib.log.console("❌ Failed to initialize OpenSSL session\n");
+        lib.log.console("Failed to initialize OpenSSL session\n");
         return 0;
     }
 
@@ -55,7 +55,7 @@ int session_init_for_server(const siglatch_config *cfg, SiglatchOpenSSLSession *
  * It copies the user's normalized HMAC key into the session and assigns the user's
  * preloaded RSA public key for future signature verification or encryption.
  *
- * The session does not take ownership of the user's public key — it merely references it.
+ * The session does not take ownership of the user's public key - it merely references it.
  * Key memory is managed by the user registry (cfg->users[]), and should not be freed by the session.
  *
  * @param session Pointer to an initialized SiglatchOpenSSLSession.
@@ -64,7 +64,7 @@ int session_init_for_server(const siglatch_config *cfg, SiglatchOpenSSLSession *
  */
 int session_assign_to_user(SiglatchOpenSSLSession *session, const siglatch_user *user) {
   if (!session || !user) {
-    LOGE("❌ session_assign_to_user: NULL session or user pointer");
+    LOGE("session_assign_to_user: NULL session or user pointer");
     return 0;
   }
 
@@ -72,10 +72,10 @@ int session_assign_to_user(SiglatchOpenSSLSession *session, const siglatch_user 
   memcpy(session->hmac_key, user->hmac_key, sizeof(session->hmac_key));
   session->hmac_key_len = 32;  // always 32 in your usage
 
-  // Assign user public key (just link it — not copied or owned)
+  // Assign user public key (just link it - not copied or owned)
   session->public_key = user->pubkey;
 
-  LOGT("🔑 Session now attached to user: %s\n", user->name);
+  LOGT("Session now attached to user: %s\n", user->name);
   return 1;
 }
 
@@ -114,11 +114,11 @@ int decrypt_knock(
         } while (0)
 
     if (!session || !session->private_key || !input || !output || !output_len) {
-        SET_ERROR_AND_GOTO(-1, "[decrypt] ❌ Invalid arguments to decrypt_knock\n");
+        SET_ERROR_AND_GOTO(-1, "[decrypt] Invalid arguments to decrypt_knock\n");
     }
 
     if (!lib.openssl.session_decrypt(session, input, input_len, output, output_len)) {
-        SET_ERROR_AND_GOTO(-2, "[decrypt] ❌ session_decrypt() failed\n");
+        SET_ERROR_AND_GOTO(-2, "[decrypt] session_decrypt() failed\n");
     }
 
     rc = 0;  // Success
@@ -127,7 +127,7 @@ cleanup:
     return rc;
 }
 
-    //LOGT("🔓 Decrypted knock: '%s'\n", output);
+    //LOGT("Decrypted knock: '%s'\n", output);
 
 /**
  * validateSignature - Verify the authenticity of a KnockPacket using the user's public key.
@@ -162,14 +162,14 @@ cleanup:
 
 int validateSignature(const SiglatchOpenSSLSession *session, const KnockPacket *pkt) {
     if (!session || !pkt) {
-        LOGE("[validateSignature] ❌ Null session or packet\n");
+        LOGE("[validateSignature] Null session or packet\n");
         return 0;
     }
 
     // 1. Generate SHA256 digest over structured fields
     uint8_t digest[32] = {0};
     if (!lib.payload_digest.generate(pkt, digest)) {
-        LOGE("[validateSignature] ❌ Failed to generate digest\n");
+        LOGE("[validateSignature] Failed to generate digest\n");
         return 0;
     }
 
@@ -178,11 +178,11 @@ int validateSignature(const SiglatchOpenSSLSession *session, const KnockPacket *
 
     // 2. Validate HMAC signature using session HMAC key
     if (!lib.payload_digest.validate(session->hmac_key, digest, pkt->hmac)) {
-        LOGW("[validateSignature] ❌ Signature mismatch for user_id %u\n", pkt->user_id);
+        LOGW("[validateSignature] Signature mismatch for user_id %u\n", pkt->user_id);
         return 0;
     }
 
-    LOGT("[validateSignature] ✅ Signature verified for user_id %u\n", pkt->user_id);
+    LOGT("[validateSignature] Signature verified for user_id %u\n", pkt->user_id);
     return 1;
 }
 
@@ -198,4 +198,3 @@ const siglatch_user *find_user_by_id(const siglatch_config *cfg, uint32_t user_i
 
     return NULL;  // Not found
 }
-

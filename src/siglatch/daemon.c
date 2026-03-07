@@ -41,11 +41,15 @@ void siglatch_daemon(siglatch_config * cfg, int sock){
 
   SiglatchOpenSSLSession session = {0};
   if (!session_init_for_server(cfg, &session)) {
-    LOGE("❌ Failed to initialize OpenSSL session for server\n");
+    LOGE("Failed to initialize OpenSSL session for server\n");
     return;
   }
 
   const siglatch_server * server_conf = lib.config.get_current_server();
+  if (!server_conf) {
+    LOGE("No current server selected; refusing to start daemon loop\n");
+    return;
+  }
   int is_encrypted = server_conf->secure;
 
   while (!should_exit) {
@@ -54,7 +58,7 @@ void siglatch_daemon(siglatch_config * cfg, int sock){
     lib.log.console("RECEIVED SOMETHING\n");
 
     // Debugging aid (optional toggle later)
-    LOGT("📩 %zd bytes from %s\n", n, ip);
+    LOGT("%zd bytes from %s\n", n, ip);
 
     uint8_t normalized_buffer[512] = {0};
     size_t  normalized_len = 0;
@@ -65,7 +69,7 @@ void siglatch_daemon(siglatch_config * cfg, int sock){
 				   normalized_buffer,
 				   &normalized_len
 				   )) {
-	// Fatal decryption error — skip packet
+	// Fatal decryption error - skip packet
 	continue;
       }
     }else {
@@ -82,12 +86,12 @@ void siglatch_daemon(siglatch_config * cfg, int sock){
     ////
 
     if (payloadRC == SL_PAYLOAD_OK) {
-      LOGT("[deserialize] ✅ Valid %s KnockPacket — User ID: %u, Action ID: %u\n",
+      LOGT("[deserialize] Valid %s KnockPacket - User ID: %u, Action ID: %u\n",
 	   is_encrypted? "encrypted" : "unencrypted", pkt.user_id, pkt.action_id);
       handle_structured_payload( &pkt, &session, ip);
       continue;
     } else {
-      LOGW("[deserialize] ❌ Error: encrypted=%d; %s\n", is_encrypted, lib.payload.deserialize_strerror(payloadRC));
+      LOGW("[deserialize] Error: encrypted=%d; %s\n", is_encrypted, lib.payload.deserialize_strerror(payloadRC));
       handle_unstructured_payload( normalized_buffer, normalized_len,   ip );
     }
   } 
@@ -97,21 +101,21 @@ void siglatch_daemon(siglatch_config * cfg, int sock){
     int payloadRC = lib.payload.deserialize(normalized_buffer, normalized_len, &pkt);
     ////
     if (payloadRC == SL_PAYLOAD_OK) {
-      LOGT("[deserialize] ✅ Valid %s KnockPacket — User ID: %u, Action ID: %u\n",
+      LOGT("[deserialize] Valid %s KnockPacket - User ID: %u, Action ID: %u\n",
 	   is_encrypted ? "encrypted" : "unencrypted", pkt.user_id, pkt.action_id);
       handle_structured_payload(cfg, &pkt, &session, ip, is_encrypted);
       continue;
     } else {
-      LOGW("[deserialize] ❌ Error: encrypted=%d; %s\n",
+      LOGW("[deserialize] Error: encrypted=%d; %s\n",
 	   is_encrypted, lib.payload.deserialize_strerror(payloadRC));
 
       if (is_encrypted == 1) {
-        LOGW("[deserialize] ⚠️ Retrying deserialization using unencrypted fallback path...\n");
+        LOGW("[deserialize] Retrying deserialization using unencrypted fallback path...\n");
 
         pkt = (KnockPacket){0};  // Reset packet
         payloadRC = lib.payload.deserialize((const uint8_t *)buffer, n, &pkt);
         if (payloadRC == SL_PAYLOAD_OK) {
-	  LOGT("[deserialize] ✅ Valid unencrypted KnockPacket — User ID: %u, Action ID: %u\n",
+	  LOGT("[deserialize] Valid unencrypted KnockPacket - User ID: %u, Action ID: %u\n",
 	       pkt.user_id, pkt.action_id);
 	  handle_structured_payload(cfg, &pkt, &session, ip, 0);  // Force plaintext
 	  continue;
@@ -154,7 +158,7 @@ ssize_t receiveValidData(int sock, char *buffer, size_t bufsize, struct sockaddr
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       return -1;  // Timed out
     }
-    LOGPERR("❌ recvfrom failed");
+    LOGPERR("recvfrom failed");
     LOGE("[%s] recvfrom error (client maybe unreachable)\n", timestr);
     return -1;
   }
@@ -163,11 +167,11 @@ ssize_t receiveValidData(int sock, char *buffer, size_t bufsize, struct sockaddr
   switch (rv) {
   case  1:break;
   case -2:
-    LOGE("☢️ FATAL: ip_out was NULL in receiveValidData() — cannot record client address");
+    LOGE("FATAL: ip_out was NULL in receiveValidData() - cannot record client address");
     exit(SL_EXIT_ERR_NETWORK_FATAL);  // Or #define 3
     break;
   case -1: 
-    LOGE("☢️ FATAL: client was NULL in receiveValidData() — cannot record client address");
+    LOGE("FATAL: client was NULL in receiveValidData() - cannot record client address");
     exit(SL_EXIT_ERR_NETWORK_FATAL);  // Or #define 3
     break;
   default:
@@ -176,12 +180,12 @@ ssize_t receiveValidData(int sock, char *buffer, size_t bufsize, struct sockaddr
   };
 
   if (n >= bufsize) {
-    LOGE("⚠️  Dropping oversized packet (%zd bytes)\n", n);
+    LOGE("Dropping oversized packet (%zd bytes)\n", n);
     return -1;
   }
 
   if (++packet_count % 100 == 0) {
-    LOGD("[%s] ✅ Processed %lu candidate packets so far\n", timestr, packet_count);
+    LOGD("[%s] Processed %lu candidate packets so far\n", timestr, packet_count);
   }
 
   return n;
@@ -216,7 +220,7 @@ int normalizeInboundPayload(
         return 0;
     }
 
-    LOGT("🔐 Attempting to decrypt incoming packet...\n");
+    LOGT("Attempting to decrypt incoming packet...\n");
 
     int rc = lib.openssl.session_decrypt(
         session,
@@ -235,12 +239,12 @@ int normalizeInboundPayload(
         ? lib.openssl.session_decrypt_strerror(rc)
         : "Unknown decrypt error";
 
-    LOGE("[decrypt] ❌ Decryption failed (rc=%d): %s\n", rc, msg);
+    LOGE("[decrypt] Decryption failed (rc=%d): %s\n", rc, msg);
 
     //works fine but no longer try to auto nego encryption status. server determines encrypted or not
     /*
     if (unrecoverable_decrypt_error(rc)) {
-      LOGW("[decrypt] ❌ Fatal OpenSSL error. Dropping packet.\n");
+      LOGW("[decrypt] Fatal OpenSSL error. Dropping packet.\n");
       return 0;
     }
     */
@@ -254,7 +258,7 @@ int normalizeInboundPayload(
     memcpy(normalized_out, input, input_len);
     *normalized_len = input_len;
 
-    LOGW("[decrypt] ⚠️ Assuming plaintext fallback (%zu bytes)\n", *normalized_len);
+    LOGW("[decrypt] Assuming plaintext fallback (%zu bytes)\n", *normalized_len);
     */
     return 1;
 }
@@ -263,7 +267,7 @@ int normalizeInboundPayload(
  * @brief Determines if a given decryption error code is fatal.
  *
  * Fatal errors indicate a failure in OpenSSL setup, argument errors,
- * or broken context state — not recoverable or fallback-friendly.
+ * or broken context state - not recoverable or fallback-friendly.
  *
  * @param rc The return code from session_decrypt().
  * @return 1 if fatal (should drop packet); 0 if recoverable (e.g. unencrypted input).

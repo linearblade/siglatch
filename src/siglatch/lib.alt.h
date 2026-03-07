@@ -26,7 +26,7 @@ typedef struct {
 
 extern Lib lib;
 
-void init_lib(void);       // 🚀 Initialize all subsystems
-void shutdown_lib(void);   // 🔻 Shutdown in reverse order
+void init_lib(void);       //  Initialize all subsystems
+void shutdown_lib(void);   //  Shutdown in reverse order
 
 #endif // SIGLATCH_LIB_H

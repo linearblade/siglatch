@@ -14,7 +14,6 @@
 #include "start_opts.h"
 #include "help.h"
 #include "lib.h"
-#include "../stdlib/output.h"
 
 int start_opts(int argc, char *argv[], siglatch_config *cfg) {
     int show_dump = 0;
@@ -37,15 +36,17 @@ int start_opts(int argc, char *argv[], siglatch_config *cfg) {
                 return 0;
             }
 
-            int mode = sl_output_parse_mode(argv[i + 1]);
-            if (!mode) {
-                LOGE("❌ Invalid --output-mode '%s' (expected 'unicode' or 'ascii')\n", argv[i + 1]);
-                shutdown_bad_opts(cfg, argc, argv);
-                return 0;
-            }
+            {
+                int mode = lib.print.output_parse_mode(argv[i + 1]);
+                if (!mode) {
+                    LOGE("Invalid --output-mode '%s' (expected 'unicode' or 'ascii')\n", argv[i + 1]);
+                    shutdown_bad_opts(cfg, argc, argv);
+                    return 0;
+                }
 
-            sl_output_set_mode(mode);
-            i++;  // consume mode argument
+                lib.print.output_set_mode(mode);
+            }
+            i++;
             continue;
         }
 

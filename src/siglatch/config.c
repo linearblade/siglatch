@@ -12,7 +12,6 @@
 #include <openssl/rsa.h>
 #include "config.h"
 #include "lib.h"
-#include "../stdlib/output.h"
 
 #define TIMEOUT_SEC 5
 
@@ -104,12 +103,12 @@ static int config_load(const char *path) {
 }
 
 static int parse_output_mode_key(const char *value, const char *scope_label) {
-  int mode = sl_output_parse_mode(value);
+  int mode = lib.print.output_parse_mode(value);
   if (mode) {
     return mode;
   }
 
-  LOGW("⚠️  Invalid output_mode '%s' in %s (expected 'unicode' or 'ascii')\n",
+  LOGW("Invalid output_mode '%s' in %s (expected 'unicode' or 'ascii')\n",
        value ? value : "(null)",
        scope_label ? scope_label : "config");
   return 0;
@@ -406,7 +405,7 @@ static siglatch_config *_load_config(const char *path) {
       } else if (strcmp(key, "log_file") == 0) {
 	lib.str.lcpy(config->log_file, val, PATH_MAX);
       } else if (strcmp(key, "output_mode") == 0) {
-        config->output_mode = parse_output_mode_key(val, "[global]");
+	config->output_mode = parse_output_mode_key(val, "[global]");
       }
       break;
     case CFG_BLOCK_ACTION:
@@ -460,14 +459,14 @@ static siglatch_config *_load_config(const char *path) {
 	lib.str.lcpy(current_server->log_file, val, PATH_MAX);
       } else if (strcmp(key, "port") == 0) {
 	current_server->port = atoi(val);
-	      } else if (strcmp(key, "secure") == 0) {
-		current_server->secure = (strcmp(val, "yes") == 0 || strcmp(val, "1") == 0);
-	      } else if (strcmp(key, "logging") == 0) {
-		current_server->logging = (strcmp(val, "yes") == 0 || strcmp(val, "1") == 0);
-              } else if (strcmp(key, "output_mode") == 0) {
-                current_server->output_mode = parse_output_mode_key(val, current_server->name);
-	      } else if (strcmp(key, "actions") == 0) {
-		char *tok = strtok(val, ",");
+      } else if (strcmp(key, "secure") == 0) {
+	current_server->secure = (strcmp(val, "yes") == 0 || strcmp(val, "1") == 0);
+      } else if (strcmp(key, "logging") == 0) {
+	current_server->logging = (strcmp(val, "yes") == 0 || strcmp(val, "1") == 0);
+      } else if (strcmp(key, "output_mode") == 0) {
+	current_server->output_mode = parse_output_mode_key(val, current_server->name);
+      } else if (strcmp(key, "actions") == 0) {
+	char *tok = strtok(val, ",");
 	while (tok && current_server->action_count < MAX_ACTIONS) {
 	  lib.str.lcpy(current_server->actions[current_server->action_count++],
 		  trim(tok), MAX_ACTION_NAME);
@@ -481,7 +480,7 @@ static siglatch_config *_load_config(const char *path) {
 	  tok = strtok(NULL, ",");
 	}
       }else {
-	LOGW("⚠️  Unknown key in [server:%s]: %s\n", current_server->name, key);
+	LOGW("Unknown key in [server:%s]: %s\n", current_server->name, key);
       }
       break;
       
@@ -528,18 +527,18 @@ static siglatch_config *_load_config(const char *path) {
   }
 
   if (!load_user_keys(config)) {
-    LOGE("❌ Failed to load user keys\n" );
+    LOGE("Failed to load user keys\n" );
     config_free(config);
     return NULL;
   }
   if (!load_server_keys(config)) {
-    LOGE("❌ Failed to server  keys\n" );
+    LOGE("Failed to server  keys\n" );
     config_free(config);
     return NULL;
   }
 
   if (!load_user_hmac_keys(config)) {
-    LOGE("❌ Failed to load user HMAC keys\n" );
+    LOGE("Failed to load user HMAC keys\n" );
     config_free(config);
     return NULL;
   }
@@ -554,11 +553,11 @@ static siglatch_config *_load_config(const char *path) {
 
 static int load_master_key(siglatch_config *cfg){
   if (cfg->priv_key_path[0] == '\0' ){
-    LOGD("✅ default master private key (EVP) skipped in mater config\n");
+    LOGD("default master private key (EVP) skipped in mater config\n");
   }else {
     FILE *fp = fopen(cfg->priv_key_path, "r");
     if (!fp) {
-      LOGE( "❌ Could not open master private key: %s\n", cfg->priv_key_path);
+      LOGE( "Could not open master private key: %s\n", cfg->priv_key_path);
       return 0;
     }
 
@@ -566,7 +565,7 @@ static int load_master_key(siglatch_config *cfg){
     fclose(fp);
 
     if (!cfg->master_privkey) {
-      LOGE( "❌ Invalid private key format in: %s\n", cfg->priv_key_path);
+      LOGE( "Invalid private key format in: %s\n", cfg->priv_key_path);
       return 0;
     }
   }
@@ -581,7 +580,7 @@ static int load_user_keys(siglatch_config *cfg) {
 
         FILE *fp = fopen(u->key_file, "r");
         if (!fp) {
-            LOGE( "❌ Failed to open key file for user '%s': %s\n", u->name, u->key_file);
+            LOGE( "Failed to open key file for user '%s': %s\n", u->name, u->key_file);
             return 0;
         }
 
@@ -589,12 +588,12 @@ static int load_user_keys(siglatch_config *cfg) {
         fclose(fp);
 
         if (!pkey) {
-            LOGE( "❌ Invalid public key for user '%s' (%s)\n", u->name, u->key_file);
+            LOGE( "Invalid public key for user '%s' (%s)\n", u->name, u->key_file);
             return 0;
         }
 
         if (EVP_PKEY_base_id(pkey) != EVP_PKEY_RSA) {
-            LOGE( "❌ Public key for user '%s' is not RSA\n", u->name);
+            LOGE( "Public key for user '%s' is not RSA\n", u->name);
             EVP_PKEY_free(pkey);
             return 0;
         }
@@ -604,7 +603,7 @@ static int load_user_keys(siglatch_config *cfg) {
 	//if your just fucking around and testing, uncomment.
         //EVP_PKEY_free(pkey);
 
-        LOGD("✅ Loaded and validated RSA public key for user '%s' (EVP)\n", u->name);
+        LOGD("Loaded and validated RSA public key for user '%s' (EVP)\n", u->name);
     }
     return 1;
 }
@@ -618,23 +617,23 @@ static int load_server_keys(siglatch_config *cfg) {
 	// Log file fallback
         if (s->log_file[0] == '\0' && cfg->log_file[0] != '\0') {
             lib.str.lcpy(s->log_file, cfg->log_file, PATH_MAX);
-            LOGW("⚠️  Using fallback log file for server [%s]: %s\n", s->name, s->log_file);
+            LOGW("Using fallback log file for server [%s]: %s\n", s->name, s->log_file);
         }
 
 	// Optional: Emit this info even for insecure/disabled if needed:
         if (s->logging) {
-	  LOGD("📝 Logging enabled for server [%s] to: %s\n", s->name,
+	  LOGD("Logging enabled for server [%s] to: %s\n", s->name,
 	       s->log_file[0] ? s->log_file : "(none)");
         }
 	
         if (s->priv_key_path[0] == '\0') {
             s->key_owned = 0;
             s->priv_key = cfg->master_privkey;
-	    LOGW("⚠️  Using fallback master key for server [%s]\n", s->name);
+	    LOGW("Using fallback master key for server [%s]\n", s->name);
         } else {
             FILE *fp = fopen(s->priv_key_path, "r");
             if (!fp) {
-                LOGE("❌ Could not open private key for server [%s]: %s\n", s->name, s->priv_key_path);
+                LOGE("Could not open private key for server [%s]: %s\n", s->name, s->priv_key_path);
                 return 0;
             }
 
@@ -642,14 +641,14 @@ static int load_server_keys(siglatch_config *cfg) {
             fclose(fp);
 	    
             if (!s->priv_key) {
-                LOGE("❌ Invalid private key format for server [%s]: %s\n", s->name, s->priv_key_path);
+                LOGE("Invalid private key format for server [%s]: %s\n", s->name, s->priv_key_path);
                 return 0;
             }
 
             s->key_owned = 1;  // we now own this key and must free it
         }
 
-        LOGD("✅ Loaded RSA private key for server [%s] (EVP)\n", s->name);
+        LOGD("Loaded RSA private key for server [%s] (EVP)\n", s->name);
     }
     return 1;
 }
@@ -661,7 +660,7 @@ static int load_user_hmac_keys(siglatch_config *cfg) {
 
         FILE *fp = fopen(u->hmac_file, "rb");
         if (!fp) {
-            LOGE("❌ Failed to open HMAC key file for user '%s': %s\n", u->name, u->hmac_file);
+            LOGE("Failed to open HMAC key file for user '%s': %s\n", u->name, u->hmac_file);
             return 0;
         }
 
@@ -671,22 +670,22 @@ static int load_user_hmac_keys(siglatch_config *cfg) {
         fclose(fp);
 
         if (bytes_read != 32 && bytes_read == sizeof(file_buf) ) {
-            LOGE("❌ Invalid HMAC key file size for user '%s' (%s): read %zu bytes\n", u->name, u->hmac_file, bytes_read);
+            LOGE("Invalid HMAC key file size for user '%s' (%s): read %zu bytes\n", u->name, u->hmac_file, bytes_read);
             return 0;
         }
 
 	/*
 	if (!lib.openssl.session_readHMAC(session, opts->hmac_key_path)) {
-	  lib.log.console("❌ Failed to load HMAC key!\n");
+	  lib.log.console("Failed to load HMAC key!\n");
 	  return 0;
 	  }*/
         // Normalize the key (binary or hex) into user struct
         if (!lib.hmac.normalize(file_buf, bytes_read, u->hmac_key)) {
-            LOGE("❌ Failed to normalize HMAC key for user '%s'\n", u->name);
+            LOGE("Failed to normalize HMAC key for user '%s'\n", u->name);
             return 0;
         }
 
-        LOGD("✅ Loaded and normalized HMAC key for user '%s'\n", u->name);
+        LOGD("Loaded and normalized HMAC key for user '%s'\n", u->name);
     }
     return 1;
 }
@@ -734,7 +733,7 @@ static void config_free(siglatch_config *config) {
 
 static void config_dump(){
   if (!_config){
-    lib.log.console("❌ No config to dump.\n");
+    lib.log.console("No config to dump.\n");
     return;
   }
   config_dump_ptr(_config);
@@ -742,20 +741,20 @@ static void config_dump(){
 
 static void config_dump_ptr(const siglatch_config *cfg) { 
   if (!cfg){
-    lib.log.console("❌ No config to dump.\n");
+    lib.log.console("No config to dump.\n");
     return;
   }
 
-    lib.log.console("🔐 siglatch config dump:\n\n");
+    lib.log.console("siglatch config dump:\n\n");
 
     lib.log.console("  Master log file: %s\n", cfg->log_file);
     lib.log.console("  Private key path: %s\n", cfg->priv_key_path);
     lib.log.console("  Output mode: %s\n",
-                    cfg->output_mode ? sl_output_mode_name(cfg->output_mode) : "(unset)");
+                    cfg->output_mode ? lib.print.output_mode_name(cfg->output_mode) : "(unset)");
     if (cfg->master_privkey) {
-        lib.log.console("  ✅ Master private key loaded from %s\n", cfg->priv_key_path);
+        lib.log.console("  Master private key loaded from %s\n", cfg->priv_key_path);
     } else {
-        lib.log.console("  ❌ Master private key not loaded\n");
+        lib.log.console("  Master private key not loaded\n");
     }
 
     lib.log.console("\n  Actions (%d):\n", cfg->action_count);
@@ -778,9 +777,9 @@ static void config_dump_ptr(const siglatch_config *cfg) {
         lib.log.console("      Enabled : %s\n", u->enabled ? "yes" : "no");
         lib.log.console("      Key file: %s\n", u->key_file);
         if (u->pubkey) {
-            lib.log.console("      ✅ User public key loaded from %s\n", u->key_file);
+            lib.log.console("      User public key loaded from %s\n", u->key_file);
         } else {
-            lib.log.console("      ❌ User public key not loaded\n");
+            lib.log.console("      User public key not loaded\n");
         }
 
         lib.log.console("      HMAC file: %s\n", u->hmac_file);
@@ -792,9 +791,9 @@ static void config_dump_ptr(const siglatch_config *cfg) {
             }
         }
         if (!all_zero) {
-            lib.log.console("      ✅ HMAC key loaded from %s\n", u->hmac_file);
+            lib.log.console("      HMAC key loaded from %s\n", u->hmac_file);
         } else {
-            lib.log.console("      ❌ HMAC key not loaded\n");
+            lib.log.console("      HMAC key not loaded\n");
         }
 
         lib.log.console("      Actions :\n");
@@ -813,13 +812,13 @@ static void config_dump_ptr(const siglatch_config *cfg) {
         lib.log.console("      Port     : %d\n", s->port);
         lib.log.console("      Log file : %s\n", s->log_file[0] ? s->log_file : "(none)");
         lib.log.console("      Output Mode : %s\n",
-                        s->output_mode ? sl_output_mode_name(s->output_mode) : "(unset)");
+                        s->output_mode ? lib.print.output_mode_name(s->output_mode) : "(unset)");
 
         lib.log.console("      Private key: %s\n", s->priv_key_path[0] ? s->priv_key_path : "(inherited)");
         if (s->priv_key) {
-            lib.log.console("      ✅ Private key loaded (owned: %s)\n", s->key_owned ? "yes" : "no");
+            lib.log.console("      Private key loaded (owned: %s)\n", s->key_owned ? "yes" : "no");
         } else {
-            lib.log.console("      ❌ Private key not loaded\n");
+            lib.log.console("      Private key not loaded\n");
         }
 
         lib.log.console("      Actions:\n");

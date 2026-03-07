@@ -42,6 +42,10 @@ int payload_generateDigest(const KnockPacket *pkt, uint8_t *out_digest) {
         return 0;
     }
 
+    if (pkt->payload_len > sizeof(pkt->payload)) {
+        return 0;
+    }
+
     DigestItem items[] = {
         { &pkt->version,    sizeof(pkt->version)    },
         { &pkt->timestamp,  sizeof(pkt->timestamp)  },
@@ -59,6 +63,10 @@ int payload_generateDigest(const KnockPacket *pkt, uint8_t *out_digest) {
 
 int payload_generateDigest_oneshot(const KnockPacket *pkt, uint8_t *out_digest) {
     if (!pkt || !out_digest) {
+        return 0;
+    }
+
+    if (pkt->payload_len > sizeof(pkt->payload)) {
         return 0;
     }
 

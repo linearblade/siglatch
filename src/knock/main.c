@@ -14,7 +14,6 @@
 #include "../stdlib/openssl_session.h"
 #include "parse_opts.h"
 #include "print_help.h"
-#include "../stdlib/output.h"
 
 #define PORT 50000
 #define TARGET "127.0.0.1"
@@ -40,21 +39,30 @@ int main(int argc, char *argv[]) {
 
   init_lib();
 
-  const char *env_output_value = getenv("SIGLATCH_OUTPUT_MODE");
-  int env_output_mode = sl_output_parse_mode(env_output_value);
-  if (env_output_mode) {
-    sl_output_set_mode(env_output_mode);
-  } else if (env_output_value && *env_output_value) {
-    sl_fprintf(stderr,
-               "❌ Invalid SIGLATCH_OUTPUT_MODE '%s' (expected 'unicode' or 'ascii')\n",
-               env_output_value);
+  {
+    int config_output_mode = opts_load_output_mode_default();
+    if (config_output_mode) {
+      lib.print.output_set_mode(config_output_mode);
+    }
+  }
+
+  {
+    const char *env_output_value = getenv("SIGLATCH_OUTPUT_MODE");
+    int env_output_mode = lib.print.output_parse_mode(env_output_value);
+    if (env_output_mode) {
+      lib.print.output_set_mode(env_output_mode);
+    } else if (env_output_value && *env_output_value) {
+      fprintf(stderr,
+              "Invalid SIGLATCH_OUTPUT_MODE '%s' (expected 'unicode' or 'ascii')\n",
+              env_output_value);
+    }
   }
 
   if (!parseOpts(argc, argv, &opts) ){
     if (argc < 2 || (argc > 1 && strncmp(argv[1], "--help", 6) == 0)) {
       printHelp();
     } else {
-      sl_fprintf(stderr, "Use --help for usage.\n");
+      fprintf(stderr, "Use --help for usage.\n");
     }
     goto cleanup;
   }
@@ -95,7 +103,7 @@ int transmit(Opts *opts){
   SiglatchOpenSSLSession session = {0};
   do {
 
-    // -- 👇 Here: Build KnockPacket --
+    // --  Here: Build KnockPacket --
     KnockPacket pkt = {0};
     if (!structurePacket(&pkt, opts->payload, opts->payload_len, opts->user_id, opts->action_id)) {
       FAIL_TRANSMIT("Failed to structure packet");
@@ -105,19 +113,19 @@ int transmit(Opts *opts){
       FAIL_TRANSMIT("Failed to initialize OpenSSL session\n");
     }
 	
-    // -- 👇 Then sign --
+    // --  Then sign --
     if (!signWrapper(opts,&session, &pkt) ){
       FAIL_TRANSMIT("Failed to sign packet\n");
     }
 
-    // -- 👇 Then pack it --
+    // --  Then pack it --
     uint8_t packed[512] = {0};
     int packed_len = lib.payload.pack(&pkt, packed, sizeof(packed));
     if (!structureOrDeadDrop(opts, &pkt, packed, &packed_len)) {
       FAIL_TRANSMIT("Failed to prepare payload (structured or dead-drop)");
     }
     
-    // -- 👇 Then encrypt --
+    // --  Then encrypt --
     unsigned char data[512] = {0};
     size_t data_len = 0;
 
@@ -125,7 +133,7 @@ int transmit(Opts *opts){
       FAIL_TRANSMIT("Failed to prepare payload (encryption or raw mode)");
     }
 
-    // -- 👇 Then send it --
+    // --  Then send it --
     char ip[INET_ADDRSTRLEN];
     int rv = lib.net.resolve_host_to_ip(opts->host, ip, sizeof(ip));
 
