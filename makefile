@@ -106,9 +106,17 @@ SRC_SIGLATCHD = \
 SRC_KNOCKER = \
     src/knock/main.c \
     src/knock/main_helpers.c \
+    src/knock/app/app.c \
+    src/knock/app/app_opts.c \
+    src/knock/app/env.c \
+    src/knock/app/alias.c \
+    src/knock/app/help.c \
+    src/knock/app/error/argv.c \
+    src/knock/app/output_mode.c \
+    src/knock/app/transmit.c \
     src/knock/parse_opts.c \
     src/knock/parse_opts_alias.c \
-    src/stdlib/parse_argv.c \
+    src/stdlib/argv.c \
     src/knock/print_help.c \
     src/knock/lib.c \
     src/stdlib/log.c \
@@ -118,6 +126,8 @@ SRC_KNOCKER = \
     src/stdlib/payload.c \
     src/stdlib/payload_digest.c \
     src/stdlib/random.c \
+    src/stdlib/env.c \
+    src/stdlib/stdin.c \
     src/stdlib/hmac_key.c \
     src/stdlib/file.c \
     src/stdlib/openssl.c \

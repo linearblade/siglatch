@@ -12,10 +12,12 @@
 #include "../stdlib/random.h"
 #include "../stdlib/hmac_key.h"
 #include "../stdlib/net.h"
+#include "../stdlib/env.h"
 #include "../stdlib/file.h"
 #include "../stdlib/udp.h"
-#include "../stdlib/parse_argv.h"
+#include "../stdlib/argv.h"
 #include "../stdlib/print.h"
+#include "../stdlib/stdin.h"
 #include "../stdlib/utils.h"
 // Global lib object
 Lib lib = {
@@ -25,9 +27,11 @@ Lib lib = {
     .payload = {0},
     .payload_digest = {0},
     .hmac = {0},
+    .env = {0},
     .file = {0},
     .udp = {0},
     .print = {0},
+    .stdin = {0},
     .unicode = {0},
     .net = {0}
 };
@@ -56,11 +60,13 @@ void init_lib(void) {
     lib.payload         = *get_payload_lib();
     lib.payload_digest  = *get_payload_digest_lib();
     lib.hmac            = *get_hmac_key_lib();
+    lib.env             = *get_lib_env();
     lib.file            = *get_lib_file();
     lib.openssl         = *get_siglatch_openssl();
     lib.udp             = *get_udp_lib();
-    lib.parse_argv      = *get_lib_parse_argv();
+    lib.argv            = *get_lib_argv();
     lib.print           = *get_lib_print();
+    lib.stdin           = *get_lib_stdin();
     lib.unicode         = *get_lib_unicode();
     //  2. Build all context structs
     LogContext log_ctx = {
@@ -88,13 +94,14 @@ void init_lib(void) {
       .log = &lib.log,
       .print = &lib.print
     };
-    ParseArgvContext parse_argv_context = {
-      .strict = 1,
-      .log = &lib.log,
-      .print = &lib.print
+    ArgvContext argv_context = {
+      .strict = 1
     };
     PrintContext print_ctx = {
       .unicode = &lib.unicode
+    };
+    StdinContext stdin_ctx = {
+      .print = &lib.print
     };
     UtilsContext utils_ctx = {
       .print = &lib.print
@@ -104,16 +111,18 @@ void init_lib(void) {
     lib.net.init();
     lib.unicode.init();
     lib.print.init(&print_ctx);
+    lib.stdin.init(&stdin_ctx);
     lib.log.init(log_ctx);        // Log depends on time (timestamps)
     lib.random.init();            // Random can be independent
     lib.payload.init();           // Payload is raw logic (no crypto yet)
+    lib.env.init();
     lib.file.init(&file_ctx);     // FileLib needs options (Unicode etc.)
     lib.openssl.init(&openssl_ctx); // OpenSSL needs log, file, hmac
     lib.hmac.init();              // HMAC key manager (after OpenSSL ready)
     lib.payload_digest.init(&payload_digest_ctx);
     lib.udp.init(&udp_ctx);
     get_lib_utils()->init(&utils_ctx);
-    lib.parse_argv.init(&parse_argv_context);
+    lib.argv.init(&argv_context);
 }
 
 //  SYSTEM SHUTDOWN ORDER MATTERS 
@@ -137,13 +146,15 @@ void init_lib(void) {
 // ───────────────────────────────────────────────
 void shutdown_lib(void) {
   //  clean close
-  lib.parse_argv.shutdown();
+  lib.argv.shutdown();
   get_lib_utils()->shutdown();
+  lib.stdin.shutdown();
   lib.print.shutdown();
   lib.unicode.shutdown();
   lib.udp.shutdown();
   lib.openssl.shutdown();
   lib.file.shutdown();
+  lib.env.shutdown();
   lib.hmac.shutdown();
   lib.payload_digest.shutdown();
   lib.payload.shutdown();

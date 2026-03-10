@@ -25,6 +25,8 @@ Scope: in-progress workspace changes since tag `1.0` relevant to current stabili
 - Output-mode initialization timing is aligned with final server selection.
 - Runtime defaults (`port`/`log_file`) were decoupled from `load_server_keys()` into a dedicated config-default pass.
 - Insecure daemon startup path no longer requires server private key assignment.
+- Knocker startup flow was restructured with an `app` layer (`app.opts`, `app.output_mode`, `app.help`) to centralize main-path wiring and reduce direct branching in `main`.
+- Knocker parse/result flow now tracks `Opts.response_type` and routes help/error handling through app-level handlers instead of ad-hoc branches.
 
 ## Fixed
 - `--server` bad usage now returns concise error + help:
@@ -55,3 +57,4 @@ Scope: in-progress workspace changes since tag `1.0` relevant to current stabili
   - `siglatchd`
   - `knocker`
 - Validation matrix items for server-selection behavior are still pending execution.
+- App-layer factory dispatch uses function pointers by design; expected overhead is minimal in this code path and not a meaningful cost relative to parsing, crypto, file I/O, and network operations.

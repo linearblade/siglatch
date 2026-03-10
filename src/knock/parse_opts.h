@@ -11,17 +11,18 @@
 #include <limits.h> // For PATH_MAX
 #include "../stdlib/log.h" // for log level
 
-typedef struct {
-    char name[128];  // username or action name
-    char host[256];  // host string
-    uint32_t id;     // user ID or action ID
-} AliasEntry;
-
 typedef enum {
   HMAC_MODE_NONE = 0,   ///< No HMAC signing
   HMAC_MODE_NORMAL = 1, ///< Normal HMAC signing
   HMAC_MODE_DUMMY = 2   ///< Dummy HMAC (testing purposes)
 } HmacMode;
+
+typedef enum {
+  OPTS_RESPONSE_HELP = 1,
+  OPTS_RESPONSE_ERROR = 2,
+  OPTS_RESPONSE_ALIAS = 3,
+  OPTS_RESPONSE_TRANSMIT = 4
+} OptsResponseType;
 
 
 
@@ -57,44 +58,8 @@ typedef struct {
 
   // Misc
   int verbose;
+  OptsResponseType response_type;
 } Opts;
-
-
-int ensure_dir_exists(const char *path);
-
-
-/**
- * Read an alias map file (user.map or action.map) into memory.
- * 
- * @param path File path to alias map
- * @param out_list Pointer to AliasEntry* array (allocated inside)
- * @param out_count Pointer to size_t count of entries
- * @return 1 on success, 0 on failure
- */
-int read_alias_map(const char *path, AliasEntry **out_list, size_t *out_count);
-
-/**
- * Update or insert an alias entry in memory.
- * 
- * @param list Pointer to AliasEntry* array
- * @param count Pointer to size_t count of entries
- * @param name Alias name (user or action)
- * @param host Host associated with alias
- * @param id Numeric ID (user_id or action_id)
- * @return 1 on success, 0 on failure
- */
-int update_alias_entry(AliasEntry **list, size_t *count, const char *name, const char *host, uint32_t id);
-
-/**
- * Write an alias map from memory back to disk.
- * 
- * @param path File path to write alias map
- * @param list AliasEntry array
- * @param count Number of entries
- * @return 1 on success, 0 on failure
- */
-int write_alias_map(const char *path, AliasEntry *list, size_t count);
-
 
 
 /**
@@ -106,8 +71,6 @@ int write_alias_map(const char *path, AliasEntry *list, size_t count);
  * @return 1 on success, 0 on failure
  */
 int parseOpts(int argc, char *argv[], Opts *opts_out);
-int opts_load_output_mode_default(void);
-int opts_save_output_mode_default(const char *mode_value);
 
 /**
  * Print command-line usage instructions.

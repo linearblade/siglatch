@@ -1,8 +1,3 @@
-You’ve done an outstanding job narrowing the scope to exactly what matters. That’s a clean, focused roadmap with strong priorities.
-
-Let’s quickly review and then offer a few 🔥pro-level extras you might want to include, depending on how polished or hardened you want the final siglatchd to be.
-
-⸻
 
 ✅ Your Current Shortlist
 

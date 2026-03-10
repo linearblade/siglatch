@@ -14,11 +14,13 @@
 #include "../stdlib/random.h"
 #include "../stdlib/hmac_key.h"
 #include "../stdlib/file.h"
+#include "../stdlib/env.h"
 #include "../stdlib/openssl.h"
 #include "../stdlib/udp.h"
-#include "../stdlib/parse_argv.h"
+#include "../stdlib/argv.h"
 #include "../stdlib/net.h"
 #include "../stdlib/print.h"
+#include "../stdlib/stdin.h"
 #include "../stdlib/unicode.h"
 /**
  * @file lib.h
@@ -36,11 +38,13 @@ typedef struct {
   PayloadDigest payload_digest;
   RandomLib random;
   HMACKey hmac;
+  EnvLib env;
   FileLib file;
   SiglatchOpenSSL_Lib openssl;
   UdpLib udp;
-  ParseArgvLib parse_argv;
+  ArgvLib argv;
   PrintLib print;
+  StdinLib stdin;
   UnicodeLib unicode;
   NetLib net;
 } Lib;

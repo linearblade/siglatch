@@ -11,7 +11,7 @@
 #include <unistd.h> // for access(), F_OK
 #include <dirent.h>
 #include "lib.h"
-#include "parse_opts.h"
+#include "app/app.h"
 #include "parse_opts_alias.h"
 #include "print_help.h"
 
@@ -115,7 +115,7 @@ int handle_alias(int argc, char *argv[]) {
             lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-user\n");
 	    exit(2);
         }
-        if (!ensure_dir_exists(argv[2])) {
+        if (!app.env.ensure_host_config_dir(argv[2])) {
             lib.print.uc_fprintf(stderr, "err", "Failed to ensure host directory: %s\n", argv[2]);
 	    exit(2);
         }
@@ -131,7 +131,7 @@ int handle_alias(int argc, char *argv[]) {
             lib.print.uc_fprintf(stderr, "err", "Not enough arguments for --alias-action\n");
 	    exit(2);
         }
-        if (!ensure_dir_exists(argv[2])) {
+        if (!app.env.ensure_host_config_dir(argv[2])) {
             lib.print.uc_fprintf(stderr, "err", "Failed to ensure host directory: %s\n", argv[2]);
 	    exit(2);
         }
@@ -298,7 +298,7 @@ static int handle_alias_user(int argc, char *argv[]) {
 
     if (access(path, F_OK) == 0) {
         // Alias file exists
-        if (!read_alias_map(path, &aliases, &alias_count)) {
+        if (!app.alias.read_map(path, &aliases, &alias_count)) {
             lib.print.uc_fprintf(stderr, "err", "Failed to read existing alias file: %s\n", path);
             return 0;
         }
@@ -308,12 +308,12 @@ static int handle_alias_user(int argc, char *argv[]) {
         alias_count = 0;
     }
 
-    if (!update_alias_entry(&aliases, &alias_count, user, host, user_id)) {
+    if (!app.alias.update_entry(&aliases, &alias_count, user, host, user_id)) {
         lib.print.uc_fprintf(stderr, "err", "Failed to update alias entry in memory\n");
         return 0;
     }
 
-    if (!write_alias_map(path, aliases, alias_count)) {
+    if (!app.alias.write_map(path, aliases, alias_count)) {
         lib.print.uc_fprintf(stderr, "err", "Failed to write alias map back to disk: %s\n", path);
         return 0;
     }
@@ -345,7 +345,7 @@ static int handle_alias_action(int argc, char *argv[]) {
 
     if (access(path, F_OK) == 0) {
         // Alias file exists
-        if (!read_alias_map(path, &aliases, &alias_count)) {
+        if (!app.alias.read_map(path, &aliases, &alias_count)) {
             lib.print.uc_fprintf(stderr, "err", "Failed to read existing alias file: %s\n", path);
             return 0;
         }
@@ -355,12 +355,12 @@ static int handle_alias_action(int argc, char *argv[]) {
         alias_count = 0;
     }
 
-    if (!update_alias_entry(&aliases, &alias_count, action, host, action_id)) {
+    if (!app.alias.update_entry(&aliases, &alias_count, action, host, action_id)) {
         lib.print.uc_fprintf(stderr, "err", "Failed to update alias entry in memory\n");
         return 0;
     }
 
-    if (!write_alias_map(path, aliases, alias_count)) {
+    if (!app.alias.write_map(path, aliases, alias_count)) {
         lib.print.uc_fprintf(stderr, "err", "Failed to write alias map back to disk: %s\n", path);
         return 0;
     }
@@ -391,7 +391,7 @@ static int handle_alias_user_show(int argc, char *argv[]) {
         return 0;
     }
 
-    if (!read_alias_map(path, &aliases, &alias_count)) {
+    if (!app.alias.read_map(path, &aliases, &alias_count)) {
         lib.print.uc_fprintf(stderr, "err", "Failed to read user alias map: %s\n", path);
         return 0;
     }
@@ -431,7 +431,7 @@ static int handle_alias_user_delete(int argc, char *argv[]) {
     AliasEntry *aliases = NULL;
     size_t alias_count = 0;
 
-    if (!read_alias_map(path, &aliases, &alias_count)) {
+    if (!app.alias.read_map(path, &aliases, &alias_count)) {
         lib.print.uc_fprintf(stderr, "err", "Failed to read user alias map: %s\n", path);
         return 0;
     }
@@ -454,7 +454,7 @@ static int handle_alias_user_delete(int argc, char *argv[]) {
         return 0;
     }
 
-    if (!write_alias_map(path, aliases, new_count)) {
+    if (!app.alias.write_map(path, aliases, new_count)) {
         lib.print.uc_fprintf(stderr, "err", "Failed to write updated alias map after deletion\n");
         free(aliases);
         return 0;
@@ -486,7 +486,7 @@ static int handle_alias_action_show(int argc, char *argv[]) {
         return 0;
     }
 
-    if (!read_alias_map(path, &aliases, &alias_count)) {
+    if (!app.alias.read_map(path, &aliases, &alias_count)) {
         lib.print.uc_fprintf(stderr, "err", "Failed to read action alias map: %s\n", path);
         return 0;
     }
@@ -527,7 +527,7 @@ static int handle_alias_action_delete(int argc, char *argv[]) {
     AliasEntry *aliases = NULL;
     size_t alias_count = 0;
 
-    if (!read_alias_map(path, &aliases, &alias_count)) {
+    if (!app.alias.read_map(path, &aliases, &alias_count)) {
         lib.print.uc_fprintf(stderr, "err", "Failed to read action alias map: %s\n", path);
         return 0;
     }
@@ -550,7 +550,7 @@ static int handle_alias_action_delete(int argc, char *argv[]) {
         return 0;
     }
 
-    if (!write_alias_map(path, aliases, new_count)) {
+    if (!app.alias.write_map(path, aliases, new_count)) {
         lib.print.uc_fprintf(stderr, "err", "Failed to write updated alias map after deletion\n");
         free(aliases);
         return 0;
