@@ -105,6 +105,7 @@ program --alias-action <host> <action> <id>
 program --alias-user-show [host]
 program --alias-action-show [host]
 program --alias-show <host>
+program --alias-show-hosts
 ```
 
 ### ❌ Delete Individual Aliases
@@ -131,9 +132,6 @@ program localhost root login "Hello World"
 # Send knock with piped input
 echo "PING" | program --stdin localhost root ping
 
-# Use alias
-program --config-dir ~/.config/siglatch myhost reboot_user reboot_now "Reboot me"
-
 # Create aliases
 program --alias-user 127.0.0.1 admin 1
 program --alias-action 127.0.0.1 shutdown 99
@@ -141,4 +139,5 @@ program --alias-action 127.0.0.1 shutdown 99
 # View aliases
 program --alias-user-show
 program --alias-show localhost
+program --alias-show-hosts
 ```

@@ -8,8 +8,8 @@
 #include <arpa/inet.h>
 #include <stdint.h>
 
-#include "../lib.h"
-#include "../main_helpers.h"
+#include "../../lib.h"
+#include "helper.h"
 
 #define FAIL_SINGLE_PACKET(...)                                                \
   if (1) {                                                                     \

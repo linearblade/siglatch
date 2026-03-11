@@ -4,12 +4,12 @@
  */
 
 #include "lib.h"
-#include "parse_opts.h"
 #include "app/app.h"
+#include <string.h>
 
 int main(int argc, char *argv[]) {
   int status = 1;
-  Opts opts = {0};
+  AppCommand cmd = {0};
 
   init_lib();
   init_app();
@@ -17,17 +17,65 @@ int main(int argc, char *argv[]) {
   app.output_mode.set_from_config();
   app.output_mode.set_from_env();
 
-  if (!parseOpts(argc, argv, &opts) ){
-    app.help.handleParseResult(argc, argv, &opts);
+  if (!app.opts.parse_command || !app.opts.parse_command(argc, argv, &cmd)) {
+    if (cmd.error[0] != '\0') {
+      lib.print.uc_fprintf(stderr, "err", "%s\n", cmd.error);
+    }
+    app.help.errorMessage();
+    status = cmd.exit_code ? cmd.exit_code : 2;
     goto cleanup;
   }
 
-  app.output_mode.set_from_opts(&opts);
-  lib.log.open(opts.log_file);
-  lib.log.set_debug(opts.verbose?1:0);
-  lib.log.set_level(opts.verbose);
-  
-  status = app.transmit.singlePacket(&opts);
+  if (cmd.type == APP_CMD_TRANSMIT) {
+    app.output_mode.set_from_opts(&cmd.as.transmit);
+  } else if (cmd.type == APP_CMD_ALIAS && cmd.as.alias.output_mode) {
+    lib.print.output_set_mode(cmd.as.alias.output_mode);
+  }
+
+  if (cmd.dump_requested) {
+    if (app.opts.dump_command) {
+      app.opts.dump_command(&cmd);
+      status = 0;
+    } else {
+      lib.print.uc_fprintf(stderr, "err", "Dump requested but dump handler is unavailable\n");
+      status = 2;
+    }
+    goto cleanup;
+  }
+
+  switch (cmd.type) {
+    case APP_CMD_HELP:
+      app.help.printHelp();
+      status = 0;
+      break;
+    case APP_CMD_OUTPUT_MODE_DEFAULT: {
+      const char *mode_name = lib.print.output_mode_name(cmd.as.outdef.mode);
+      if (!mode_name || strcmp(mode_name, "unknown") == 0) {
+        lib.print.uc_fprintf(stderr, "err", "Invalid output mode command payload\n");
+        status = 2;
+        break;
+      }
+      status = app.env.save_output_mode_default(mode_name) ? 0 : 2;
+      break;
+    }
+    case APP_CMD_ALIAS:
+      status = app.alias.execute(&cmd.as.alias) ? 0 : 2;
+      break;
+    case APP_CMD_TRANSMIT:
+      lib.log.open(cmd.as.transmit.log_file);
+      lib.log.set_debug(cmd.as.transmit.verbose ? 1 : 0);
+      lib.log.set_level(cmd.as.transmit.verbose);
+      status = app.transmit.singlePacket(&cmd.as.transmit);
+      break;
+    case APP_CMD_ERROR:
+    default:
+      if (cmd.error[0] != '\0') {
+        lib.print.uc_fprintf(stderr, "err", "%s\n", cmd.error);
+      }
+      app.help.errorMessage();
+      status = cmd.exit_code ? cmd.exit_code : 2;
+      break;
+  }
 
 cleanup:
   shutdown_app();

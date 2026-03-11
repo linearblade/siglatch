@@ -15,7 +15,6 @@ typedef struct {
   int (*ensure_host_config_dir)(const char *host);
   int (*load_output_mode_default)(void);
   int (*save_output_mode_default)(const char *mode_value);
-  int (*handle_output_mode_default_command)(int argc, char *argv[]);
 } AppEnvLib;
 
 const AppEnvLib *get_app_env_lib(void);

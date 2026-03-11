@@ -6,6 +6,8 @@
 #ifndef SIGLATCH_KNOCK_APP_OPTS_H
 #define SIGLATCH_KNOCK_APP_OPTS_H
 
+#include "../command.h"
+
 typedef struct {
   int reserved;
 } AppOptsContext;
@@ -13,6 +15,8 @@ typedef struct {
 typedef struct {
   int (*init)(const AppOptsContext *ctx);
   void (*shutdown)(void);
+  int (*parse_command)(int argc, char *argv[], AppCommand *out);
+  void (*dump_command)(const AppCommand *cmd);
 } AppOptsLib;
 
 const AppOptsLib *get_app_opts_lib(void);

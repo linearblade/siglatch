@@ -7,9 +7,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include "main_helpers.h"
-#include "../stdlib/utils.h" // my temporary trash bin for shit that goes to relevant places later.
-#include "lib.h"
+#include "helper.h"
+#include "../../../stdlib/utils.h" // my temporary trash bin for shit that goes to relevant places later.
+#include "../../lib.h"
 
 
 int init_user_openssl_session(const Opts *opts, SiglatchOpenSSLSession *session) {

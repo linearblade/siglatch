@@ -11,14 +11,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "app.h"
-#include "../lib.h"
+#include "../app.h"
+#include "../../lib.h"
+#include "command.h"
+
+static AppAliasCommandLib app_alias_command = {0};
 
 static int app_alias_init(void) {
-  return 1;
+  app_alias_command = *get_app_alias_command_lib();
+  return app_alias_command.init();
 }
 
 static void app_alias_shutdown(void) {
+  app_alias_command.shutdown();
 }
 
 static int app_alias_read_map(const char *path, AliasEntry **out_list, size_t *out_count) {
@@ -194,6 +199,10 @@ static uint32_t app_alias_resolve_user(const char *host, const char *name) {
   return id;
 }
 
+static int app_alias_execute(const AppAliasCommand *cmd) {
+  return app_alias_command.execute(cmd);
+}
+
 static const AppAliasLib app_alias_instance = {
   .init = app_alias_init,
   .shutdown = app_alias_shutdown,
@@ -201,7 +210,8 @@ static const AppAliasLib app_alias_instance = {
   .update_entry = app_alias_update_entry,
   .write_map = app_alias_write_map,
   .resolve_user = app_alias_resolve_user,
-  .resolve_action = app_alias_resolve_action
+  .resolve_action = app_alias_resolve_action,
+  .execute = app_alias_execute
 };
 
 const AppAliasLib *get_app_alias_lib(void) {

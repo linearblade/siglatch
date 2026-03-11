@@ -8,9 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "app.h"
-#include "../lib.h"
-#include "../parse_opts.h"
+#include "../app.h"
+#include "../../lib.h"
 
 static int app_output_mode_init(void) {
   return 1;

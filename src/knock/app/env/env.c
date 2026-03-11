@@ -13,7 +13,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#include "../lib.h"
+#include "../../lib.h"
 
 #define KNOCKER_CLIENT_CONFIG_DIR ".config/siglatch"
 #define KNOCKER_CLIENT_CONFIG_PARENT ".config"
@@ -309,29 +309,13 @@ static int app_env_save_output_mode_default(const char *mode_value) {
   return 1;
 }
 
-static int app_env_handle_output_mode_default_command(int argc, char *argv[]) {
-  if (argc < 3) {
-    lib.print.uc_fprintf(stderr, "err",
-                         "Not enough arguments for --output-mode-default (expected 'unicode' or 'ascii')\n");
-    exit(2);
-  }
-
-  if (!app_env_save_output_mode_default(argv[2])) {
-    exit(2);
-  }
-
-  exit(0);
-  return 0;
-}
-
 static const AppEnvLib app_env_instance = {
   .init = app_env_init,
   .shutdown = app_env_shutdown,
   .build_host_config_path = app_env_build_host_config_path,
   .ensure_host_config_dir = app_env_ensure_host_config_dir,
   .load_output_mode_default = app_env_load_output_mode_default,
-  .save_output_mode_default = app_env_save_output_mode_default,
-  .handle_output_mode_default_command = app_env_handle_output_mode_default_command
+  .save_output_mode_default = app_env_save_output_mode_default
 };
 
 const AppEnvLib *get_app_env_lib(void) {

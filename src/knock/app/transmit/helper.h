@@ -3,12 +3,12 @@
  * License: MTL-10 (see LICENSE.md)
  */
 
-#ifndef MAIN_HELPERS_H
-#define MAIN_HELPERS_H
+#ifndef SIGLATCH_KNOCK_APP_TRANSMIT_HELPER_H
+#define SIGLATCH_KNOCK_APP_TRANSMIT_HELPER_H
 
-#include "../stdlib/openssl_session.h" // for SiglatchOpenSSLSession
-#include "../stdlib/payload.h"          // (your KnockPacket struct, etc.)
-#include "parse_opts.h"
+#include "../../../stdlib/openssl_session.h" // for SiglatchOpenSSLSession
+#include "../../../stdlib/payload.h"         // (your KnockPacket struct, etc.)
+#include "../opts/contract.h"
 /**
  * Build a KnockPacket from a message.
  */
@@ -77,4 +77,4 @@ int encryptWrapper(const Opts *opts, SiglatchOpenSSLSession *session,
 int structureOrDeadDrop(const Opts *opts, const KnockPacket *pkt,
 			uint8_t *packed, int *packed_len);
 
-#endif // MAIN_HELPERS_H
+#endif // SIGLATCH_KNOCK_APP_TRANSMIT_HELPER_H

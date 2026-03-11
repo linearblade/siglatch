@@ -6,7 +6,7 @@
 #ifndef SIGLATCH_KNOCK_APP_TRANSMIT_H
 #define SIGLATCH_KNOCK_APP_TRANSMIT_H
 
-#include "../parse_opts.h"
+#include "../opts/contract.h"
 
 typedef struct {
   int (*init)(void);

@@ -8,6 +8,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "../command.h"
 
 typedef struct {
   char name[128];
@@ -23,6 +24,7 @@ typedef struct {
   int (*write_map)(const char *path, AliasEntry *list, size_t count);
   uint32_t (*resolve_user)(const char *host, const char *name);
   uint32_t (*resolve_action)(const char *host, const char *name);
+  int (*execute)(const AppAliasCommand *cmd);
 } AppAliasLib;
 
 const AppAliasLib *get_app_alias_lib(void);

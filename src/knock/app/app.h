@@ -6,12 +6,12 @@
 #ifndef SIGLATCH_KNOCK_APP_H
 #define SIGLATCH_KNOCK_APP_H
 
-#include "app_opts.h"
-#include "env.h"
-#include "alias.h"
-#include "output_mode.h"
-#include "help.h"
-#include "transmit.h"
+#include "opts/opts.h"
+#include "env/env.h"
+#include "alias/alias.h"
+#include "output_mode/output_mode.h"
+#include "help/help.h"
+#include "transmit/transmit.h"
 #include "error/argv.h"
 
 typedef struct {
