@@ -16,57 +16,19 @@ static int app_error_argv_init(void) {
 static void app_error_argv_shutdown(void) {
 }
 
-static int app_error_argv_parse(const ArgvParsed *parsed) {
-  char detail[256];
-  const ArgvError *err = NULL;
+static int app_error_argv_shape_typed(const ArgvParsedOption *opt, const ArgvError *err,
+                                      char *out, size_t out_size) {
+  const char *option_name = "(unknown)";
+  const char *value = NULL;
+  int written = 0;
 
-  if (!parsed) {
-    lib.print.uc_fprintf(stderr, "err", "Argument parse failed\n");
+  if (!out || out_size == 0) {
     return 0;
   }
 
-  err = &parsed->error;
-  switch (err->code) {
-    case ARGV_ERR_UNKNOWN_OPTION:
-      lib.print.uc_fprintf(stderr, "err", "Unknown option: %s\n", err->arg_value ? err->arg_value : "(null)");
-      return 0;
-    case ARGV_ERR_NOT_ENOUGH_OPTION_ARGS:
-      lib.print.uc_fprintf(stderr, "err", "Not enough arguments for option: %s\n",
-                           err->arg_value ? err->arg_value :
-                           (err->option_name ? err->option_name : "(null)"));
-      return 0;
-    case ARGV_ERR_TOO_MANY_OPTIONS:
-      lib.print.uc_fprintf(stderr, "err", "Too many options (max %d)\n", ARGV_MAX_OPTIONS);
-      return 0;
-    case ARGV_ERR_TOO_MANY_POSITIONALS:
-      lib.print.uc_fprintf(stderr, "err", "Too many positional arguments (max %d)\n", ARGV_MAX_POSITIONALS);
-      return 0;
-    case ARGV_ERR_DUPLICATE_OPTION:
-      lib.print.uc_fprintf(stderr, "err", "Duplicate option not allowed: %s\n",
-                           err->option_name ? err->option_name : "(null)");
-      return 0;
-    case ARGV_ERR_EQUALS_FORM_NOT_ALLOWED:
-      lib.print.uc_fprintf(stderr, "err", "Option does not accept --key=value form: %s\n",
-                           err->option_name ? err->option_name : "(null)");
-      return 0;
-    default:
-      break;
-  }
+  out[0] = '\0';
 
-  if (lib.argv.format_error && lib.argv.format_error(err, detail, sizeof(detail))) {
-    lib.print.uc_fprintf(stderr, "err", "Argument parse error: %s\n", detail);
-  } else {
-    lib.print.uc_fprintf(stderr, "err", "Argument parse error\n");
-  }
-
-  return 0;
-}
-
-static int app_error_argv_typed(const ArgvParsedOption *opt, const ArgvError *err) {
-  const char *option_name = "(unknown)";
-  const char *value = NULL;
-
-  if (opt && opt->spec && opt->spec->name) {
+  if (opt && opt->spec && opt->spec->name && *opt->spec->name) {
     option_name = opt->spec->name;
   }
 
@@ -76,28 +38,90 @@ static int app_error_argv_typed(const ArgvParsedOption *opt, const ArgvError *er
 
   switch (err ? err->code : ARGV_ERR_NONE) {
     case ARGV_ERR_BAD_INTEGER:
-      lib.print.uc_fprintf(stderr, "err", "Invalid numeric value for %s: %s\n",
-                           option_name, value ? value : "(null)");
-      return 0;
+      written = snprintf(out, out_size, "Invalid numeric value for %s: %s",
+                         option_name, value ? value : "(null)");
+      break;
     case ARGV_ERR_INTEGER_OUT_OF_RANGE:
-      lib.print.uc_fprintf(stderr, "err", "Out-of-range value for %s: %s\n",
-                           option_name, value ? value : "(null)");
-      return 0;
+      written = snprintf(out, out_size, "Out-of-range value for %s: %s",
+                         option_name, value ? value : "(null)");
+      break;
     case ARGV_ERR_BAD_ENUM:
-      lib.print.uc_fprintf(stderr, "err", "Invalid value for %s: %s\n",
-                           option_name, value ? value : "(null)");
-      return 0;
+      written = snprintf(out, out_size, "Invalid value for %s: %s",
+                         option_name, value ? value : "(null)");
+      break;
     default:
-      lib.print.uc_fprintf(stderr, "err", "Invalid option value for %s\n", option_name);
-      return 0;
+      written = snprintf(out, out_size, "Invalid option value for %s", option_name);
+      break;
   }
+
+  if (written < 0 || (size_t)written >= out_size) {
+    return 0;
+  }
+
+  return 1;
+}
+
+static int app_error_argv_shape(const ArgvParsed *parsed, char *out, size_t out_size) {
+  char detail[256];
+  const ArgvError *err = NULL;
+  int written = 0;
+
+  if (!out || out_size == 0) {
+    return 0;
+  }
+
+  out[0] = '\0';
+  if (!parsed) {
+    written = snprintf(out, out_size, "Argument parse failed");
+    return written >= 0 && (size_t)written < out_size;
+  }
+
+  err = &parsed->error;
+  switch (err->code) {
+    case ARGV_ERR_UNKNOWN_OPTION:
+      written = snprintf(out, out_size, "Unknown option: %s",
+                         err->arg_value ? err->arg_value : "(null)");
+      break;
+    case ARGV_ERR_NOT_ENOUGH_OPTION_ARGS:
+      written = snprintf(out, out_size, "Not enough arguments for option: %s",
+                         err->arg_value ? err->arg_value :
+                         (err->option_name ? err->option_name : "(null)"));
+      break;
+    case ARGV_ERR_TOO_MANY_OPTIONS:
+      written = snprintf(out, out_size, "Too many options (max %d)", ARGV_MAX_OPTIONS);
+      break;
+    case ARGV_ERR_TOO_MANY_POSITIONALS:
+      written = snprintf(out, out_size, "Too many positional arguments (max %d)", ARGV_MAX_POSITIONALS);
+      break;
+    case ARGV_ERR_DUPLICATE_OPTION:
+      written = snprintf(out, out_size, "Duplicate option not allowed: %s",
+                         err->option_name ? err->option_name : "(null)");
+      break;
+    case ARGV_ERR_EQUALS_FORM_NOT_ALLOWED:
+      written = snprintf(out, out_size, "Option does not accept --key=value form: %s",
+                         err->option_name ? err->option_name : "(null)");
+      break;
+    default:
+      if (lib.argv.format_error && lib.argv.format_error(err, detail, sizeof(detail))) {
+        written = snprintf(out, out_size, "Argument parse error: %s", detail);
+      } else {
+        written = snprintf(out, out_size, "Argument parse error");
+      }
+      break;
+  }
+
+  if (written < 0 || (size_t)written >= out_size) {
+    return 0;
+  }
+
+  return 1;
 }
 
 static const AppErrorArgvLib app_error_argv_instance = {
   .init = app_error_argv_init,
   .shutdown = app_error_argv_shutdown,
-  .parse = app_error_argv_parse,
-  .typed = app_error_argv_typed
+  .shape = app_error_argv_shape,
+  .shape_typed = app_error_argv_shape_typed
 };
 
 const AppErrorArgvLib *get_app_error_argv_lib(void) {

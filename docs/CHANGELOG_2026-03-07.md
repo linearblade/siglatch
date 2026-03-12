@@ -118,6 +118,12 @@ Scope: in-progress workspace changes since tag `1.0` relevant to current stabili
 - Alias show-all behavior now skips non-host directories that do not contain the relevant map file (`user.map`/`action.map`) and emits one summary warning count.
 - `--alias-show-hosts` now lists only host directories that have alias maps (`user.map` or `action.map`), excluding support directories like `keys`.
 - Alias mode now accepts and applies `--output-mode unicode|ascii` (including alias dump paths).
+- Client command-mode parsing now runs through a shared parser orchestrator:
+  - mode-local `ArgvOptionSpec` tables
+  - normalized `ArgvParsed` -> `AppCommand` builders
+  - unchanged mode classifier (`help|output_mode_default|alias|transmit`)
+- `--output-mode-default` now parses through argv spec (`--output-mode-default <mode>`) instead of raw positional indexing.
+- Parse/typed errors are now shaped into command error payloads and routed consistently through `main` (`error + Use --help`) across parser modes.
 
 ### Removed / Pruned
 - Dead env handler path removed from app env interface/implementation:
@@ -126,6 +132,9 @@ Scope: in-progress workspace changes since tag `1.0` relevant to current stabili
   - `AppHelpLib.isHelp`
   - `AppHelpLib.handleParseResult`
   - `AppAliasCommandLib.handle`
+- Dead argv error callback surface removed after shared shaper cutover:
+  - `AppErrorArgvLib.parse`
+  - `AppErrorArgvLib.typed`
 - Stale `--config-dir` examples removed from:
   - client help text
   - `docs/OPERATIONS_CLIENT.md`
@@ -142,3 +151,70 @@ Scope: in-progress workspace changes since tag `1.0` relevant to current stabili
 - `--alias-user-show` / `--alias-action-show` no longer emit per-directory noise for non-host directories under `~/.config/siglatch`.
 - `./knocker --alias-show-hosts` now excludes non-alias support directories (for example `keys`).
 - `./knocker --alias-show-hosts --output-mode ascii` and invalid mode handling were verified.
+- `./knocker --output-mode-default` now returns argv-shaped missing-arg error.
+- `./knocker --output-mode-default nope` now returns argv-shaped enum error.
+
+## Update (2026-03-12): Non-Transmit Positional Strictness + Runtime Stdin Resolution
+
+### Changed
+- Non-transmit modes now reject unexpected trailing positional arguments:
+  - `--output-mode-default <mode>` rejects extra positionals.
+  - Alias commands now enforce per-command positional limits (exact or optional count by operation).
+- Transmit parser is now parse-intent only for stdin:
+  - `--stdin` sets intent (`stdin_requested`) without consuming stdin in parse.
+  - Auto-piped stdin attach no longer runs during parse.
+- Stdin payload resolution moved to transmit execution stage:
+  - explicit `--stdin` reads multiline payload at runtime.
+  - auto-piped stdin attaches payload at runtime when `--stdin` is not set.
+- Dead-drop payload requirement is now enforced after runtime payload resolution (instead of parse-time pre-check).
+- Transmit opts dump now prints `Stdin Requested` to reflect parse intent.
+
+### Verification
+- `./knocker --alias-show-hosts extra` now fails with concise error + usage hint.
+- `./knocker --alias-user-show localhost extra` now fails with concise error + usage hint.
+- `./knocker --output-mode-default ascii extra` now fails with concise error + usage hint.
+- `./knocker --opts-dump` paths no longer consume stdin during parse.
+- `printf 'payload' | ./knocker ... --dead-drop --stdin ...` reads stdin during runtime execution.
+- `make build-knocker` succeeds after these changes.
+
+## Update (2026-03-12): Knocker Release Hardening (Late Pass)
+
+### Added
+- New shared env helper: `lib.env.user.ensure_home_config_dir()`:
+  - creates `~/.config` with `0755` on first creation
+  - does not chmod existing directories
+- Explicit wiring-contract notes in app/lib init paths documenting intentional all-or-nothing factory assumptions.
+
+### Changed
+- `app.env` now delegates `~/.config` bootstrap to `lib.env.user.ensure_home_config_dir()` and only owns app-specific root creation (`~/.config/siglatch`).
+- Runtime stdin fallback behavior refined:
+  - auto-piped stdin is consumed only when current payload is empty
+  - explicit `--stdin` path remains strict and required when requested
+- Transmit ID resolution order now prefers aliases first, then numeric fallback:
+  - supports numeric-like alias names without ambiguity regressions in this model
+- `--alias-show-hosts` now treats missing `~/.config/siglatch` as empty state (not an error).
+
+### Fixed
+- First-run alias/config bootstrap on fresh `HOME` no longer fails due to missing parent directories.
+- Error-line concatenation in transmit failure path:
+  - transmit failure callsites now use newline-terminated messages
+  - logger defensively newline-terminates unterminated emitted messages
+- Numeric positional ID bounds are now enforced at parse time:
+  - `user`: `1-65535`
+  - `action`: `1-255`
+- Alias ID bounds are now enforced on set commands:
+  - `--alias-user ... <id>` -> `1-65535`
+  - `--alias-action ... <id>` -> `1-255`
+- Alias map parsing now validates IDs via `strtoul` and skips malformed rows.
+- Alias resolution now ignores out-of-range legacy map entries with warnings instead of allowing downstream packet-width truncation.
+- Closed silent truncation path where oversized alias-derived IDs could be narrowed into packet fields (`uint16_t`/`uint8_t`) without explicit error.
+
+### Verification
+- `make build-knocker` succeeds after all hardening changes.
+- Fresh-`HOME` validation:
+  - alias set and output-mode-default flows succeed
+  - `~/.config` created as `0755`; app config dirs remain `0700`
+  - existing `~/.config` permissions are preserved (no chmod mutation)
+- `./knocker --alias-show-hosts` on missing config root now returns success with friendly empty-state message.
+- Out-of-range numeric IDs are rejected with explicit parse errors.
+- Numeric-like alias names resolve through alias-first behavior.

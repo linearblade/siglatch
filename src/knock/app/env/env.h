@@ -11,6 +11,7 @@
 typedef struct {
   int (*init)(void);
   void (*shutdown)(void);
+  int (*build_config_root_path)(char *out, size_t out_size);
   int (*build_host_config_path)(char *out, size_t out_size, const char *host, const char *filename);
   int (*ensure_host_config_dir)(const char *host);
   int (*load_output_mode_default)(void);

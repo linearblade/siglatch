@@ -24,56 +24,6 @@ static int app_alias_ops_init(void) {
 static void app_alias_ops_shutdown(void) {
 }
 
-static const char *alias_home_or_error(void) {
-  const char *home = getenv("HOME");
-
-  if (!home || !*home) {
-    lib.print.uc_fprintf(stderr, "err", "HOME environment variable not set\n");
-    return NULL;
-  }
-
-  return home;
-}
-
-static int build_alias_root_path(char *out, size_t out_size) {
-  const char *home = alias_home_or_error();
-  int written = 0;
-
-  if (!out || out_size == 0 || !home) {
-    return 0;
-  }
-
-  written = snprintf(out, out_size, "%s/.config/siglatch", home);
-  if (written < 0 || (size_t)written >= out_size) {
-    lib.print.uc_fprintf(stderr, "err", "Alias base path too long\n");
-    return 0;
-  }
-
-  return 1;
-}
-
-static int build_alias_host_path(char *out, size_t out_size, const char *host, const char *filename) {
-  const char *home = alias_home_or_error();
-  int written = 0;
-
-  if (!out || out_size == 0 || !host || !*host || !home) {
-    return 0;
-  }
-
-  if (filename && *filename) {
-    written = snprintf(out, out_size, "%s/.config/siglatch/%s/%s", home, host, filename);
-  } else {
-    written = snprintf(out, out_size, "%s/.config/siglatch/%s", home, host);
-  }
-
-  if (written < 0 || (size_t)written >= out_size) {
-    lib.print.uc_fprintf(stderr, "err", "Alias path too long for host: %s\n", host);
-    return 0;
-  }
-
-  return 1;
-}
-
 static int app_alias_ops_set_user(const char *host, const char *user, uint32_t user_id) {
   char path[PATH_MAX] = {0};
   AliasEntry *aliases = NULL;
@@ -90,7 +40,7 @@ static int app_alias_ops_set_user(const char *host, const char *user, uint32_t u
     return 0;
   }
 
-  if (!build_alias_host_path(path, sizeof(path), host, "user.map")) {
+  if (!app.env.build_host_config_path(path, sizeof(path), host, "user.map")) {
     return 0;
   }
 
@@ -133,7 +83,7 @@ static int app_alias_ops_set_action(const char *host, const char *action, uint32
     return 0;
   }
 
-  if (!build_alias_host_path(path, sizeof(path), host, "action.map")) {
+  if (!app.env.build_host_config_path(path, sizeof(path), host, "action.map")) {
     return 0;
   }
 
@@ -170,7 +120,7 @@ static int app_alias_ops_show_user(const char *host) {
     return 0;
   }
 
-  if (!build_alias_host_path(path, sizeof(path), host, "user.map")) {
+  if (!app.env.build_host_config_path(path, sizeof(path), host, "user.map")) {
     return 0;
   }
 
@@ -210,7 +160,7 @@ static int app_alias_ops_delete_user(const char *host, const char *user) {
     return 0;
   }
 
-  if (!build_alias_host_path(path, sizeof(path), host, "user.map")) {
+  if (!app.env.build_host_config_path(path, sizeof(path), host, "user.map")) {
     return 0;
   }
 
@@ -260,7 +210,7 @@ static int app_alias_ops_show_action(const char *host) {
     return 0;
   }
 
-  if (!build_alias_host_path(path, sizeof(path), host, "action.map")) {
+  if (!app.env.build_host_config_path(path, sizeof(path), host, "action.map")) {
     return 0;
   }
 
@@ -300,7 +250,7 @@ static int app_alias_ops_delete_action(const char *host, const char *action) {
     return 0;
   }
 
-  if (!build_alias_host_path(path, sizeof(path), host, "action.map")) {
+  if (!app.env.build_host_config_path(path, sizeof(path), host, "action.map")) {
     return 0;
   }
 
@@ -390,7 +340,7 @@ static int app_alias_ops_show_all(AliasShowOneFn show_one, const char *map_filen
     return 0;
   }
 
-  if (!build_alias_root_path(base_path, sizeof(base_path))) {
+  if (!app.env.build_config_root_path(base_path, sizeof(base_path))) {
     return 0;
   }
 
@@ -470,8 +420,24 @@ static int app_alias_ops_show_hosts(void) {
   DIR *dir = NULL;
   struct dirent *entry = NULL;
   int found_any = 0;
+  struct stat st;
 
-  if (!build_alias_root_path(base_path, sizeof(base_path))) {
+  if (!app.env.build_config_root_path(base_path, sizeof(base_path))) {
+    return 0;
+  }
+
+  if (stat(base_path, &st) != 0) {
+    if (errno == ENOENT) {
+      lib.print.uc_printf("warn", "No hosts setup yet.\n");
+      return 1;
+    }
+    lib.print.uc_fprintf(stderr, "err", "Failed to stat siglatch config directory: %s (%s)\n",
+                         base_path, strerror(errno));
+    return 0;
+  }
+
+  if (!S_ISDIR(st.st_mode)) {
+    lib.print.uc_fprintf(stderr, "err", "Siglatch config path is not a directory: %s\n", base_path);
     return 0;
   }
 
@@ -506,7 +472,7 @@ static int app_alias_ops_show_hosts(void) {
   closedir(dir);
 
   if (!found_any) {
-    lib.print.uc_printf("warn", "No alias hosts found under: %s\n", base_path);
+    lib.print.uc_printf("warn", "No hosts setup yet.\n");
   }
 
   return 1;
@@ -519,7 +485,7 @@ static int app_alias_ops_delete_map_file(const char *host, const char *filename,
     return 0;
   }
 
-  if (!build_alias_host_path(path, sizeof(path), host, filename)) {
+  if (!app.env.build_host_config_path(path, sizeof(path), host, filename)) {
     return 0;
   }
 
@@ -557,7 +523,7 @@ static int app_alias_ops_delete_host(const char *host) {
     return 0;
   }
 
-  if (!build_alias_host_path(base_path, sizeof(base_path), host, NULL)) {
+  if (!app.env.build_host_config_path(base_path, sizeof(base_path), host, NULL)) {
     return 0;
   }
 

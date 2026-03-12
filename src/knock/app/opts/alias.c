@@ -12,6 +12,23 @@
 #include <string.h>
 
 #include "../../lib.h"
+#include "../app.h"
+
+enum {
+  ALIAS_OPT_ID_NONE = 0,
+  ALIAS_OPT_ID_DUMP,
+  ALIAS_OPT_ID_OUTPUT_MODE
+};
+
+static const ArgvOptionSpec option_specs[] = {
+  { "--opts-dump",   ALIAS_OPT_ID_DUMP,        0, ARGV_OPT_FLAG,  0, 0, 1 },
+  { "--output-mode", ALIAS_OPT_ID_OUTPUT_MODE, 1, ARGV_OPT_KEYED, 0, 0, 1 },
+  { NULL, 0, 0, ARGV_OPT_FLAG, 0, 0, 0 }
+};
+
+static const ArgvOptionSpec *app_opts_alias_spec(void) {
+  return option_specs;
+}
 
 static int app_opts_alias_init(void) {
   return 1;
@@ -37,17 +54,24 @@ static int app_opts_alias_set_error(AppCommand *out, int exit_code, const char *
   return 0;
 }
 
-static int app_opts_alias_parse_id(const char *value, uint32_t *out_id) {
+static int app_opts_alias_parse_id(const char *value,
+                                   uint32_t min_value,
+                                   uint32_t max_value,
+                                   uint32_t *out_id) {
   unsigned long parsed = 0;
   char *end = NULL;
 
-  if (!value || !*value || !out_id) {
+  if (!value || !*value || !out_id || min_value > max_value) {
     return 0;
   }
 
   errno = 0;
   parsed = strtoul(value, &end, 10);
-  if (errno != 0 || !end || *end != '\0' || parsed == 0 || parsed > UINT32_MAX) {
+  if (errno != 0 || !end || *end != '\0') {
+    return 0;
+  }
+
+  if (parsed < (unsigned long)min_value || parsed > (unsigned long)max_value) {
     return 0;
   }
 
@@ -55,58 +79,75 @@ static int app_opts_alias_parse_id(const char *value, uint32_t *out_id) {
   return 1;
 }
 
-static int app_opts_alias_parse_runtime_options(int argc, char *argv[], AppCommand *out, char **filtered_argv,
-                                                int *filtered_argc, int *output_mode, int *dump_requested) {
-  int i = 0;
-  int write_idx = 0;
-  int parsed_mode = 0;
+static int app_opts_alias_expect_positionals(const ArgvParsed *parsed,
+                                             int min_count,
+                                             int max_count,
+                                             AppCommand *out,
+                                             const char *missing_message,
+                                             const char *command_name) {
+  int count = 0;
   char message[256];
 
-  if (!argv || argc < 2 || !out || !filtered_argv || !filtered_argc || !output_mode || !dump_requested) {
+  if (!parsed) {
+    return app_opts_alias_set_error(out, 2, "Invalid parser state for alias command");
+  }
+
+  count = parsed->num_positionals;
+  if (count < min_count) {
+    return app_opts_alias_set_error(out, 2,
+                                    (missing_message && *missing_message)
+                                    ? missing_message
+                                    : "Not enough arguments for alias command");
+  }
+
+  if (max_count >= 0 && count > max_count) {
+    snprintf(message, sizeof(message), "Too many arguments for %s",
+             (command_name && *command_name) ? command_name : "alias command");
+    return app_opts_alias_set_error(out, 2, message);
+  }
+
+  return 1;
+}
+
+static int app_opts_alias_apply_options(const ArgvParsed *parsed, AppAliasCommand *alias, AppCommand *out) {
+  static const ArgvEnumMap output_mode_map[] = {
+    { "unicode", SL_OUTPUT_MODE_UNICODE },
+    { "ascii", SL_OUTPUT_MODE_ASCII }
+  };
+  int i = 0;
+
+  if (!parsed || !alias || !out) {
     return app_opts_alias_set_error(out, 2, "Invalid parser state for alias options");
   }
 
-  filtered_argv[write_idx++] = argv[0];
-  filtered_argv[write_idx++] = argv[1];
+  for (i = 0; i < parsed->num_options; i++) {
+    const ArgvParsedOption *opt = &parsed->options[i];
 
-  for (i = 2; i < argc; i++) {
-    const char *arg = argv[i];
-
-    if (!arg || !*arg) {
-      continue;
+    switch (opt->spec->id) {
+      case ALIAS_OPT_ID_NONE:
+        break;
+      case ALIAS_OPT_ID_DUMP:
+        out->dump_requested = 1;
+        break;
+      case ALIAS_OPT_ID_OUTPUT_MODE:
+        if (!lib.argv.get_enum(opt, 0, output_mode_map,
+                               sizeof(output_mode_map) / sizeof(output_mode_map[0]),
+                               &alias->output_mode, NULL)) {
+          const char *value = lib.argv.option_value(opt, 0);
+          char message[256];
+          snprintf(message, sizeof(message),
+                   "Invalid output mode: %s (expected 'unicode' or 'ascii')",
+                   value ? value : "(null)");
+          return app_opts_alias_set_error(out, 2, message);
+        }
+        break;
+      default:
+        lib.print.uc_fprintf(stderr, "warn", "Unhandled alias option id %d: %s\n",
+                             opt->spec->id, opt->args[0] ? opt->args[0] : "(null)");
+        break;
     }
-
-    if (strcmp(arg, "--opts-dump") == 0) {
-      *dump_requested = 1;
-      continue;
-    }
-
-    if (strcmp(arg, "--output-mode") == 0) {
-      const char *mode_value = NULL;
-
-      if (i + 1 >= argc || !argv[i + 1] || !argv[i + 1][0]) {
-        return app_opts_alias_set_error(out, 2,
-                                        "Missing value for --output-mode (expected 'unicode' or 'ascii')");
-      }
-
-      mode_value = argv[i + 1];
-      parsed_mode = lib.print.output_parse_mode(mode_value);
-      if (!parsed_mode) {
-        snprintf(message, sizeof(message),
-                 "Invalid output mode: %s (expected 'unicode' or 'ascii')",
-                 mode_value);
-        return app_opts_alias_set_error(out, 2, message);
-      }
-
-      *output_mode = parsed_mode;
-      i++;
-      continue;
-    }
-
-    filtered_argv[write_idx++] = argv[i];
   }
 
-  *filtered_argc = write_idx;
   return 1;
 }
 
@@ -129,158 +170,166 @@ static int app_opts_alias_copy_token(char *dst, size_t dst_size, const char *src
   return 1;
 }
 
-static int app_opts_alias_parse(int argc, char *argv[], AppCommand *out) {
+static int app_opts_alias_parse(const char *mode_selector, const ArgvParsed *parsed, AppCommand *out) {
   AppAliasCommand *alias = NULL;
-  char **filtered_argv = NULL;
-  int filtered_argc = 0;
-  int ok = 0;
   char message[256];
 
-  if (argc < 2 || !argv || !argv[1]) {
+  if (!mode_selector || !*mode_selector) {
     return app_opts_alias_set_error(out, 2, "Missing alias command");
   }
 
   out->type = APP_CMD_ALIAS;
   out->ok = 0;
   out->exit_code = 2;
+  out->dump_requested = 0;
   memset(&out->as.alias, 0, sizeof(out->as.alias));
   alias = &out->as.alias;
 
-  filtered_argv = calloc((size_t)argc, sizeof(char *));
-  if (!filtered_argv) {
-    return app_opts_alias_set_error(out, 2, "Failed to allocate alias parse buffer");
+  if (!app_opts_alias_apply_options(parsed, alias, out)) {
+    return 0;
   }
 
-  if (!app_opts_alias_parse_runtime_options(argc, argv, out, filtered_argv, &filtered_argc,
-                                            &alias->output_mode, &out->dump_requested)) {
-    goto cleanup;
-  }
-
-  if (filtered_argc < 2 || !filtered_argv[1]) {
-    app_opts_alias_set_error(out, 2, "Missing alias command");
-    goto cleanup;
-  }
-
-  if (strcmp(filtered_argv[1], "--alias-user") == 0) {
-    if (filtered_argc < 5) {
-      app_opts_alias_set_error(out, 2, "Not enough arguments for --alias-user");
-      goto cleanup;
+  if (strcmp(mode_selector, "--alias-user") == 0) {
+    if (!app_opts_alias_expect_positionals(parsed, 3, 3, out,
+                                           "Not enough arguments for --alias-user",
+                                           "--alias-user")) {
+      return 0;
     }
     alias->op = APP_ALIAS_OP_SET_USER;
-    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), filtered_argv[2], "host", out) ||
-        !app_opts_alias_copy_token(alias->name, sizeof(alias->name), filtered_argv[3], "name", out)) {
-      goto cleanup;
+    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), parsed->positionals[0], "host", out) ||
+        !app_opts_alias_copy_token(alias->name, sizeof(alias->name), parsed->positionals[1], "name", out)) {
+      return 0;
     }
-    if (!app_opts_alias_parse_id(filtered_argv[4], &alias->id)) {
-      app_opts_alias_set_error(out, 2, "Invalid user ID for --alias-user");
-      goto cleanup;
+    if (!app_opts_alias_parse_id(parsed->positionals[2], 1, UINT16_MAX, &alias->id)) {
+      return app_opts_alias_set_error(out, 2,
+                                      "Invalid user ID for --alias-user (expected range 1-65535)");
     }
-  } else if (strcmp(filtered_argv[1], "--alias-action") == 0) {
-    if (filtered_argc < 5) {
-      app_opts_alias_set_error(out, 2, "Not enough arguments for --alias-action");
-      goto cleanup;
+  } else if (strcmp(mode_selector, "--alias-action") == 0) {
+    if (!app_opts_alias_expect_positionals(parsed, 3, 3, out,
+                                           "Not enough arguments for --alias-action",
+                                           "--alias-action")) {
+      return 0;
     }
     alias->op = APP_ALIAS_OP_SET_ACTION;
-    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), filtered_argv[2], "host", out) ||
-        !app_opts_alias_copy_token(alias->name, sizeof(alias->name), filtered_argv[3], "name", out)) {
-      goto cleanup;
+    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), parsed->positionals[0], "host", out) ||
+        !app_opts_alias_copy_token(alias->name, sizeof(alias->name), parsed->positionals[1], "name", out)) {
+      return 0;
     }
-    if (!app_opts_alias_parse_id(filtered_argv[4], &alias->id)) {
-      app_opts_alias_set_error(out, 2, "Invalid action ID for --alias-action");
-      goto cleanup;
+    if (!app_opts_alias_parse_id(parsed->positionals[2], 1, UINT8_MAX, &alias->id)) {
+      return app_opts_alias_set_error(out, 2,
+                                      "Invalid action ID for --alias-action (expected range 1-255)");
     }
-  } else if (strcmp(filtered_argv[1], "--alias-user-show") == 0) {
-    if (filtered_argc == 2) {
+  } else if (strcmp(mode_selector, "--alias-user-show") == 0) {
+    if (!app_opts_alias_expect_positionals(parsed, 0, 1, out, NULL, "--alias-user-show")) {
+      return 0;
+    }
+    if (parsed->num_positionals == 0) {
       alias->op = APP_ALIAS_OP_SHOW_USER_ALL;
     } else {
       alias->op = APP_ALIAS_OP_SHOW_USER;
-      if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), filtered_argv[2], "host", out)) {
-        goto cleanup;
+      if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), parsed->positionals[0], "host", out)) {
+        return 0;
       }
     }
-  } else if (strcmp(filtered_argv[1], "--alias-action-show") == 0) {
-    if (filtered_argc == 2) {
+  } else if (strcmp(mode_selector, "--alias-action-show") == 0) {
+    if (!app_opts_alias_expect_positionals(parsed, 0, 1, out, NULL, "--alias-action-show")) {
+      return 0;
+    }
+    if (parsed->num_positionals == 0) {
       alias->op = APP_ALIAS_OP_SHOW_ACTION_ALL;
     } else {
       alias->op = APP_ALIAS_OP_SHOW_ACTION;
-      if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), filtered_argv[2], "host", out)) {
-        goto cleanup;
+      if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), parsed->positionals[0], "host", out)) {
+        return 0;
       }
     }
-  } else if (strcmp(filtered_argv[1], "--alias-user-delete") == 0) {
-    if (filtered_argc < 4) {
-      app_opts_alias_set_error(out, 2, "Not enough arguments for --alias-user-delete");
-      goto cleanup;
+  } else if (strcmp(mode_selector, "--alias-user-delete") == 0) {
+    if (!app_opts_alias_expect_positionals(parsed, 2, 2, out,
+                                           "Not enough arguments for --alias-user-delete",
+                                           "--alias-user-delete")) {
+      return 0;
     }
     alias->op = APP_ALIAS_OP_DELETE_USER;
-    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), filtered_argv[2], "host", out) ||
-        !app_opts_alias_copy_token(alias->name, sizeof(alias->name), filtered_argv[3], "name", out)) {
-      goto cleanup;
+    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), parsed->positionals[0], "host", out) ||
+        !app_opts_alias_copy_token(alias->name, sizeof(alias->name), parsed->positionals[1], "name", out)) {
+      return 0;
     }
-  } else if (strcmp(filtered_argv[1], "--alias-action-delete") == 0) {
-    if (filtered_argc < 4) {
-      app_opts_alias_set_error(out, 2, "Not enough arguments for --alias-action-delete");
-      goto cleanup;
+  } else if (strcmp(mode_selector, "--alias-action-delete") == 0) {
+    if (!app_opts_alias_expect_positionals(parsed, 2, 2, out,
+                                           "Not enough arguments for --alias-action-delete",
+                                           "--alias-action-delete")) {
+      return 0;
     }
     alias->op = APP_ALIAS_OP_DELETE_ACTION;
-    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), filtered_argv[2], "host", out) ||
-        !app_opts_alias_copy_token(alias->name, sizeof(alias->name), filtered_argv[3], "name", out)) {
-      goto cleanup;
+    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), parsed->positionals[0], "host", out) ||
+        !app_opts_alias_copy_token(alias->name, sizeof(alias->name), parsed->positionals[1], "name", out)) {
+      return 0;
     }
-  } else if (strcmp(filtered_argv[1], "--alias-show") == 0) {
-    if (filtered_argc < 3) {
-      app_opts_alias_set_error(out, 2, "Not enough arguments for --alias-show");
-      goto cleanup;
+  } else if (strcmp(mode_selector, "--alias-show") == 0) {
+    if (!app_opts_alias_expect_positionals(parsed, 1, 1, out,
+                                           "Not enough arguments for --alias-show",
+                                           "--alias-show")) {
+      return 0;
     }
     alias->op = APP_ALIAS_OP_SHOW_HOST;
-    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), filtered_argv[2], "host", out)) {
-      goto cleanup;
+    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), parsed->positionals[0], "host", out)) {
+      return 0;
     }
-  } else if (strcmp(filtered_argv[1], "--alias-show-hosts") == 0) {
+  } else if (strcmp(mode_selector, "--alias-show-hosts") == 0) {
+    if (!app_opts_alias_expect_positionals(parsed, 0, 0, out, NULL, "--alias-show-hosts")) {
+      return 0;
+    }
     alias->op = APP_ALIAS_OP_SHOW_HOSTS;
-  } else if (strcmp(filtered_argv[1], "--alias-delete") == 0) {
-    if (filtered_argc < 4 || strcmp(filtered_argv[3], "YES") != 0) {
-      app_opts_alias_set_error(out, 2, "You must confirm destructive alias wipe by typing YES");
-      goto cleanup;
+  } else if (strcmp(mode_selector, "--alias-delete") == 0) {
+    if (!app_opts_alias_expect_positionals(parsed, 2, 2, out,
+                                           "You must confirm destructive alias wipe by typing YES",
+                                           "--alias-delete")) {
+      return 0;
+    }
+    if (strcmp(parsed->positionals[1], "YES") != 0) {
+      return app_opts_alias_set_error(out, 2, "You must confirm destructive alias wipe by typing YES");
     }
     alias->op = APP_ALIAS_OP_DELETE_HOST;
     alias->confirm_yes = 1;
-    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), filtered_argv[2], "host", out)) {
-      goto cleanup;
+    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), parsed->positionals[0], "host", out)) {
+      return 0;
     }
-  } else if (strcmp(filtered_argv[1], "--alias-user-delete-map") == 0) {
-    if (filtered_argc < 4 || strcmp(filtered_argv[3], "YES") != 0) {
-      app_opts_alias_set_error(out, 2, "You must confirm map deletion by typing YES");
-      goto cleanup;
+  } else if (strcmp(mode_selector, "--alias-user-delete-map") == 0) {
+    if (!app_opts_alias_expect_positionals(parsed, 2, 2, out,
+                                           "You must confirm map deletion by typing YES",
+                                           "--alias-user-delete-map")) {
+      return 0;
+    }
+    if (strcmp(parsed->positionals[1], "YES") != 0) {
+      return app_opts_alias_set_error(out, 2, "You must confirm map deletion by typing YES");
     }
     alias->op = APP_ALIAS_OP_DELETE_USER_MAP;
     alias->confirm_yes = 1;
-    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), filtered_argv[2], "host", out)) {
-      goto cleanup;
+    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), parsed->positionals[0], "host", out)) {
+      return 0;
     }
-  } else if (strcmp(filtered_argv[1], "--alias-action-delete-map") == 0) {
-    if (filtered_argc < 4 || strcmp(filtered_argv[3], "YES") != 0) {
-      app_opts_alias_set_error(out, 2, "You must confirm map deletion by typing YES");
-      goto cleanup;
+  } else if (strcmp(mode_selector, "--alias-action-delete-map") == 0) {
+    if (!app_opts_alias_expect_positionals(parsed, 2, 2, out,
+                                           "You must confirm map deletion by typing YES",
+                                           "--alias-action-delete-map")) {
+      return 0;
+    }
+    if (strcmp(parsed->positionals[1], "YES") != 0) {
+      return app_opts_alias_set_error(out, 2, "You must confirm map deletion by typing YES");
     }
     alias->op = APP_ALIAS_OP_DELETE_ACTION_MAP;
     alias->confirm_yes = 1;
-    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), filtered_argv[2], "host", out)) {
-      goto cleanup;
+    if (!app_opts_alias_copy_token(alias->host, sizeof(alias->host), parsed->positionals[0], "host", out)) {
+      return 0;
     }
   } else {
-    snprintf(message, sizeof(message), "Unknown alias command: %s", filtered_argv[1]);
-    app_opts_alias_set_error(out, 2, message);
-    goto cleanup;
+    snprintf(message, sizeof(message), "Unknown alias command: %s", mode_selector);
+    return app_opts_alias_set_error(out, 2, message);
   }
 
   out->ok = 1;
   out->exit_code = 0;
-  ok = 1;
-
-cleanup:
-  free(filtered_argv);
-  return ok;
+  return 1;
 }
 
 static const char *app_opts_alias_op_name(AppAliasOp op) {
@@ -336,6 +385,7 @@ static void app_opts_alias_dump(const AppAliasCommand *cmd) {
 static const AppOptsAliasLib app_opts_alias_instance = {
   .init = app_opts_alias_init,
   .shutdown = app_opts_alias_shutdown,
+  .spec = app_opts_alias_spec,
   .parse = app_opts_alias_parse,
   .dump = app_opts_alias_dump
 };

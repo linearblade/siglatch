@@ -5,14 +5,26 @@
 
 #include "lib.h"
 #include "app/app.h"
+#include <stdio.h>
 #include <string.h>
 
 int main(int argc, char *argv[]) {
   int status = 1;
+  int lib_initialized = 0;
+  int app_initialized = 0;
   AppCommand cmd = {0};
 
-  init_lib();
-  init_app();
+  if (!init_lib()) {
+    fprintf(stderr, "Failed to initialize knocker library runtime\n");
+    goto cleanup;
+  }
+  lib_initialized = 1;
+
+  if (!init_app()) {
+    fprintf(stderr, "Failed to initialize knocker app runtime\n");
+    goto cleanup;
+  }
+  app_initialized = 1;
 
   app.output_mode.set_from_config();
   app.output_mode.set_from_env();
@@ -78,7 +90,11 @@ int main(int argc, char *argv[]) {
   }
 
 cleanup:
-  shutdown_app();
-  shutdown_lib();
+  if (app_initialized) {
+    shutdown_app();
+  }
+  if (lib_initialized) {
+    shutdown_lib();
+  }
   return status;
 }

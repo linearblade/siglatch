@@ -15,6 +15,9 @@
 #include "../../lib.h"
 #include "command.h"
 
+static int app_alias_user_id_in_range(uint32_t id);
+static int app_alias_action_id_in_range(uint32_t id);
+
 static AppAliasCommandLib app_alias_command = {0};
 
 static int app_alias_init(void) {
@@ -47,9 +50,19 @@ static int app_alias_read_map(const char *path, AliasEntry **out_list, size_t *o
     char *name = strtok(line, ",");
     char *host = strtok(NULL, ",");
     char *id_str = strtok(NULL, ",\n");
+    char *end = NULL;
+    unsigned long parsed_id = 0;
 
     if (!name || !host || !id_str) {
       lib.print.uc_fprintf(stderr, "warn", "Skipping invalid alias line: %s\n", line);
+      continue;
+    }
+
+    errno = 0;
+    parsed_id = strtoul(id_str, &end, 10);
+    if (errno != 0 || !end || *end != '\0' || parsed_id == 0 || parsed_id > UINT32_MAX) {
+      lib.print.uc_fprintf(stderr, "warn", "Skipping alias with invalid ID: %s,%s,%s\n",
+                           name, host, id_str);
       continue;
     }
 
@@ -70,7 +83,7 @@ static int app_alias_read_map(const char *path, AliasEntry **out_list, size_t *o
     list[count].name[sizeof(list[count].name) - 1] = '\0';
     strncpy(list[count].host, host, sizeof(list[count].host) - 1);
     list[count].host[sizeof(list[count].host) - 1] = '\0';
-    list[count].id = (uint32_t)atoi(id_str);
+    list[count].id = (uint32_t)parsed_id;
     count++;
   }
 
@@ -161,6 +174,12 @@ static uint32_t app_alias_resolve_action(const char *host, const char *name) {
 
   for (size_t i = 0; i < count; i++) {
     if (strcmp(list[i].name, name) == 0) {
+      if (!app_alias_action_id_in_range(list[i].id)) {
+        lib.print.uc_fprintf(stderr, "warn",
+                             "Ignoring action alias '%s' with out-of-range ID %u (max %u)\n",
+                             name, list[i].id, (unsigned)UINT8_MAX);
+        continue;
+      }
       id = list[i].id;
       break;
     }
@@ -190,6 +209,12 @@ static uint32_t app_alias_resolve_user(const char *host, const char *name) {
 
   for (size_t i = 0; i < count; i++) {
     if (strcmp(list[i].name, name) == 0) {
+      if (!app_alias_user_id_in_range(list[i].id)) {
+        lib.print.uc_fprintf(stderr, "warn",
+                             "Ignoring user alias '%s' with out-of-range ID %u (max %u)\n",
+                             name, list[i].id, (unsigned)UINT16_MAX);
+        continue;
+      }
       id = list[i].id;
       break;
     }
@@ -201,6 +226,14 @@ static uint32_t app_alias_resolve_user(const char *host, const char *name) {
 
 static int app_alias_execute(const AppAliasCommand *cmd) {
   return app_alias_command.execute(cmd);
+}
+
+static int app_alias_user_id_in_range(uint32_t id) {
+  return (id >= 1 && id <= UINT16_MAX) ? 1 : 0;
+}
+
+static int app_alias_action_id_in_range(uint32_t id) {
+  return (id >= 1 && id <= UINT8_MAX) ? 1 : 0;
 }
 
 static const AppAliasLib app_alias_instance = {

@@ -16,6 +16,7 @@ typedef struct {
 
 typedef struct {
   int (*home)(const char **out);
+  int (*ensure_home_config_dir)(void);
   int (*build_home_path)(char *out, size_t out_size, const char *relative_path);
   int (*ensure_dir)(const char *path, mode_t mode);
 } EnvUserLib;

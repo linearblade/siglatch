@@ -16,13 +16,12 @@
 #include "../../lib.h"
 
 #define KNOCKER_CLIENT_CONFIG_DIR ".config/siglatch"
-#define KNOCKER_CLIENT_CONFIG_PARENT ".config"
 #define KNOCKER_CLIENT_CONFIG_FILE "client.conf"
 #define KNOCKER_CLIENT_OUTPUT_MODE_KEY "output_mode"
 
 static const char *app_env_home_or_error(void);
 static char *trim_ws(char *value);
-static int build_client_config_parent_dir_path(char *out, size_t out_size);
+static int app_env_build_config_root_path(char *out, size_t out_size);
 static int build_client_config_dir_path(char *out, size_t out_size);
 static int build_client_config_file_path(char *out, size_t out_size);
 static int ensure_client_config_dir_exists(void);
@@ -69,12 +68,11 @@ static char *trim_ws(char *value) {
   return value;
 }
 
-static int app_env_build_host_config_path(char *out, size_t out_size, const char *host, const char *filename) {
+static int app_env_build_config_root_path(char *out, size_t out_size) {
   const char *home = NULL;
   int written = 0;
 
-  if (!out || out_size == 0 || !host || !*host) {
-    lib.print.uc_fprintf(stderr, "err", "Invalid host config path request\n");
+  if (!out || out_size == 0) {
     return 0;
   }
 
@@ -83,10 +81,32 @@ static int app_env_build_host_config_path(char *out, size_t out_size, const char
     return 0;
   }
 
+  written = snprintf(out, out_size, "%s/%s", home, KNOCKER_CLIENT_CONFIG_DIR);
+  if (written < 0 || (size_t)written >= out_size) {
+    lib.print.uc_fprintf(stderr, "err", "Config root path too long\n");
+    return 0;
+  }
+
+  return 1;
+}
+
+static int app_env_build_host_config_path(char *out, size_t out_size, const char *host, const char *filename) {
+  char root_path[PATH_MAX] = {0};
+  int written = 0;
+
+  if (!out || out_size == 0 || !host || !*host) {
+    lib.print.uc_fprintf(stderr, "err", "Invalid host config path request\n");
+    return 0;
+  }
+
+  if (!app_env_build_config_root_path(root_path, sizeof(root_path))) {
+    return 0;
+  }
+
   if (filename && *filename) {
-    written = snprintf(out, out_size, "%s/.config/siglatch/%s/%s", home, host, filename);
+    written = snprintf(out, out_size, "%s/%s/%s", root_path, host, filename);
   } else {
-    written = snprintf(out, out_size, "%s/.config/siglatch/%s", home, host);
+    written = snprintf(out, out_size, "%s/%s", root_path, host);
   }
 
   if (written < 0 || (size_t)written >= out_size) {
@@ -99,6 +119,10 @@ static int app_env_build_host_config_path(char *out, size_t out_size, const char
 
 static int app_env_ensure_host_config_dir(const char *host) {
   char path[PATH_MAX] = {0};
+
+  if (!ensure_client_config_dir_exists()) {
+    return 0;
+  }
 
   if (!app_env_build_host_config_path(path, sizeof(path), host, NULL)) {
     return 0;
@@ -113,46 +137,8 @@ static int app_env_ensure_host_config_dir(const char *host) {
   return 1;
 }
 
-static int build_client_config_parent_dir_path(char *out, size_t out_size) {
-  const char *home = app_env_home_or_error();
-  int written = 0;
-
-  if (!out || out_size == 0) {
-    return 0;
-  }
-
-  if (!home) {
-    return 0;
-  }
-
-  written = snprintf(out, out_size, "%s/%s", home, KNOCKER_CLIENT_CONFIG_PARENT);
-  if (written < 0 || (size_t)written >= out_size) {
-    lib.print.uc_fprintf(stderr, "err", "Client parent config directory path too long\n");
-    return 0;
-  }
-
-  return 1;
-}
-
 static int build_client_config_dir_path(char *out, size_t out_size) {
-  const char *home = app_env_home_or_error();
-  int written = 0;
-
-  if (!out || out_size == 0) {
-    return 0;
-  }
-
-  if (!home) {
-    return 0;
-  }
-
-  written = snprintf(out, out_size, "%s/%s", home, KNOCKER_CLIENT_CONFIG_DIR);
-  if (written < 0 || (size_t)written >= out_size) {
-    lib.print.uc_fprintf(stderr, "err", "Client config directory path too long\n");
-    return 0;
-  }
-
-  return 1;
+  return app_env_build_config_root_path(out, out_size);
 }
 
 static int build_client_config_file_path(char *out, size_t out_size) {
@@ -173,20 +159,16 @@ static int build_client_config_file_path(char *out, size_t out_size) {
 }
 
 static int ensure_client_config_dir_exists(void) {
-  char parent_path[PATH_MAX];
   char dir_path[PATH_MAX];
 
-  if (!build_client_config_parent_dir_path(parent_path, sizeof(parent_path))) {
+  if (!lib.env.user.ensure_home_config_dir || !lib.env.user.ensure_home_config_dir()) {
+    lib.print.uc_fprintf(stderr, "err",
+                         "Failed to ensure home config directory (~/.config) (%s)\n",
+                         strerror(errno));
     return 0;
   }
 
   if (!build_client_config_dir_path(dir_path, sizeof(dir_path))) {
-    return 0;
-  }
-
-  if (!lib.env.user.ensure_dir || !lib.env.user.ensure_dir(parent_path, 0700)) {
-    lib.print.uc_fprintf(stderr, "err", "Failed to create config directory: %s (%s)\n",
-                         parent_path, strerror(errno));
     return 0;
   }
 
@@ -312,6 +294,7 @@ static int app_env_save_output_mode_default(const char *mode_value) {
 static const AppEnvLib app_env_instance = {
   .init = app_env_init,
   .shutdown = app_env_shutdown,
+  .build_config_root_path = app_env_build_config_root_path,
   .build_host_config_path = app_env_build_host_config_path,
   .ensure_host_config_dir = app_env_ensure_host_config_dir,
   .load_output_mode_default = app_env_load_output_mode_default,

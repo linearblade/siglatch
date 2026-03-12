@@ -6,6 +6,7 @@
 #include "transmit.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -48,6 +49,10 @@ static const ArgvOptionSpec option_specs[] = {
   { NULL, 0, 0, ARGV_OPT_FLAG, 0, 0, 0 }
 };
 
+static const ArgvOptionSpec *app_opts_transmit_spec(void) {
+  return option_specs;
+}
+
 static const char *const opts_response_type_names[] = {
   [OPTS_RESPONSE_HELP] = "help",
   [OPTS_RESPONSE_ERROR] = "error",
@@ -62,6 +67,61 @@ static int app_opts_transmit_init(void) {
 static void app_opts_transmit_shutdown(void) {
 }
 
+static int app_opts_transmit_set_error(AppCommand *out, int exit_code, const char *message) {
+  if (!out) {
+    return 0;
+  }
+
+  out->type = APP_CMD_ERROR;
+  out->ok = 0;
+  out->exit_code = exit_code;
+
+  if (message && *message) {
+    snprintf(out->error, sizeof(out->error), "%s", message);
+  } else {
+    out->error[0] = '\0';
+  }
+
+  return 0;
+}
+
+static int app_opts_transmit_set_typed_error(AppCommand *out, const ArgvParsedOption *opt,
+                                             const ArgvError *err) {
+  char message[256];
+
+  if (app.error_argv.shape_typed &&
+      app.error_argv.shape_typed(opt, err, message, sizeof(message))) {
+    return app_opts_transmit_set_error(out, 2, message);
+  }
+
+  return app_opts_transmit_set_error(out, 2, "Invalid option value");
+}
+
+static int app_opts_transmit_parse_numeric_id(const char *value,
+                                              uint32_t min_value,
+                                              uint32_t max_value,
+                                              uint32_t *out_id) {
+  unsigned long parsed = 0;
+  char *end = NULL;
+
+  if (!value || !*value || !out_id || min_value > max_value) {
+    return 0;
+  }
+
+  errno = 0;
+  parsed = strtoul(value, &end, 10);
+  if (errno != 0 || !end || *end != '\0') {
+    return 0;
+  }
+
+  if (parsed < (unsigned long)min_value || parsed > (unsigned long)max_value) {
+    return 0;
+  }
+
+  *out_id = (uint32_t)parsed;
+  return 1;
+}
+
 static const char *app_opts_response_type_name(OptsResponseType value) {
   int idx = (int)value;
   int limit = (int)(sizeof(opts_response_type_names) / sizeof(opts_response_type_names[0]));
@@ -73,32 +133,47 @@ static const char *app_opts_response_type_name(OptsResponseType value) {
   return "unknown";
 }
 
-static int app_opts_transmit_validate(Opts *opts) {
+static int app_opts_transmit_validate(Opts *opts, AppCommand *cmd) {
   int valid = 1;
+  char message[256];
 
   if (opts->host[0] == '\0') {
-    lib.print.uc_fprintf(stderr, "err", "Host not specified!\n");
+    app_opts_transmit_set_error(cmd, 2, "Host not specified!");
     valid = 0;
   }
 
   if (opts->user_id == 0) {
-    lib.print.uc_fprintf(stderr, "err", "Invalid or missing user ID\n");
+    app_opts_transmit_set_error(cmd, 2, "Invalid or missing user ID");
+    valid = 0;
+  }
+
+  if (opts->user_id > UINT16_MAX) {
+    app_opts_transmit_set_error(cmd, 2, "Resolved user ID exceeds packet range (max 65535)");
     valid = 0;
   }
 
   if (opts->action_id == 0) {
-    lib.print.uc_fprintf(stderr, "err", "Invalid or missing action ID\n");
+    app_opts_transmit_set_error(cmd, 2, "Invalid or missing action ID");
+    valid = 0;
+  }
+
+  if (opts->action_id > UINT8_MAX) {
+    app_opts_transmit_set_error(cmd, 2, "Resolved action ID exceeds packet range (max 255)");
     valid = 0;
   }
 
   if (opts->host[0] != '\0' && opts->hmac_key_path[0] == '\0') {
     if (!app.env.build_host_config_path(opts->hmac_key_path, PATH_MAX, opts->host, "hmac.key")) {
+      snprintf(message, sizeof(message), "Failed to resolve hmac key path for host: %s", opts->host);
+      app_opts_transmit_set_error(cmd, 2, message);
       valid = 0;
     }
   }
 
   if (opts->host[0] != '\0' && opts->server_pubkey_path[0] == '\0') {
     if (!app.env.build_host_config_path(opts->server_pubkey_path, PATH_MAX, opts->host, "server.pub.pem")) {
+      snprintf(message, sizeof(message), "Failed to resolve server key path for host: %s", opts->host);
+      app_opts_transmit_set_error(cmd, 2, message);
       valid = 0;
     }
   }
@@ -117,17 +192,14 @@ static int app_opts_transmit_validate(Opts *opts) {
 
   if (opts->dead_drop) {
     opts->hmac_mode = HMAC_MODE_NONE;
-    if (opts->payload_len == 0) {
-      lib.print.uc_fprintf(stderr, "err", "Dead drop payload is required \n");
-      valid = 0;
-    }
   }
 
   return valid;
 }
 
-static int app_opts_transmit_apply_parsed(const ArgvParsed *parsed, Opts *out) {
+static int app_opts_transmit_apply_parsed(const ArgvParsed *parsed, Opts *out, AppCommand *cmd) {
   ArgvError parse_err = {0};
+  char message[256];
 
   for (int i = 0; i < parsed->num_options; i++) {
     const ArgvParsedOption *opt = &parsed->options[i];
@@ -138,7 +210,7 @@ static int app_opts_transmit_apply_parsed(const ArgvParsed *parsed, Opts *out) {
     case OPT_ID_PORT: {
       uint16_t parsed_port = 0;
       if (!lib.argv.get_u16(opt, 0, &parsed_port, &parse_err)) {
-        return app.error_argv.typed(opt, &parse_err);
+        return app_opts_transmit_set_typed_error(cmd, opt, &parse_err);
       }
       out->port = parsed_port;
       break;
@@ -167,7 +239,7 @@ static int app_opts_transmit_apply_parsed(const ArgvParsed *parsed, Opts *out) {
     case OPT_ID_VERBOSE: {
       int parsed_verbose = 0;
       if (!lib.argv.get_i32(opt, 0, 0, 5, &parsed_verbose, &parse_err)) {
-        return app.error_argv.typed(opt, &parse_err);
+        return app_opts_transmit_set_typed_error(cmd, opt, &parse_err);
       }
       out->verbose = parsed_verbose;
       break;
@@ -176,7 +248,7 @@ static int app_opts_transmit_apply_parsed(const ArgvParsed *parsed, Opts *out) {
       strncpy(out->log_file, opt->args[1], PATH_MAX - 1);
       break;
     case OPT_ID_STDIN:
-      lib.stdin.read_multiline(out->payload, sizeof(out->payload), &out->payload_len);
+      out->stdin_requested = 1;
       break;
     case OPT_ID_OUTPUT_MODE: {
       static const ArgvEnumMap output_mode_map[] = {
@@ -188,10 +260,10 @@ static int app_opts_transmit_apply_parsed(const ArgvParsed *parsed, Opts *out) {
       if (!lib.argv.get_enum(opt, 0, output_mode_map,
                              sizeof(output_mode_map) / sizeof(output_mode_map[0]),
                              &mode, &parse_err)) {
-        lib.print.uc_fprintf(stderr, "err",
-                             "Invalid output mode: %s (expected 'unicode' or 'ascii')\n",
-                             lib.argv.option_value(opt, 0) ? lib.argv.option_value(opt, 0) : "(null)");
-        return 0;
+        snprintf(message, sizeof(message),
+                 "Invalid output mode: %s (expected 'unicode' or 'ascii')",
+                 lib.argv.option_value(opt, 0) ? lib.argv.option_value(opt, 0) : "(null)");
+        return app_opts_transmit_set_error(cmd, 2, message);
       }
       out->output_mode = mode;
       break;
@@ -203,8 +275,8 @@ static int app_opts_transmit_apply_parsed(const ArgvParsed *parsed, Opts *out) {
   }
 
   if (parsed->num_positionals < 3) {
-    lib.print.uc_fprintf(stderr, "err", "Missing required positional arguments: host, user, action\n");
-    return 0;
+    return app_opts_transmit_set_error(cmd, 2,
+                                       "Missing required positional arguments: host, user, action");
   }
 
   {
@@ -214,23 +286,23 @@ static int app_opts_transmit_apply_parsed(const ArgvParsed *parsed, Opts *out) {
 
     strncpy(out->host, host_str, sizeof(out->host) - 1);
 
-    if (isdigit((unsigned char)user_str[0])) {
-      out->user_id = (uint32_t)strtoul(user_str, NULL, 10);
-    } else {
-      out->user_id = app.alias.resolve_user(host_str, user_str);
-      if (out->user_id == 0) {
-        lib.print.uc_fprintf(stderr, "err", "Unknown user alias: %s\n", user_str);
-        return 0;
+    out->user_id = app.alias.resolve_user(host_str, user_str);
+    if (out->user_id == 0) {
+      if (!app_opts_transmit_parse_numeric_id(user_str, 1, UINT16_MAX, &out->user_id)) {
+        snprintf(message, sizeof(message),
+                 "Unknown user alias or invalid user ID: %s (expected alias or numeric range 1-%u)",
+                 user_str, (unsigned)UINT16_MAX);
+        return app_opts_transmit_set_error(cmd, 2, message);
       }
     }
 
-    if (isdigit((unsigned char)action_str[0])) {
-      out->action_id = (uint32_t)strtoul(action_str, NULL, 10);
-    } else {
-      out->action_id = app.alias.resolve_action(host_str, action_str);
-      if (out->action_id == 0) {
-        lib.print.uc_fprintf(stderr, "err", "Unknown action alias: %s\n", action_str);
-        return 0;
+    out->action_id = app.alias.resolve_action(host_str, action_str);
+    if (out->action_id == 0) {
+      if (!app_opts_transmit_parse_numeric_id(action_str, 1, UINT8_MAX, &out->action_id)) {
+        snprintf(message, sizeof(message),
+                 "Unknown action alias or invalid action ID: %s (expected alias or numeric range 1-%u)",
+                 action_str, (unsigned)UINT8_MAX);
+        return app_opts_transmit_set_error(cmd, 2, message);
       }
     }
 
@@ -270,6 +342,7 @@ static void app_opts_transmit_dump(const Opts *opts) {
   lib.print.uc_printf(NULL, "  HMAC Mode        : %d\n", opts->hmac_mode);
   lib.print.uc_printf(NULL, "  Encrypt Payload  : %s\n", opts->encrypt ? "Yes" : "No");
   lib.print.uc_printf(NULL, "  Dead Drop        : %s\n", opts->dead_drop ? "Yes" : "No");
+  lib.print.uc_printf(NULL, "  Stdin Requested  : %s\n", opts->stdin_requested ? "Yes" : "No");
   lib.print.uc_printf(NULL, "  Output Mode      : %s\n",
                       opts->output_mode ? lib.print.output_mode_name(opts->output_mode)
                                         : lib.print.output_mode_name(lib.print.output_get_mode()));
@@ -294,45 +367,47 @@ static void app_opts_transmit_dump(const Opts *opts) {
   lib.print.uc_printf(NULL, "  Response Type    : %s\n", app_opts_response_type_name(opts->response_type));
 }
 
-static int app_opts_transmit_parse(int argc, char *argv[], Opts *opts_out, int *dump_requested) {
-  ArgvParsed parsed = {0};
-  int dump_requested_local = 0;
+static int app_opts_transmit_parse(const char *mode_selector, const ArgvParsed *parsed, AppCommand *out) {
+  Opts *opts_out = NULL;
+
+  (void)mode_selector;
+
+  if (!parsed || !out) {
+    return 0;
+  }
+
+  out->type = APP_CMD_TRANSMIT;
+  out->ok = 0;
+  out->exit_code = 2;
+  out->dump_requested = 0;
+  memset(&out->as.transmit, 0, sizeof(out->as.transmit));
+  opts_out = &out->as.transmit;
 
   opts_out->hmac_mode = HMAC_MODE_NORMAL;
   opts_out->encrypt = 1;
   opts_out->verbose = 3;
   opts_out->output_mode = 0;
 
-  if (!lib.argv.parse(argc, argv, &parsed, option_specs)) {
-    return app.error_argv.parse(&parsed);
-  }
+  out->dump_requested = lib.argv.has(parsed, "--opts-dump") ? 1 : 0;
 
-  dump_requested_local = lib.argv.has(&parsed, "--opts-dump") ? 1 : 0;
-
-  if (!app_opts_transmit_apply_parsed(&parsed, opts_out)) {
+  if (!app_opts_transmit_apply_parsed(parsed, opts_out, out)) {
     return 0;
   }
 
-  if (!lib.argv.has(&parsed, "--stdin") && lib.stdin.has_piped_input()) {
-    lib.stdin.attach_if_piped(opts_out->payload, sizeof(opts_out->payload), &opts_out->payload_len);
-  }
-
-  if (!app_opts_transmit_validate(opts_out)) {
+  if (!app_opts_transmit_validate(opts_out, out)) {
     return 0;
   }
 
   opts_out->response_type = OPTS_RESPONSE_TRANSMIT;
-
-  if (dump_requested) {
-    *dump_requested = dump_requested_local;
-  }
-
+  out->ok = 1;
+  out->exit_code = 0;
   return 1;
 }
 
 static const AppOptsTransmitLib app_opts_transmit_instance = {
   .init = app_opts_transmit_init,
   .shutdown = app_opts_transmit_shutdown,
+  .spec = app_opts_transmit_spec,
   .parse = app_opts_transmit_parse,
   .dump = app_opts_transmit_dump
 };

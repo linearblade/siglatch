@@ -205,6 +205,31 @@ static void format_line(char *buffer, size_t bufsize, const char *fmt, va_list a
     }
 }
 
+static void ensure_line_terminated(const char *src, char *dst, size_t dst_size) {
+    int written = 0;
+
+    if (!dst || dst_size == 0) {
+        return;
+    }
+
+    if (!src) {
+        dst[0] = '\0';
+        return;
+    }
+
+    if (src[0] == '\0') {
+        written = snprintf(dst, dst_size, "\n");
+    } else if (src[strlen(src) - 1] == '\n') {
+        written = snprintf(dst, dst_size, "%s", src);
+    } else {
+        written = snprintf(dst, dst_size, "%s\n", src);
+    }
+
+    if (written < 0 || (size_t)written >= dst_size) {
+        dst[dst_size - 1] = '\0';
+    }
+}
+
 //end -- private
 
 static void log_set_enabled(int enable)  { logging_enabled = enable; }
@@ -294,24 +319,26 @@ static void log_emit(LogLevel level, int to_console, const char *fmt, ...) {
     build_log_prefix(prefix, sizeof(prefix), level);
 
     char message[1024];
+    char message_line[1026];
     va_list args;
     va_start(args, fmt);
     format_line(message, sizeof(message), fmt, args);
     va_end(args);
+    ensure_line_terminated(message, message_line, sizeof(message_line));
 
 
     if (logging_enabled && log_output){  //  File
       log_write_line(prefix);
-      log_write_line(message);    
+      log_write_line(message_line);
     }
     
     if (to_console && debug_to_stdout){ //  Terminal
       if (level == LOG_ERROR){
 	log_console_error(prefix);
-	log_console_error(message);
+	log_console_error(message_line);
       }else {
 	log_console_line(prefix);
-	log_console_line(message);   
+	log_console_line(message_line);
       }
 
     }

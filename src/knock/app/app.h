@@ -26,7 +26,7 @@ typedef struct {
 
 extern App app;
 
-void init_app(void);
+int init_app(void);
 void shutdown_app(void);
 
 #endif

@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include "../../lib.h"
+#include "../app.h"
 
 static AppOptsAliasLib app_opts_alias = {0};
 static AppOptsTransmitLib app_opts_transmit = {0};
@@ -44,6 +45,25 @@ typedef enum {
   APP_OPTS_PARSE_MODE_TRANSMIT
 } AppOptsParseMode;
 
+typedef int (*AppOptsModeParseFn)(const char *mode_selector, const ArgvParsed *parsed, AppCommand *out);
+
+typedef struct {
+  int argv_offset;
+  const ArgvOptionSpec *spec;
+  AppOptsModeParseFn parse;
+} AppOptsModeParser;
+
+enum {
+  OPT_ID_OUTPUT_MODE_DEFAULT = 1,
+  OPT_ID_OUTPUT_MODE_DEFAULT_DUMP
+};
+
+static const ArgvOptionSpec output_mode_default_specs[] = {
+  { "--output-mode-default", OPT_ID_OUTPUT_MODE_DEFAULT,      1, ARGV_OPT_KEYED, 1, 0, 1 },
+  { "--opts-dump", OPT_ID_OUTPUT_MODE_DEFAULT_DUMP, 0, ARGV_OPT_FLAG, 0, 0, 1 },
+  { NULL, 0, 0, ARGV_OPT_FLAG, 0, 0, 0 }
+};
+
 static int app_opts_set_error(AppCommand *out, int exit_code, const char *message) {
   if (!out) {
     return 0;
@@ -59,6 +79,26 @@ static int app_opts_set_error(AppCommand *out, int exit_code, const char *messag
     out->error[0] = '\0';
   }
   return 0;
+}
+
+static int app_opts_set_argv_error(AppCommand *out, const ArgvParsed *parsed) {
+  char message[256];
+
+  if (app.error_argv.shape && app.error_argv.shape(parsed, message, sizeof(message))) {
+    return app_opts_set_error(out, 2, message);
+  }
+
+  return app_opts_set_error(out, 2, "Argument parse error");
+}
+
+static int app_opts_set_typed_error(AppCommand *out, const ArgvParsedOption *opt, const ArgvError *err) {
+  char message[256];
+
+  if (app.error_argv.shape_typed && app.error_argv.shape_typed(opt, err, message, sizeof(message))) {
+    return app_opts_set_error(out, 2, message);
+  }
+
+  return app_opts_set_error(out, 2, "Invalid option value");
 }
 
 static AppOptsParseMode app_opts_get_parse_mode(int argc, char *argv[]) {
@@ -81,32 +121,83 @@ static AppOptsParseMode app_opts_get_parse_mode(int argc, char *argv[]) {
   return APP_OPTS_PARSE_MODE_TRANSMIT;
 }
 
-static int app_opts_parse_output_mode_default(int argc, char *argv[], AppCommand *out) {
-  int mode = 0;
+static int app_opts_parse_output_mode_default(const char *mode_selector, const ArgvParsed *parsed, AppCommand *out) {
+  static const ArgvEnumMap output_mode_map[] = {
+    { "unicode", SL_OUTPUT_MODE_UNICODE },
+    { "ascii", SL_OUTPUT_MODE_ASCII }
+  };
+  const ArgvParsedOption *mode_opt = NULL;
+  ArgvError parse_err = {0};
   char message[256];
+  int mode = 0;
 
-  if (argc < 3) {
-    return app_opts_set_error(out, 2,
-                              "Not enough arguments for --output-mode-default (expected 'unicode' or 'ascii')");
+  (void)mode_selector;
+
+  if (!parsed || !out) {
+    return 0;
   }
 
-  mode = lib.print.output_parse_mode(argv[2]);
-  if (!mode) {
+  mode_opt = lib.argv.find_first_by_id(parsed, OPT_ID_OUTPUT_MODE_DEFAULT);
+  if (!mode_opt) {
+    return app_opts_set_error(out, 2, "Missing --output-mode-default parse payload");
+  }
+
+  if (parsed->num_positionals > 0) {
     snprintf(message, sizeof(message),
-             "Invalid output mode default: %s (expected 'unicode' or 'ascii')",
-             argv[2] ? argv[2] : "(null)");
+             "Too many positional arguments for --output-mode-default");
     return app_opts_set_error(out, 2, message);
+  }
+
+  if (!lib.argv.get_enum(mode_opt, 0, output_mode_map,
+                         sizeof(output_mode_map) / sizeof(output_mode_map[0]),
+                         &mode, &parse_err)) {
+    return app_opts_set_typed_error(out, mode_opt, &parse_err);
   }
 
   out->type = APP_CMD_OUTPUT_MODE_DEFAULT;
   out->ok = 1;
   out->exit_code = 0;
+  out->dump_requested = lib.argv.has(parsed, "--opts-dump") ? 1 : 0;
   out->as.outdef.mode = mode;
   return 1;
 }
 
+static int app_opts_get_mode_parser(AppOptsParseMode parse_mode, AppOptsModeParser *out) {
+  if (!out) {
+    return 0;
+  }
+
+  memset(out, 0, sizeof(*out));
+
+  switch (parse_mode) {
+    case APP_OPTS_PARSE_MODE_OUTPUT_MODE_DEFAULT:
+      out->argv_offset = 0;
+      out->spec = output_mode_default_specs;
+      out->parse = app_opts_parse_output_mode_default;
+      return 1;
+    case APP_OPTS_PARSE_MODE_ALIAS:
+      out->argv_offset = 1;
+      out->spec = app_opts_alias.spec ? app_opts_alias.spec() : NULL;
+      out->parse = app_opts_alias.parse;
+      return 1;
+    case APP_OPTS_PARSE_MODE_TRANSMIT:
+      out->argv_offset = 0;
+      out->spec = app_opts_transmit.spec ? app_opts_transmit.spec() : NULL;
+      out->parse = app_opts_transmit.parse;
+      return 1;
+    case APP_OPTS_PARSE_MODE_HELP:
+    default:
+      return 0;
+  }
+}
+
 static int app_opts_parse_command(int argc, char *argv[], AppCommand *out) {
   AppOptsParseMode parse_mode = APP_OPTS_PARSE_MODE_TRANSMIT;
+  AppOptsModeParser mode_parser = {0};
+  ArgvParsed parsed = {0};
+  const char *mode_selector = NULL;
+  int parse_argc = 0;
+  char **parse_argv = NULL;
 
   if (!out) {
     return 0;
@@ -118,6 +209,7 @@ static int app_opts_parse_command(int argc, char *argv[], AppCommand *out) {
   out->exit_code = 2;
 
   parse_mode = app_opts_get_parse_mode(argc, argv);
+  mode_selector = (argc > 1 && argv && argv[1]) ? argv[1] : NULL;
   switch (parse_mode) {
     case APP_OPTS_PARSE_MODE_HELP:
       out->type = APP_CMD_HELP;
@@ -125,23 +217,36 @@ static int app_opts_parse_command(int argc, char *argv[], AppCommand *out) {
       out->exit_code = 0;
       return 1;
     case APP_OPTS_PARSE_MODE_OUTPUT_MODE_DEFAULT:
-      return app_opts_parse_output_mode_default(argc, argv, out);
     case APP_OPTS_PARSE_MODE_ALIAS:
-      return app_opts_alias.parse(argc, argv, out);
     case APP_OPTS_PARSE_MODE_TRANSMIT:
-      out->type = APP_CMD_TRANSMIT;
-      if (!app_opts_transmit.parse(argc, argv, &out->as.transmit, &out->dump_requested)) {
-        out->type = APP_CMD_ERROR;
-        out->ok = 0;
-        out->exit_code = 2;
-        return 0;
-      }
-      out->ok = 1;
-      out->exit_code = 0;
-      return 1;
+      break;
     default:
       return app_opts_set_error(out, 2, "Unknown parse mode");
   }
+
+  if (!app_opts_get_mode_parser(parse_mode, &mode_parser) ||
+      !mode_parser.spec || !mode_parser.parse) {
+    return app_opts_set_error(out, 2, "Parser mode wiring is incomplete");
+  }
+
+  parse_argc = argc - mode_parser.argv_offset;
+  parse_argv = argv + mode_parser.argv_offset;
+  if (parse_argc < 1 || !parse_argv) {
+    return app_opts_set_error(out, 2, "Invalid parser argv state");
+  }
+
+  if (!lib.argv.parse(parse_argc, parse_argv, &parsed, mode_parser.spec)) {
+    return app_opts_set_argv_error(out, &parsed);
+  }
+
+  if (!mode_parser.parse(mode_selector, &parsed, out)) {
+    if (!out->error[0]) {
+      app_opts_set_error(out, 2, "Invalid command arguments");
+    }
+    return 0;
+  }
+
+  return 1;
 }
 
 static void app_opts_dump_command(const AppCommand *cmd) {

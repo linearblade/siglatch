@@ -6,10 +6,17 @@
 #include "env.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+
+#define ENV_USER_HOME_CONFIG_DIR ".config"
+#define ENV_USER_HOME_CONFIG_MODE 0755
+
+static int env_user_build_home_path(char *out, size_t out_size, const char *relative_path);
+static int env_user_ensure_dir(const char *path, mode_t mode);
 
 static const char *env_get(const char *key) {
   if (!key || !*key) {
@@ -39,6 +46,16 @@ static int env_get_required(const char *key, const char **out) {
 
 static int env_user_home(const char **out) {
   return env_get_required("HOME", out);
+}
+
+static int env_user_ensure_home_config_dir(void) {
+  char path[PATH_MAX] = {0};
+
+  if (!env_user_build_home_path(path, sizeof(path), ENV_USER_HOME_CONFIG_DIR)) {
+    return 0;
+  }
+
+  return env_user_ensure_dir(path, ENV_USER_HOME_CONFIG_MODE);
 }
 
 static int env_user_build_home_path(char *out, size_t out_size, const char *relative_path) {
@@ -109,6 +126,7 @@ static const EnvLib env_instance = {
   },
   .user = {
     .home = env_user_home,
+    .ensure_home_config_dir = env_user_ensure_home_config_dir,
     .build_home_path = env_user_build_home_path,
     .ensure_dir = env_user_ensure_dir
   }

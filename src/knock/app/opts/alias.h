@@ -6,12 +6,14 @@
 #ifndef SIGLATCH_KNOCK_APP_OPTS_ALIAS_H
 #define SIGLATCH_KNOCK_APP_OPTS_ALIAS_H
 
+#include "../../../stdlib/argv.h"
 #include "../command.h"
 
 typedef struct {
   int (*init)(void);
   void (*shutdown)(void);
-  int (*parse)(int argc, char *argv[], AppCommand *out);
+  const ArgvOptionSpec *(*spec)(void);
+  int (*parse)(const char *mode_selector, const ArgvParsed *parsed, AppCommand *out);
   void (*dump)(const AppAliasCommand *cmd);
 } AppOptsAliasLib;
 

@@ -19,6 +19,7 @@
 #include "../stdlib/print.h"
 #include "../stdlib/stdin.h"
 #include "../stdlib/utils.h"
+#include <stdio.h>
 // Global lib object
 Lib lib = {
     .log = {0},
@@ -51,7 +52,25 @@ Lib lib = {
 //
 //  This order is the reverse of your shutdown()
 // ───────────────────────────────────────────────
-void init_lib(void) {
+int init_lib(void) {
+    const UtilsLib *utils = NULL;
+    int time_initialized = 0;
+    int net_initialized = 0;
+    int unicode_initialized = 0;
+    int print_initialized = 0;
+    int stdin_initialized = 0;
+    int log_initialized = 0;
+    int random_initialized = 0;
+    int payload_initialized = 0;
+    int env_initialized = 0;
+    int file_initialized = 0;
+    int openssl_initialized = 0;
+    int hmac_initialized = 0;
+    int payload_digest_initialized = 0;
+    int udp_initialized = 0;
+    int utils_initialized = 0;
+    int argv_initialized = 0;
+
     //  1. Acquire all libraries first (no init yet)
     lib.net             = *get_lib_net();
     lib.time            = *get_lib_time();
@@ -68,6 +87,39 @@ void init_lib(void) {
     lib.print           = *get_lib_print();
     lib.stdin           = *get_lib_stdin();
     lib.unicode         = *get_lib_unicode();
+    utils               = get_lib_utils();
+
+    if (!utils) {
+      fprintf(stderr, "Failed to initialize lib: utils provider unavailable\n");
+      return 0;
+    }
+
+    /*
+     * Wiring contract (intentional): lib factories are all-or-nothing.
+     * If required init/shutdown callbacks are present and init_lib() succeeds,
+     * the remaining function pointers for those modules are assumed valid per
+     * provider contract and are not redundantly guarded at every callsite.
+     */
+    if (!lib.time.init || !lib.time.shutdown ||
+        !lib.net.init || !lib.net.shutdown ||
+        !lib.unicode.init || !lib.unicode.shutdown ||
+        !lib.print.init || !lib.print.shutdown ||
+        !lib.stdin.init || !lib.stdin.shutdown ||
+        !lib.log.init || !lib.log.shutdown ||
+        !lib.random.init || !lib.random.shutdown ||
+        !lib.payload.init || !lib.payload.shutdown ||
+        !lib.env.init || !lib.env.shutdown ||
+        !lib.file.init || !lib.file.shutdown ||
+        !lib.openssl.init || !lib.openssl.shutdown ||
+        !lib.hmac.init || !lib.hmac.shutdown ||
+        !lib.payload_digest.init || !lib.payload_digest.shutdown ||
+        !lib.udp.init || !lib.udp.shutdown ||
+        !lib.argv.init || !lib.argv.shutdown ||
+        !utils->init || !utils->shutdown) {
+      fprintf(stderr, "Failed to initialize lib: incomplete function wiring\n");
+      return 0;
+    }
+
     //  2. Build all context structs
     LogContext log_ctx = {
         .time = &lib.time,
@@ -108,21 +160,97 @@ void init_lib(void) {
     };
     //  3. Initialize all libraries in dependency-safe order
     lib.time.init();             // Time has no dependencies
+    time_initialized = 1;
     lib.net.init();
+    net_initialized = 1;
     lib.unicode.init();
+    unicode_initialized = 1;
     lib.print.init(&print_ctx);
+    print_initialized = 1;
     lib.stdin.init(&stdin_ctx);
+    stdin_initialized = 1;
     lib.log.init(log_ctx);        // Log depends on time (timestamps)
+    log_initialized = 1;
     lib.random.init();            // Random can be independent
+    random_initialized = 1;
     lib.payload.init();           // Payload is raw logic (no crypto yet)
-    lib.env.init();
+    payload_initialized = 1;
+    if (!lib.env.init()) {
+      fprintf(stderr, "Failed to initialize lib.env\n");
+      goto fail;
+    }
+    env_initialized = 1;
     lib.file.init(&file_ctx);     // FileLib needs options (Unicode etc.)
-    lib.openssl.init(&openssl_ctx); // OpenSSL needs log, file, hmac
+    file_initialized = 1;
+    if (lib.openssl.init(&openssl_ctx) != 0) { // OpenSSL needs log, file, hmac
+      fprintf(stderr, "Failed to initialize lib.openssl\n");
+      goto fail;
+    }
+    openssl_initialized = 1;
     lib.hmac.init();              // HMAC key manager (after OpenSSL ready)
+    hmac_initialized = 1;
     lib.payload_digest.init(&payload_digest_ctx);
+    payload_digest_initialized = 1;
     lib.udp.init(&udp_ctx);
-    get_lib_utils()->init(&utils_ctx);
+    udp_initialized = 1;
+    utils->init(&utils_ctx);
+    utils_initialized = 1;
     lib.argv.init(&argv_context);
+    argv_initialized = 1;
+
+    return 1;
+
+fail:
+    if (argv_initialized) {
+      lib.argv.shutdown();
+    }
+    if (utils_initialized) {
+      utils->shutdown();
+    }
+    if (udp_initialized) {
+      lib.udp.shutdown();
+    }
+    if (payload_digest_initialized) {
+      lib.payload_digest.shutdown();
+    }
+    if (hmac_initialized) {
+      lib.hmac.shutdown();
+    }
+    if (openssl_initialized) {
+      lib.openssl.shutdown();
+    }
+    if (file_initialized) {
+      lib.file.shutdown();
+    }
+    if (env_initialized) {
+      lib.env.shutdown();
+    }
+    if (payload_initialized) {
+      lib.payload.shutdown();
+    }
+    if (random_initialized) {
+      lib.random.shutdown();
+    }
+    if (log_initialized) {
+      lib.log.shutdown();
+    }
+    if (stdin_initialized) {
+      lib.stdin.shutdown();
+    }
+    if (print_initialized) {
+      lib.print.shutdown();
+    }
+    if (unicode_initialized) {
+      lib.unicode.shutdown();
+    }
+    if (net_initialized) {
+      lib.net.shutdown();
+    }
+    if (time_initialized) {
+      lib.time.shutdown();
+    }
+
+    return 0;
 }
 
 //  SYSTEM SHUTDOWN ORDER MATTERS 

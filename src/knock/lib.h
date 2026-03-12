@@ -51,7 +51,7 @@ typedef struct {
 
 extern Lib lib;
 
-void init_lib(void);
+int init_lib(void);
 void shutdown_lib(void);
 
 

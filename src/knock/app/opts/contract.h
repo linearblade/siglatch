@@ -43,6 +43,7 @@ typedef struct {
   int encrypt;
   int dead_drop;
   int output_mode;
+  int stdin_requested;
 
   uint32_t user_id;
   uint32_t action_id;

@@ -6,12 +6,15 @@
 #ifndef SIGLATCH_KNOCK_APP_OPTS_TRANSMIT_H
 #define SIGLATCH_KNOCK_APP_OPTS_TRANSMIT_H
 
+#include "../../../stdlib/argv.h"
+#include "../command.h"
 #include "contract.h"
 
 typedef struct {
   int (*init)(void);
   void (*shutdown)(void);
-  int (*parse)(int argc, char *argv[], Opts *opts_out, int *dump_requested);
+  const ArgvOptionSpec *(*spec)(void);
+  int (*parse)(const char *mode_selector, const ArgvParsed *parsed, AppCommand *out);
   void (*dump)(const Opts *opts);
 } AppOptsTransmitLib;
 

@@ -26,9 +26,44 @@ static int app_transmit_init(void) {
 static void app_transmit_shutdown(void) {
 }
 
+static int app_transmit_resolve_payload(Opts *opts) {
+  if (!opts) {
+    return 0;
+  }
+
+  if (opts->stdin_requested) {
+    opts->payload_len = 0;
+    if (!lib.stdin.read_multiline(opts->payload, sizeof(opts->payload), &opts->payload_len)) {
+      if (lib.log.emit) {
+        lib.log.emit(LOG_ERROR, 1, "Failed to read payload from stdin (--stdin)");
+      }
+      return 0;
+    }
+  } else if (opts->payload_len == 0 && lib.stdin.has_piped_input()) {
+    opts->payload_len = 0;
+    if (!lib.stdin.attach_if_piped(opts->payload, sizeof(opts->payload), &opts->payload_len)) {
+      if (lib.log.emit) {
+        lib.log.emit(LOG_ERROR, 1, "Failed to read payload from piped stdin");
+      }
+      return 0;
+    }
+  }
+
+  if (opts->dead_drop && opts->payload_len == 0) {
+    if (lib.log.emit) {
+      lib.log.emit(LOG_ERROR, 1, "Dead drop payload is required");
+    }
+    return 0;
+  }
+
+  return 1;
+}
+
 static int app_transmit_single_packet(const Opts *opts) {
   int status = 1;
   SiglatchOpenSSLSession session = {0};
+  Opts runtime_opts = {0};
+  const Opts *effective = NULL;
 
   if (!opts) {
     if (lib.log.emit) {
@@ -37,51 +72,59 @@ static int app_transmit_single_packet(const Opts *opts) {
     return status;
   }
 
+  runtime_opts = *opts;
+  effective = &runtime_opts;
+
   do {
     KnockPacket pkt = {0};
-    if (!structurePacket(&pkt, opts->payload, opts->payload_len, opts->user_id, opts->action_id)) {
-      FAIL_SINGLE_PACKET("Failed to structure packet");
+    if (!app_transmit_resolve_payload(&runtime_opts)) {
+      FAIL_SINGLE_PACKET("Failed to resolve payload input\n");
     }
 
-    if (!init_user_openssl_session(opts, &session)) {
+    if (!structurePacket(&pkt, effective->payload, effective->payload_len,
+                         effective->user_id, effective->action_id)) {
+      FAIL_SINGLE_PACKET("Failed to structure packet\n");
+    }
+
+    if (!init_user_openssl_session(effective, &session)) {
       FAIL_SINGLE_PACKET("Failed to initialize OpenSSL session\n");
     }
 
-    if (!signWrapper(opts, &session, &pkt)) {
+    if (!signWrapper(effective, &session, &pkt)) {
       FAIL_SINGLE_PACKET("Failed to sign packet\n");
     }
 
     uint8_t packed[512] = {0};
     int packed_len = lib.payload.pack(&pkt, packed, sizeof(packed));
-    if (!structureOrDeadDrop(opts, &pkt, packed, &packed_len)) {
-      FAIL_SINGLE_PACKET("Failed to prepare payload (structured or dead-drop)");
+    if (!structureOrDeadDrop(effective, &pkt, packed, &packed_len)) {
+      FAIL_SINGLE_PACKET("Failed to prepare payload (structured or dead-drop)\n");
     }
 
     unsigned char data[512] = {0};
     size_t data_len = 0;
 
-    if (!encryptWrapper(opts, &session, packed, packed_len, data, &data_len)) {
-      FAIL_SINGLE_PACKET("Failed to prepare payload (encryption or raw mode)");
+    if (!encryptWrapper(effective, &session, packed, packed_len, data, &data_len)) {
+      FAIL_SINGLE_PACKET("Failed to prepare payload (encryption or raw mode)\n");
     }
 
     char ip[INET_ADDRSTRLEN];
-    int rv = lib.net.resolve_host_to_ip(opts->host, ip, sizeof(ip));
+    int rv = lib.net.resolve_host_to_ip(effective->host, ip, sizeof(ip));
 
     switch (rv) {
       case 1:
         break;
       case -2:
-        FAIL_SINGLE_PACKET("Hostname is NULL");
+        FAIL_SINGLE_PACKET("Hostname is NULL\n");
         break;
       case -3:
-        FAIL_SINGLE_PACKET("Output buffer is NULL");
+        FAIL_SINGLE_PACKET("Output buffer is NULL\n");
         break;
       default:
-        FAIL_SINGLE_PACKET("Could not resolve hostname: %s", opts->host);
+        FAIL_SINGLE_PACKET("Could not resolve hostname: %s\n", effective->host);
         break;
     }
 
-    if (!lib.udp.send(ip, opts->port, data, data_len)) {
+    if (!lib.udp.send(ip, effective->port, data, data_len)) {
       FAIL_SINGLE_PACKET("Failed to send UDP packet\n");
     }
 
