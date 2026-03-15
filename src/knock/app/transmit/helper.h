@@ -7,7 +7,7 @@
 #define SIGLATCH_KNOCK_APP_TRANSMIT_HELPER_H
 
 #include "../../../stdlib/openssl_session.h" // for SiglatchOpenSSLSession
-#include "../../../stdlib/payload.h"         // (your KnockPacket struct, etc.)
+#include "../../../shared/knock/packet.h"
 #include "../opts/contract.h"
 /**
  * Build a KnockPacket from a message.

@@ -7,24 +7,25 @@
 #include "../stdlib/log.h"
 #include "../stdlib/time.h"
 #include "../stdlib/log_context.h"
-#include "../stdlib/payload.h"
-#include "../stdlib/payload_digest.h"
+#include "../stdlib/argv.h"
+#include "../stdlib/nonce.h"
+#include "../stdlib/signal.h"
+#include "../stdlib/parse/parse.h"
 #include "../stdlib/print.h"
 #include "../stdlib/unicode.h"
 #include "../stdlib/utils.h"
-#include "config.h"
-#include "nonce_cache.h"
 
 // Global lib object
 Lib lib = {
     .log = {0},
     .time = {0},
-    .payload = {0},
-    .payload_digest = {0},
     .hmac = {0},
     .openssl = {0},
+    .nonce = {0},
+    .signal = {0},
     .net = {0},
     .str = {0},
+    .parse = {0},
     .print = {0},
     .unicode = {0}
 };
@@ -44,65 +45,211 @@ Lib lib = {
 //
 //  This order is the reverse of your shutdown()
 // ───────────────────────────────────────────────
-void init_lib(void) {
-  //  constructors may not have anything, but we have it if handled for later changes if any, plus we want to libs to all be consistent.
+int init_lib(void) {
+  const UtilsLib *utils = NULL;
+  int time_initialized = 0;
+  int net_initialized = 0;
+  int str_initialized = 0;
+  int argv_initialized = 0;
+  int parse_initialized = 0;
+  int unicode_initialized = 0;
+  int print_initialized = 0;
+  int utils_initialized = 0;
+  int log_initialized = 0;
+  int hmac_initialized = 0;
+  int nonce_initialized = 0;
+  int signal_initialized = 0;
+  int file_initialized = 0;
+  int openssl_initialized = 0;
+
+  // constructors first so init order and failure handling stay centralized
   lib.time = *get_lib_time();
-  lib.time.init();
-  lib.net             = *get_lib_net();
-  lib.net.init();
+  lib.net = *get_lib_net();
   lib.str = *get_lib_str();
-  lib.str.init();
+  lib.argv = *get_lib_argv();
+  lib.parse = *get_lib_parse();
   lib.unicode = *get_lib_unicode();
-  lib.unicode.init();
   lib.print = *get_lib_print();
-  PrintContext print_ctx = {
-    .unicode = &lib.unicode
-  };
-  UtilsContext utils_ctx = {
-    .print = &lib.print
-  };
-  lib.print.init(&print_ctx);
-  get_lib_utils()->init(&utils_ctx);
-
-  LogContext ctx = {
-    .time = &lib.time,
-    .print = &lib.print
-  };
   lib.log = *get_logger();
-  lib.log.init(ctx);
-
-  lib.config = *get_lib_config();
-  lib.config.init(NULL);
-  lib.nonce = *get_nonce_cache();
-  lib.nonce.init();
-
-  lib.payload = *get_payload_lib();
-  lib.payload.init();
-
-  lib.payload_digest = *get_payload_digest_lib();
-  PayloadDigestContext payload_digest_ctx = {
-    .log = &lib.log,
-    .openssl = &lib.openssl
-  };
-
-  lib.payload_digest.init(&payload_digest_ctx);
   lib.hmac = *get_hmac_key_lib();
+  lib.file = *get_lib_file();
+  lib.nonce = *get_lib_nonce();
+  lib.signal = *get_lib_signal();
+  lib.openssl = *get_siglatch_openssl();
+  utils = get_lib_utils();
+
+  if (!utils) {
+    fprintf(stderr, "Failed to initialize siglatchd lib runtime: utils provider unavailable\n");
+    return 0;
+  }
+
+  if (!lib.time.init || !lib.time.shutdown ||
+      !lib.net.init || !lib.net.shutdown ||
+      !lib.str.init || !lib.str.shutdown ||
+      !lib.argv.init || !lib.argv.shutdown ||
+      !lib.parse.init || !lib.parse.shutdown ||
+      !lib.unicode.init || !lib.unicode.shutdown ||
+      !lib.print.init || !lib.print.shutdown ||
+      !lib.log.init || !lib.log.shutdown ||
+      !lib.hmac.init || !lib.hmac.shutdown ||
+      !lib.file.init || !lib.file.shutdown ||
+      !lib.nonce.init || !lib.nonce.shutdown ||
+      !lib.nonce.cache_init || !lib.nonce.cache_shutdown ||
+      !lib.nonce.clear || !lib.nonce.check || !lib.nonce.add ||
+      !lib.signal.init || !lib.signal.shutdown ||
+      !lib.signal.state_reset || !lib.signal.install || !lib.signal.uninstall ||
+      !lib.signal.should_exit || !lib.signal.last_signal ||
+      !lib.signal.take_last_signal || !lib.signal.has_pending ||
+      !lib.signal.clear_pending || !lib.signal.request_exit ||
+      !lib.openssl.init || !lib.openssl.shutdown ||
+      !utils->init || !utils->shutdown) {
+    fprintf(stderr, "Failed to initialize siglatchd lib runtime: incomplete function wiring\n");
+    return 0;
+  }
+
+  lib.time.init();
+  time_initialized = 1;
+
+  lib.net.init();
+  net_initialized = 1;
+
+  lib.str.init();
+  str_initialized = 1;
+
+  {
+    ArgvContext argv_ctx = {
+      .strict = 1
+    };
+    lib.argv.init(&argv_ctx);
+  }
+  argv_initialized = 1;
+
+  {
+    ParseContext parse_ctx = {
+      .str = &lib.str
+    };
+
+    if (!lib.parse.init(&parse_ctx)) {
+      fprintf(stderr, "Failed to initialize siglatchd lib.parse\n");
+      goto fail;
+    }
+  }
+  parse_initialized = 1;
+
+  lib.unicode.init();
+  unicode_initialized = 1;
+
+  {
+    PrintContext print_ctx = {
+      .unicode = &lib.unicode
+    };
+    lib.print.init(&print_ctx);
+  }
+  print_initialized = 1;
+
+  {
+    UtilsContext utils_ctx = {
+      .print = &lib.print
+    };
+    utils->init(&utils_ctx);
+  }
+  utils_initialized = 1;
+
+  {
+    LogContext log_ctx = {
+      .time = &lib.time,
+      .print = &lib.print
+    };
+    lib.log.init(log_ctx);
+  }
+  log_initialized = 1;
+
   lib.hmac.init();
-  lib.file            = *get_lib_file();
-  FileLibContext file_ctx = {
-    .print             = &lib.print,
-    .auto_print_errors = true,
-    .allow_unicode     = true
-  };
-  lib.file.init(&file_ctx);
-  lib.openssl         = *get_siglatch_openssl();
-  SiglatchOpenSSLContext openssl_ctx = {
-        .log   = &lib.log,
-        .file  = &lib.file,
-        .hmac  = &lib.hmac,
-        .print = &lib.print
-  };
-  lib.openssl.init(&openssl_ctx);
+  hmac_initialized = 1;
+
+  if (!lib.nonce.init()) {
+    fprintf(stderr, "Failed to initialize siglatchd lib.nonce\n");
+    goto fail;
+  }
+  nonce_initialized = 1;
+
+  if (!lib.signal.init()) {
+    fprintf(stderr, "Failed to initialize siglatchd lib.signal\n");
+    goto fail;
+  }
+  signal_initialized = 1;
+
+  {
+    FileLibContext file_ctx = {
+      .print = &lib.print,
+      .auto_print_errors = true,
+      .allow_unicode = true
+    };
+    lib.file.init(&file_ctx);
+  }
+  file_initialized = 1;
+
+  {
+    SiglatchOpenSSLContext openssl_ctx = {
+      .log = &lib.log,
+      .file = &lib.file,
+      .hmac = &lib.hmac,
+      .print = &lib.print
+    };
+    if (lib.openssl.init(&openssl_ctx) != 0) {
+      fprintf(stderr, "Failed to initialize siglatchd lib.openssl\n");
+      goto fail;
+    }
+  }
+  openssl_initialized = 1;
+
+  return 1;
+
+fail:
+  if (openssl_initialized) {
+    lib.openssl.shutdown();
+  }
+  if (file_initialized) {
+    lib.file.shutdown();
+  }
+  if (nonce_initialized) {
+    lib.nonce.shutdown();
+  }
+  if (signal_initialized) {
+    lib.signal.shutdown();
+  }
+  if (hmac_initialized) {
+    lib.hmac.shutdown();
+  }
+  if (log_initialized) {
+    lib.log.shutdown();
+  }
+  if (utils_initialized) {
+    utils->shutdown();
+  }
+  if (print_initialized) {
+    lib.print.shutdown();
+  }
+  if (unicode_initialized) {
+    lib.unicode.shutdown();
+  }
+  if (parse_initialized) {
+    lib.parse.shutdown();
+  }
+  if (argv_initialized) {
+    lib.argv.shutdown();
+  }
+  if (str_initialized) {
+    lib.str.shutdown();
+  }
+  if (net_initialized) {
+    lib.net.shutdown();
+  }
+  if (time_initialized) {
+    lib.time.shutdown();
+  }
+
+  return 0;
 }
 
 //  SYSTEM SHUTDOWN ORDER MATTERS 
@@ -127,13 +274,13 @@ void init_lib(void) {
 void shutdown_lib(void) {
   //  clean close
   lib.openssl.shutdown();
-  lib.hmac.shutdown();
-  lib.payload_digest.shutdown();
-  lib.payload.shutdown();
+  lib.signal.shutdown();
   lib.nonce.shutdown();
+  lib.hmac.shutdown();
 
-  lib.config.shutdown();
   lib.log.shutdown();
+  lib.parse.shutdown();
+  lib.argv.shutdown();
   get_lib_utils()->shutdown();
   lib.print.shutdown();
   lib.unicode.shutdown();

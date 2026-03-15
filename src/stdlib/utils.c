@@ -73,38 +73,12 @@ void dumpDigest(const char *label, const uint8_t *digest, size_t len) {
     utils_print(NULL, "\n");
 }
 
-void dumpPacketFields(const char *label, const KnockPacket *pkt) {
-    if (!pkt) {
-        utils_print(NULL, "%s: NULL packet\n", label);
-        return;
-    }
-
-    utils_print(NULL, "---- %s ----\n", label);
-    utils_print(NULL, "Version: %u\n", pkt->version);
-    utils_print(NULL, "Timestamp: %u\n", pkt->timestamp);
-    utils_print(NULL, "User ID: %u\n", pkt->user_id);
-    utils_print(NULL, "Action ID: %u\n", pkt->action_id);
-    utils_print(NULL, "Challenge: %u\n", pkt->challenge);
-    utils_print(NULL, "Payload Length: %u\n", pkt->payload_len);
-
-    utils_print(NULL, "Payload (first 32 bytes or up to payload_len): ");
-    size_t to_dump = pkt->payload_len;
-    if (to_dump > 32) to_dump = 32;
-    for (size_t i = 0; i < to_dump; ++i) {
-        utils_print(NULL, "%02x", pkt->payload[i]);
-    }
-    utils_print(NULL, "\n");
-
-    utils_print(NULL, "--------------------\n");
-}
-
 static const UtilsLib utils_lib = {
     .init = utils_init,
     .set_context = utils_set_context,
     .shutdown = utils_shutdown,
     .timestamp_now = timestamp_now,
-    .dump_digest = dumpDigest,
-    .dump_packet_fields = dumpPacketFields
+    .dump_digest = dumpDigest
 };
 
 const UtilsLib *get_lib_utils(void) {

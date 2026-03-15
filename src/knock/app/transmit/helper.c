@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "../../../shared/shared.h"
 #include "../../../stdlib/utils.h"
 #include "../../lib.h"
 
@@ -96,7 +97,7 @@ int signPacket(SiglatchOpenSSLSession *session, KnockPacket *pkt) {
 
     uint8_t digest[32] = {0};
 
-    if (!lib.payload_digest.generate(pkt, digest)) {
+    if (!shared.knock.digest.generate(pkt, digest)) {
       lib.log.console("Failed to generate digest in signPacket()\n");
       return 0;
     }
@@ -169,7 +170,7 @@ int structureOrDeadDrop(const Opts *opts, const KnockPacket *pkt,
 
     LOGD("Prepared dead-drop payload (%d bytes)", *packed_len);
   } else {
-    int len = lib.payload.pack(pkt, packed, 512);
+    int len = shared.knock.codec.pack(pkt, packed, 512);
     if (len <= 0) {
       LOGE("Failed to pack structured payload\n");
       return 0;

@@ -9,17 +9,17 @@
 
 #include "../stdlib/log.h"
 #include "../stdlib/time.h"
-#include "../stdlib/payload.h"
-#include "../stdlib/payload_digest.h"
 #include "../stdlib/hmac_key.h"
 #include "../stdlib/file.h"
+#include "../stdlib/nonce.h"
+#include "../stdlib/signal.h"
 #include "../stdlib/openssl.h"
 #include "../stdlib/net.h"
 #include "../stdlib/str.h"
+#include "../stdlib/argv.h"
+#include "../stdlib/parse/parse.h"
 #include "../stdlib/print.h"
 #include "../stdlib/unicode.h"
-#include "config.h"
-#include "nonce_cache.h"
 
 #if defined(__GNUC__) || defined(__clang__)
   #define UNUSED_FN __attribute__((unused))
@@ -39,24 +39,24 @@
  */
 
 typedef struct {
-  ConfigLib config;
   Logger log;
   TimeLib time;
-  NonceCache nonce;
-  Payload payload;
-  PayloadDigest payload_digest;
   HMACKey hmac;
   FileLib file;
+  NonceLib nonce;
+  SignalLib signal;
   SiglatchOpenSSL_Lib openssl;
   NetLib net;
   StrLib str;
+  ArgvLib argv;
+  ParseLib parse;
   PrintLib print;
   UnicodeLib unicode;
 } Lib;
 
 extern Lib lib;
 
-void init_lib(void);
+int init_lib(void);
 void shutdown_lib(void);
 
 

@@ -77,29 +77,50 @@ BIN_KNOCKER   = knocker
 
 SRC_SIGLATCHD = \
     src/siglatch/main.c \
-    src/siglatch/config.c \
-    src/siglatch/udp_listener.c \
-    src/siglatch/decrypt.c \
-    src/siglatch/shutdown.c \
-    src/siglatch/signal.c \
-    src/siglatch/daemon.c \
-    src/siglatch/start_opts.c \
-    src/siglatch/help.c \
+    src/siglatch/app/app.c \
+    src/siglatch/app/config/config.c \
+    src/siglatch/app/config/debug.c \
+    src/siglatch/app/daemon/daemon.c \
+    src/siglatch/app/help/help.c \
+    src/siglatch/app/inbound/inbound.c \
+    src/siglatch/app/inbound/crypto/crypto.c \
+    src/siglatch/app/keys/keys.c \
+    src/siglatch/app/keys/master.c \
+    src/siglatch/app/keys/user.c \
+    src/siglatch/app/keys/server.c \
+    src/siglatch/app/keys/hmac.c \
+    src/siglatch/app/opts/opts.c \
+    src/siglatch/app/packet/packet.c \
+    src/siglatch/app/payload/codec/codec.c \
+    src/siglatch/app/payload/digest/digest.c \
+    src/siglatch/app/payload/payload.c \
+    src/siglatch/app/payload/structured.c \
+    src/siglatch/app/payload/unstructured.c \
+    src/siglatch/app/runtime/runtime.c \
+    src/siglatch/app/server/server.c \
+    src/siglatch/app/signal/signal.c \
+    src/siglatch/app/startup/startup.c \
+    src/siglatch/app/udp/udp.c \
+    src/siglatch/lifecycle.c \
     src/siglatch/lib.c \
-    src/siglatch/nonce_cache.c \
-    src/siglatch/handle_packet.c \
-    src/siglatch/handle_unstructured.c \
+    src/shared/shared.c \
+    src/shared/knock/codec.c \
+    src/shared/knock/debug.c \
+    src/shared/knock/digest.c \
     src/stdlib/log.c \
     src/stdlib/hmac_key.c \
+    src/stdlib/nonce.c \
+    src/stdlib/signal.c \
     src/stdlib/time.c \
     src/stdlib/net.c \
     src/stdlib/utils.c \
-    src/stdlib/payload.c \
-    src/stdlib/payload_digest.c \
     src/stdlib/openssl.c \
     src/stdlib/print.c \
     src/stdlib/unicode.c \
     src/stdlib/file.c \
+    src/stdlib/argv.c \
+    src/stdlib/parse/ini.c \
+    src/stdlib/parse/parse.c \
     src/stdlib/str.c \
     src/stdlib/base64.c
 
@@ -118,14 +139,21 @@ SRC_KNOCKER = \
     src/knock/app/output_mode/output_mode.c \
     src/knock/app/transmit/transmit.c \
     src/knock/app/transmit/helper.c \
+    src/shared/shared.c \
+    src/shared/knock/codec.c \
+    src/shared/knock/debug.c \
+    src/shared/knock/digest.c \
     src/stdlib/argv.c \
+    src/stdlib/parse/ini.c \
+    src/stdlib/parse/parse.c \
+    src/stdlib/str.c \
     src/knock/lib.c \
     src/stdlib/log.c \
     src/stdlib/net.c \
+    src/stdlib/nonce.c \
+    src/stdlib/signal.c \
     src/stdlib/time.c \
     src/stdlib/utils.c \
-    src/stdlib/payload.c \
-    src/stdlib/payload_digest.c \
     src/stdlib/random.c \
     src/stdlib/env.c \
     src/stdlib/stdin.c \

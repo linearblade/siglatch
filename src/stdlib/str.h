@@ -27,8 +27,14 @@ typedef struct {
   void (*shutdown)(void);                           ///< Optional setup (noop for now)
   size_t (*lcpy)(char *dst, const char *src, size_t dstsize);   ///< Safe strlcpy
   size_t (*lcat)(char *dst, const char *src, size_t dstsize);    ///< Safe strlcat
+  char *(*dup)(const char *str);               ///< Duplicate string with malloc ownership
   size_t (*len)(const char *str);              ///< strlen wrapper
   int (*eq)(const char *a, const char *b);     ///< strcmp == 0
+  int (*is_blank)(const char *str);            ///< Return 1 when string is empty or ASCII whitespace only
+  char *(*trim)(char *str);                    ///< Trim leading/trailing ASCII whitespace in place
+  int (*to_bool)(const char *text, int *out);  ///< Parse yes/no style boolean text into out
+  int (*split_kv)(char *text, char **key_out, char **value_out); ///< Split first key=value pair in place
+  void (*parse_csv_fixed)(char *items, int *count, int max_items, size_t item_size, const char *value); ///< Split CSV text into fixed-width caller-provided slots
 } StrLib;
 
 const StrLib *get_lib_str(void);

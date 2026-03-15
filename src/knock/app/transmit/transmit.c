@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <stdint.h>
 
+#include "../../../shared/shared.h"
 #include "../../lib.h"
 #include "helper.h"
 
@@ -95,7 +96,7 @@ static int app_transmit_single_packet(const Opts *opts) {
     }
 
     uint8_t packed[512] = {0};
-    int packed_len = lib.payload.pack(&pkt, packed, sizeof(packed));
+    int packed_len = shared.knock.codec.pack(&pkt, packed, sizeof(packed));
     if (!structureOrDeadDrop(effective, &pkt, packed, &packed_len)) {
       FAIL_SINGLE_PACKET("Failed to prepare payload (structured or dead-drop)\n");
     }

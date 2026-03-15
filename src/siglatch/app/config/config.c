@@ -1,0 +1,728 @@
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <openssl/evp.h>
+#include "config.h"
+#include "debug.h"
+#include "../app.h"
+#include "../../lib.h"
+
+#define TIMEOUT_SEC 5
+
+static void config_free(siglatch_config *config);
+static siglatch_config *config_consume_document_ptr(const IniDocument *document);
+static int parse_output_mode_key(const char *value, const char *scope_label);
+static siglatch_payload_overflow_policy parse_payload_overflow_key(
+    const char *value,
+    const char *scope_label,
+    int allow_inherit,
+    siglatch_payload_overflow_policy fallback);
+static int validate_unique_server_names(const siglatch_config *cfg);
+
+static void apply_server_runtime_defaults(siglatch_config *cfg);
+static void config_apply_defaults(siglatch_config *config);
+static siglatch_user *config_append_user(siglatch_config *config, const char *name);
+static siglatch_action *config_append_action(siglatch_config *config, const char *name);
+static siglatch_server *config_append_server(siglatch_config *config, const char *name);
+static siglatch_deaddrop *config_append_deaddrop(siglatch_config *config, const char *name);
+static void config_consume_global_entry(siglatch_config *config, const IniEntry *entry);
+static void config_consume_action_entry(siglatch_action *action, const IniEntry *entry);
+static void config_consume_user_entry(siglatch_user *user, const IniEntry *entry);
+static void config_consume_server_entry(siglatch_server *server, const IniEntry *entry);
+static void config_consume_deaddrop_entry(siglatch_deaddrop *deaddrop, const IniEntry *entry);
+
+static  siglatch_config *_config = NULL;
+static  int _owned = 0;
+static siglatch_config_context _ctx = {0};
+
+static int config_init(const siglatch_config_context *ctx) {
+    if (!ctx) {
+        return 0; // NULL context passed
+    }
+    _ctx = *ctx;
+    return 1; // Success
+}
+
+static void config_shutdown(void) {
+  _ctx = (siglatch_config_context){0};
+  if (_owned) 
+    config_free(_config);
+  _owned = 0;
+  _config = NULL;
+}
+
+static int config_set_context(const siglatch_config_context *ctx) {
+    if (!ctx) {
+        return 0; // Ignore null override
+    }
+    // Copy new context into static global
+    _ctx = *ctx;
+    return 1;
+}
+
+static const siglatch_config *config_get(void) {
+    return _config;
+}
+static siglatch_config *config_detach(void) {
+    siglatch_config *detached = _config;
+    _config = NULL;
+    _owned = 0;
+    return detached;
+}
+
+static void config_attach(siglatch_config *config) {
+  if (!config)
+    return;
+
+  if (_owned && _config)
+    config_free(_config);
+
+  _config = config;
+  _owned = 1;
+}
+
+static int config_load(const char *path) {
+  IniDocument *document = NULL;
+  IniError error = {0};
+  siglatch_config *cfg = NULL;
+
+  if (!path || path[0] == '\0') {
+    LOGE("Invalid config path\n");
+    return 0;
+  }
+
+  document = lib.parse.ini.read_file(path, &error);
+  if (!document) {
+    if (error.message[0] != '\0') {
+      if (error.line) {
+        LOGE("Config parse error on line %zu: %s\n", error.line, error.message);
+      } else {
+        LOGE("Config parse error: %s\n", error.message);
+      }
+    }
+    return 0;
+  }
+
+  cfg = config_consume_document_ptr(document);
+  lib.parse.ini.destroy(document);
+  document = NULL;
+
+  if (!cfg) {
+    return 0;
+  }
+
+  if (!app.keys.load(cfg)) {
+    config_free(cfg);
+    return 0;
+  }
+
+  config_attach(cfg);
+  return 1;
+}
+
+static int config_consume(const IniDocument *document) {
+  siglatch_config *cfg = config_consume_document_ptr(document);
+  if (cfg) {
+    config_attach(cfg);  // takes ownership, frees any prior
+    return 1;
+  }
+  return 0;
+}
+
+static int parse_output_mode_key(const char *value, const char *scope_label) {
+  int mode = lib.print.output_parse_mode(value);
+  if (mode) {
+    return mode;
+  }
+
+  LOGW("Invalid output_mode '%s' in %s (expected 'unicode' or 'ascii')\n",
+       value ? value : "(null)",
+       scope_label ? scope_label : "config");
+  return 0;
+}
+
+static siglatch_payload_overflow_policy parse_payload_overflow_key(
+    const char *value,
+    const char *scope_label,
+    int allow_inherit,
+    siglatch_payload_overflow_policy fallback) {
+  if (value && strcasecmp(value, "reject") == 0) {
+    return SL_PAYLOAD_OVERFLOW_REJECT;
+  }
+
+  if (value && strcasecmp(value, "clamp") == 0) {
+    return SL_PAYLOAD_OVERFLOW_CLAMP;
+  }
+
+  if (allow_inherit && value && strcasecmp(value, "inherit") == 0) {
+    return SL_PAYLOAD_OVERFLOW_INHERIT;
+  }
+
+  LOGW("Invalid payload_overflow '%s' in %s (expected '%s')\n",
+       value ? value : "(null)",
+       scope_label ? scope_label : "config",
+       allow_inherit ? "reject|clamp|inherit" : "reject|clamp");
+  return fallback;
+}
+
+const siglatch_user *config_user_by_id( uint32_t user_id) {
+    if (!_config) return NULL;
+
+    for (int i = 0; i < _config->user_count; ++i) {
+        const siglatch_user *u = &_config->users[i];
+        if (u->enabled && u->id == user_id) {
+            return u;
+        }
+    }
+
+    return NULL;  // Not found
+}
+
+static int config_action_available_by_user(uint32_t user_id, const char *action) {
+    if (!_config || !action) return 0;
+
+    const siglatch_user *user = config_user_by_id(user_id);
+    if (!user ) return 0;
+
+    for (int i = 0; i < user->action_count; ++i) {
+        const char *a = user->actions[i];
+        if (lib.str.eq(a, action)) {
+            return 1;
+        }
+    }
+
+    return 0;  // Not found
+}
+
+const char * config_username_by_id(uint32_t user_id){
+  const siglatch_user * u = config_user_by_id(user_id);
+  return u && u->name[0] != '\0'?
+    u->name:
+    NULL;
+}
+
+const siglatch_action * config_action_by_id(uint32_t action_id){
+  if (!_config) return NULL;
+  
+  for (int i = 0; i < _config->action_count; ++i) {
+    if (_config->actions[i].id == action_id) {
+      return &_config->actions[i];
+    }
+  }
+  return NULL;
+}
+
+static void apply_server_runtime_defaults(siglatch_config *cfg) {
+  if (!cfg) {
+    return;
+  }
+
+  for (int i = 0; i < cfg->server_count; ++i) {
+    siglatch_server *s = &cfg->servers[i];
+
+    if (!s->port) {
+      s->port = 50000;
+    }
+
+    if (s->log_file[0] == '\0' && cfg->log_file[0] != '\0') {
+      lib.str.lcpy(s->log_file, cfg->log_file, PATH_MAX);
+      LOGW("Using fallback log file for server [%s]: %s\n", s->name, s->log_file);
+    }
+  }
+}
+
+static int validate_unique_server_names(const siglatch_config *cfg) {
+  if (!cfg) {
+    return 0;
+  }
+
+  for (int i = 0; i < cfg->server_count; ++i) {
+    const siglatch_server *a = &cfg->servers[i];
+
+    if (a->name[0] == '\0') {
+      LOGE("Invalid server config: server entry #%d has empty effective name\n", i + 1);
+      return 0;
+    }
+
+    for (int j = i + 1; j < cfg->server_count; ++j) {
+      const siglatch_server *b = &cfg->servers[j];
+
+      if (strcmp(a->name, b->name) == 0) {
+        LOGE("Invalid server config: duplicate effective server name '%s' (entries #%d and #%d)\n",
+             a->name, i + 1, j + 1);
+        return 0;
+      }
+    }
+  }
+
+  return 1;
+}
+
+
+const siglatch_deaddrop *config_deaddrop_by_name(const char *name) {
+  if (!_config || !name) return NULL;
+
+  for (int i = 0; i < _config->deaddrop_count; ++i) {
+    if (strcmp(_config->deaddrops[i].name, name) == 0) {
+      return &_config->deaddrops[i];
+    }
+  }
+  return NULL;
+}
+
+const siglatch_server *config_server_by_name(const char *name) {
+  if (!_config || !name) return NULL;
+
+  for (int i = 0; i < _config->server_count; ++i) {
+    if (strcmp(_config->servers[i].name, name) == 0) {
+      return &_config->servers[i];
+    }
+  }
+  return NULL;
+}
+
+
+static const siglatch_deaddrop *config_deaddrop_starts_with_buffer(const uint8_t *payload, size_t payload_len) {
+  if (!_config || !payload || payload_len == 0)
+    return NULL;
+
+  for (int i = 0; i < _config->deaddrop_count; ++i) {
+    const siglatch_deaddrop *d = &_config->deaddrops[i];
+    for (int j = 0; j < d->starts_with_count; ++j) {
+      const char *prefix = d->starts_with[j];
+      size_t prefix_len = strlen(prefix);
+
+      if (prefix_len <= payload_len && memcmp(payload, prefix, prefix_len) == 0) {
+        return d;
+      }
+    }
+  }
+
+  return NULL;
+}
+static void config_apply_defaults(siglatch_config *config) {
+  if (!config) {
+    return;
+  }
+
+  config->master_privkey = NULL;
+  lib.str.lcpy(config->priv_key_path, "/etc/siglatch/server_priv.pem", PATH_MAX);
+  config->payload_overflow = SL_PAYLOAD_OVERFLOW_REJECT;
+}
+
+static siglatch_user *config_append_user(siglatch_config *config, const char *name) {
+  siglatch_user *user = NULL;
+
+  if (!config || !name) {
+    return NULL;
+  }
+
+  if (config->user_count >= MAX_USERS) {
+    LOGW("Too many [user:*] sections; ignoring '%s'\n", name);
+    return NULL;
+  }
+
+  user = &config->users[config->user_count++];
+  lib.str.lcpy(user->name, name, sizeof(user->name));
+  user->pubkey = NULL;
+  return user;
+}
+
+static siglatch_action *config_append_action(siglatch_config *config, const char *name) {
+  siglatch_action *action = NULL;
+
+  if (!config || !name) {
+    return NULL;
+  }
+
+  if (config->action_count >= MAX_ACTIONS) {
+    LOGW("Too many [action:*] sections; ignoring '%s'\n", name);
+    return NULL;
+  }
+
+  action = &config->actions[config->action_count++];
+  lib.str.lcpy(action->name, name, sizeof(action->name));
+  action->exec_split = 1;
+  action->enabled = 1;
+  action->require_ascii = 0;
+  action->payload_overflow = SL_PAYLOAD_OVERFLOW_INHERIT;
+  return action;
+}
+
+static siglatch_server *config_append_server(siglatch_config *config, const char *name) {
+  siglatch_server *server = NULL;
+
+  if (!config || !name) {
+    return NULL;
+  }
+
+  if (config->server_count >= MAX_SERVERS) {
+    LOGW("Too many [server:*] sections; ignoring '%s'\n", name);
+    return NULL;
+  }
+
+  server = &config->servers[config->server_count++];
+  lib.str.lcpy(server->name, name, sizeof(server->name));
+  lib.str.lcpy(server->label, server->name, sizeof(server->label));
+  server->payload_overflow = SL_PAYLOAD_OVERFLOW_INHERIT;
+  return server;
+}
+
+static siglatch_deaddrop *config_append_deaddrop(siglatch_config *config, const char *name) {
+  siglatch_deaddrop *deaddrop = NULL;
+
+  if (!config || !name) {
+    return NULL;
+  }
+
+  if (config->deaddrop_count >= MAX_DEADDROPS) {
+    LOGW("Too many [deaddrop:*] sections; ignoring '%s'\n", name);
+    return NULL;
+  }
+
+  deaddrop = &config->deaddrops[config->deaddrop_count++];
+  lib.str.lcpy(deaddrop->name, name, sizeof(deaddrop->name));
+  lib.str.lcpy(deaddrop->label, deaddrop->name, sizeof(deaddrop->label));
+  deaddrop->enabled = 1;
+  deaddrop->require_ascii = 0;
+  deaddrop->exec_split = 1;
+  return deaddrop;
+}
+
+static void config_consume_global_entry(siglatch_config *config, const IniEntry *entry) {
+  const char *key = entry ? entry->key : NULL;
+  const char *val = entry ? entry->value : NULL;
+
+  if (!config || !key || !val) {
+    return;
+  }
+
+  if (strcmp(key, "priv_key_path") == 0) {
+    lib.str.lcpy(config->priv_key_path, val, PATH_MAX);
+  } else if (strcmp(key, "port") == 0) {
+    /* reserved */
+  } else if (strcmp(key, "default_server") == 0) {
+    lib.str.lcpy(config->default_server, val, MAX_SERVER_NAME);
+  } else if (strcmp(key, "log_file") == 0) {
+    lib.str.lcpy(config->log_file, val, PATH_MAX);
+  } else if (strcmp(key, "output_mode") == 0) {
+    config->output_mode = parse_output_mode_key(val, "[global]");
+  } else if (strcmp(key, "payload_overflow") == 0) {
+    config->payload_overflow = parse_payload_overflow_key(
+        val, "[global]", 0, config->payload_overflow);
+  }
+}
+
+static void config_consume_action_entry(siglatch_action *action, const IniEntry *entry) {
+  const char *key = entry ? entry->key : NULL;
+  const char *val = entry ? entry->value : NULL;
+
+  if (!action || !key || !val) {
+    return;
+  }
+
+  if (strcmp(key, "constructor") == 0) {
+    lib.str.lcpy(action->constructor, val, PATH_MAX);
+  } else if (strcmp(key, "destructor") == 0) {
+    lib.str.lcpy(action->destructor, val, PATH_MAX);
+  } else if (strcmp(key, "keepalive_interval") == 0) {
+    action->keepalive_interval = atoi(val);
+  } else if (strcmp(key, "id") == 0) {
+    action->id = atoi(val);
+  } else if (strcmp(key, "enabled") == 0) {
+    action->enabled = 0;
+    lib.str.to_bool(val, &action->enabled);
+  } else if (strcmp(key, "require_ascii") == 0) {
+    action->require_ascii = 0;
+    lib.str.to_bool(val, &action->require_ascii);
+  } else if (strcmp(key, "exec_split") == 0) {
+    action->exec_split = 0;
+    lib.str.to_bool(val, &action->exec_split);
+  } else if (strcmp(key, "payload_overflow") == 0) {
+    action->payload_overflow = parse_payload_overflow_key(
+        val, action->name, 1, action->payload_overflow);
+  }
+}
+
+static void config_consume_user_entry(siglatch_user *user, const IniEntry *entry) {
+  const char *key = entry ? entry->key : NULL;
+  const char *val = entry ? entry->value : NULL;
+
+  if (!user || !key || !val) {
+    return;
+  }
+
+  if (strcmp(key, "enabled") == 0) {
+    user->enabled = 0;
+    lib.str.to_bool(val, &user->enabled);
+  } else if (strcmp(key, "key_file") == 0) {
+    lib.str.lcpy(user->key_file, val, PATH_MAX);
+  } else if (strcmp(key, "hmac_file") == 0) {
+    lib.str.lcpy(user->hmac_file, val, PATH_MAX);
+  } else if (strcmp(key, "id") == 0) {
+    user->id = atoi(val);
+  } else if (strcmp(key, "actions") == 0) {
+    lib.str.parse_csv_fixed(
+        (char *)user->actions,
+        &user->action_count,
+        MAX_ACTIONS,
+        MAX_ACTION_NAME,
+        val);
+  }
+}
+
+static void config_consume_server_entry(siglatch_server *server, const IniEntry *entry) {
+  const char *key = entry ? entry->key : NULL;
+  const char *val = entry ? entry->value : NULL;
+
+  if (!server || !key || !val) {
+    return;
+  }
+
+  if (strcmp(key, "id") == 0) {
+    server->id = atoi(val);
+  } else if (strcmp(key, "enabled") == 0) {
+    server->enabled = 0;
+    lib.str.to_bool(val, &server->enabled);
+  } else if (strcmp(key, "label") == 0) {
+    lib.str.lcpy(server->label, val, MAX_SERVER_NAME);
+  } else if (strcmp(key, "name") == 0) {
+    lib.str.lcpy(server->label, val, MAX_SERVER_NAME);
+    LOGW("Deprecated key 'name' in [server:%s]; use 'label' instead (server identity remains section label)\n",
+         server->name);
+  } else if (strcmp(key, "priv_key_path") == 0) {
+    lib.str.lcpy(server->priv_key_path, val, PATH_MAX);
+  } else if (strcmp(key, "log_file") == 0) {
+    lib.str.lcpy(server->log_file, val, PATH_MAX);
+  } else if (strcmp(key, "port") == 0) {
+    server->port = atoi(val);
+  } else if (strcmp(key, "secure") == 0) {
+    server->secure = 0;
+    lib.str.to_bool(val, &server->secure);
+  } else if (strcmp(key, "logging") == 0) {
+    server->logging = 0;
+    lib.str.to_bool(val, &server->logging);
+  } else if (strcmp(key, "output_mode") == 0) {
+    server->output_mode = parse_output_mode_key(val, server->name);
+  } else if (strcmp(key, "payload_overflow") == 0) {
+    server->payload_overflow = parse_payload_overflow_key(
+        val, server->name, 1, server->payload_overflow);
+  } else if (strcmp(key, "actions") == 0) {
+    lib.str.parse_csv_fixed(
+        (char *)server->actions,
+        &server->action_count,
+        MAX_ACTIONS,
+        MAX_ACTION_NAME,
+        val);
+  } else if (strcmp(key, "deaddrops") == 0) {
+    lib.str.parse_csv_fixed(
+        (char *)server->deaddrops,
+        &server->deaddrop_count,
+        MAX_ACTIONS,
+        MAX_ACTION_NAME,
+        val);
+  } else {
+    LOGW("Unknown key in [server:%s]: %s\n", server->name, key);
+  }
+}
+
+static void config_consume_deaddrop_entry(siglatch_deaddrop *deaddrop, const IniEntry *entry) {
+  const char *key = entry ? entry->key : NULL;
+  const char *val = entry ? entry->value : NULL;
+
+  if (!deaddrop || !key || !val) {
+    return;
+  }
+
+  if (strcmp(key, "id") == 0) {
+    deaddrop->id = atoi(val);
+  } else if (strcmp(key, "label") == 0) {
+    lib.str.lcpy(deaddrop->label, val, MAX_DEADDROP_NAME);
+  } else if (strcmp(key, "name") == 0) {
+    lib.str.lcpy(deaddrop->label, val, MAX_DEADDROP_NAME);
+    LOGW("Deprecated key 'name' in [deaddrop:%s]; use 'label' instead (deaddrop identity remains section label)\n",
+         deaddrop->name);
+  } else if (strcmp(key, "constructor") == 0) {
+    lib.str.lcpy(deaddrop->constructor, val, MAX_PATH_LEN);
+  } else if (strcmp(key, "filter") == 0 || strcmp(key, "filters") == 0) {
+    lib.str.parse_csv_fixed(
+        (char *)deaddrop->filters,
+        &deaddrop->filter_count,
+        MAX_FILTERS,
+        MAX_FILTER_LEN,
+        val);
+  } else if (strcmp(key, "starts_with") == 0) {
+    lib.str.parse_csv_fixed(
+        (char *)deaddrop->starts_with,
+        &deaddrop->starts_with_count,
+        MAX_FILTERS,
+        MAX_FILTER_LEN,
+        val);
+  } else if (strcmp(key, "enabled") == 0) {
+    deaddrop->enabled = 0;
+    lib.str.to_bool(val, &deaddrop->enabled);
+  } else if (strcmp(key, "require_ascii") == 0) {
+    deaddrop->require_ascii = 0;
+    lib.str.to_bool(val, &deaddrop->require_ascii);
+  } else if (strcmp(key, "exec_split") == 0) {
+    deaddrop->exec_split = 0;
+    lib.str.to_bool(val, &deaddrop->exec_split);
+  }
+}
+
+static siglatch_config *config_consume_document_ptr(const IniDocument *document) {
+  siglatch_config *config = NULL;
+  size_t i = 0;
+
+  if (!document) {
+    return NULL;
+  }
+
+  config = calloc(1, sizeof(*config));
+  if (!config) {
+    return NULL;
+  }
+
+  config_apply_defaults(config);
+
+  for (i = 0; i < document->global.entry_count; ++i) {
+    config_consume_global_entry(config, &document->global.entries[i]);
+  }
+
+  for (i = 0; i < document->section_count; ++i) {
+    const IniSection *section = &document->sections[i];
+    size_t j = 0;
+
+    if (!section->name) {
+      continue;
+    }
+
+    if (strncmp(section->name, "user:", 5) == 0) {
+      siglatch_user *user = config_append_user(config, section->name + 5);
+      if (!user) {
+        continue;
+      }
+
+      for (j = 0; j < section->entry_count; ++j) {
+        config_consume_user_entry(user, &section->entries[j]);
+      }
+      continue;
+    }
+
+    if (strncmp(section->name, "action:", 7) == 0) {
+      siglatch_action *action = config_append_action(config, section->name + 7);
+      if (!action) {
+        continue;
+      }
+
+      for (j = 0; j < section->entry_count; ++j) {
+        config_consume_action_entry(action, &section->entries[j]);
+      }
+      continue;
+    }
+
+    if (strncmp(section->name, "server:", 7) == 0) {
+      siglatch_server *server = config_append_server(config, section->name + 7);
+      if (!server) {
+        continue;
+      }
+
+      for (j = 0; j < section->entry_count; ++j) {
+        config_consume_server_entry(server, &section->entries[j]);
+      }
+      continue;
+    }
+
+    if (strncmp(section->name, "deaddrop:", 9) == 0) {
+      siglatch_deaddrop *deaddrop = config_append_deaddrop(config, section->name + 9);
+      if (!deaddrop) {
+        continue;
+      }
+
+      for (j = 0; j < section->entry_count; ++j) {
+        config_consume_deaddrop_entry(deaddrop, &section->entries[j]);
+      }
+      continue;
+    }
+
+    LOGW("Unknown config section [%s]\n", section->name);
+  }
+
+  if (!validate_unique_server_names(config)) {
+    config_free(config);
+    return NULL;
+  }
+
+  apply_server_runtime_defaults(config);
+
+  return config;
+}
+
+static void config_unload(void){
+  siglatch_config *config = config_detach();
+  config_free(config);
+  
+}
+
+static void config_free(siglatch_config *config) {
+    if (!config) return;
+    if (config->master_privkey) {
+      EVP_PKEY_free(config->master_privkey);
+      config->master_privkey = NULL;
+    }
+    // Free each user's loaded EVP_PKEY (if used)
+    for (int i = 0; i < config->user_count; ++i) {
+        siglatch_user *u = &config->users[i];
+        if (u->pubkey) {
+            EVP_PKEY_free(u->pubkey);
+            u->pubkey = NULL;
+        }
+    }
+
+    // Free the server keys
+    for (int i = 0; i < config->server_count; ++i) {
+      siglatch_server *s = &config->servers[i];
+      if (!s->key_owned) continue;
+      if (s->priv_key) {
+        EVP_PKEY_free(s->priv_key);
+        s->priv_key = NULL;
+      }
+    }
+    free(config);
+}
+
+
+
+static const ConfigLib config_instance = {
+  .init = config_init,
+  .shutdown = config_shutdown,
+
+  .load = config_load,
+  .consume = config_consume,
+  .unload = config_unload,
+  .detach = config_detach,
+  .attach = config_attach,
+  .get = config_get,
+
+  .set_context = config_set_context,
+
+  .dump = config_debug_dump,
+  .dump_ptr = config_debug_dump_ptr,
+  .deaddrop_starts_with_buffer = config_deaddrop_starts_with_buffer,
+  .user_by_id = config_user_by_id,
+  .action_by_id = config_action_by_id,
+  .action_available_by_user = config_action_available_by_user, 
+  .server_by_name = config_server_by_name,
+  .deaddrop_by_name = config_deaddrop_by_name,
+  .username_by_id = config_username_by_id,
+};
+
+const ConfigLib *get_app_config_lib(void) {
+  return &config_instance;
+}

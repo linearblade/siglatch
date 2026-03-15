@@ -1,5 +1,5 @@
 # Changelog (Recent Work)
-Date range: 2026-03-06 to 2026-03-12
+Date range: 2026-03-06 to 2026-03-15
 Scope: in-progress workspace changes since tag `1.0` relevant to current stabilization pass.
 
 ## Added
@@ -218,3 +218,96 @@ Scope: in-progress workspace changes since tag `1.0` relevant to current stabili
 - `./knocker --alias-show-hosts` on missing config root now returns success with friendly empty-state message.
 - Out-of-range numeric IDs are rejected with explicit parse errors.
 - Numeric-like alias names resolve through alias-first behavior.
+
+## Update (2026-03-14 to 2026-03-15): Server Architecture Cleanup + Shared Boundary Pass
+
+### Added
+- New generic INI parse layer under `src/stdlib/parse/`:
+  - `lib.parse`
+  - `lib.parse.ini`
+- New shared protocol layer under `src/shared/`:
+  - `shared.knock.codec`
+  - `shared.knock.digest`
+  - `shared.knock.debug`
+- New reusable nonce module:
+  - `lib.nonce`
+- New reusable signal module:
+  - `lib.signal`
+- New explicit server runtime state types:
+  - `AppRuntimeProcessState`
+  - `AppRuntimeListenerState`
+- New lifecycle entry points:
+  - `siglatch_boot()`
+  - `siglatch_shutdown()`
+- New server app module families:
+  - `app.keys`
+  - `app.server`
+  - `app.startup`
+  - `app.udp`
+  - `app.daemon`
+  - `app.inbound`
+  - `app.inbound.crypto`
+  - `app.packet`
+  - `app.payload`
+  - `app.help`
+  - `app.signal`
+
+### Changed
+- Server config ownership moved from `lib.config` to `app.config`.
+- `app.config` now supports both:
+  - `load(path)` as the normal daemon-facing orchestration path
+  - `consume(document)` as the lower-level INI consumption path
+- Config file reading is now separated from config semantics:
+  - `lib.parse.ini` reads INI into a document model
+  - `app.config` consumes that document into `siglatch_config`
+- Key material loading was split out of config parsing into `app.keys.*`.
+- Selected-server runtime behavior was split out of config into `app.server`.
+- Config dump/debug code was split out of main config implementation into `app/config/debug.c`.
+- Daemon startup work was moved out of `main` into `app.startup`.
+- UDP listener setup was moved under `app.udp`.
+- Daemon loop ownership was moved under `app.daemon`.
+- Inbound receive/normalize work was moved under `app.inbound`.
+- Structured/unstructured payload handling was moved under `app.payload`.
+- Server-side use of packet codec/digest now goes through `app.payload.*`, which in turn uses `shared.knock.*`.
+- Runtime listener state is now explicit instead of hidden module-global state:
+  - selected server now lives on listener state
+  - packet count now lives on listener state
+  - replay cache now lives on listener state
+- Process exit state now lives on explicit process state instead of a module-global flag.
+- `app.signal` now wraps `lib.signal` instead of owning its own handler state.
+- Process signal state now lives on `SignalState` inside `AppRuntimeProcessState`.
+- Deferred signal logging now happens in normal shutdown flow instead of inside the handler.
+- Daemon signal policy is now:
+  - first `SIGINT` / `SIGTERM` requests graceful shutdown
+  - second `SIGINT` / `SIGTERM` forces hard exit
+- Replay protection was moved from the old app-side nonce cache to `lib.nonce`.
+- Packet debug dumping was moved out of `stdlib/utils` and into `shared.knock.debug`.
+- Top-level daemon boot/shutdown flow in `main` is now:
+  - boot
+  - startup prepare
+  - listener start
+  - daemon run
+  - shutdown
+
+### Removed / Pruned
+- Top-level server compatibility shim removed:
+  - `src/siglatch/config.h`
+- Old app-side shutdown module removed from active tree and moved to legacy staging.
+- Old app-side nonce cache removed from active tree and moved to legacy staging.
+- Old top-level daemon helper files, decrypt leftovers, UDP listener wrappers, config parser leftovers, and other inactive server-side files were moved into `__tmp/legacy`.
+- Shared knock protocol implementation no longer lives behind the server/client `lib` surface.
+
+### Documentation / Internal Notes
+- Added and maintained architecture tracking in:
+  - `__tmp/architecture-todo.md`
+- Refreshed server cleanup tracking in:
+  - `__tmp/server-todo.md`
+- Maintained config follow-up notes in:
+  - `__tmp/app-config-review-notes.md`
+
+### Verification
+- `make build-siglatchd` succeeds after the server architecture refactor wave.
+- `make build-knocker` still succeeds after shared protocol and `lib.nonce` moves.
+- `./siglatchd --help` succeeds on the new startup path.
+- `./knocker --help` succeeds after the shared-layer move.
+- Existing local OpenSSL/macOS linker-version warnings remain unchanged.

@@ -9,15 +9,17 @@
 
 #include "../stdlib/log.h"
 #include "../stdlib/time.h"
-#include "../stdlib/payload.h"
-#include "../stdlib/payload_digest.h"
 #include "../stdlib/random.h"
 #include "../stdlib/hmac_key.h"
 #include "../stdlib/file.h"
+#include "../stdlib/nonce.h"
+#include "../stdlib/signal.h"
 #include "../stdlib/env.h"
 #include "../stdlib/openssl.h"
 #include "../stdlib/udp.h"
 #include "../stdlib/argv.h"
+#include "../stdlib/parse/parse.h"
+#include "../stdlib/str.h"
 #include "../stdlib/net.h"
 #include "../stdlib/print.h"
 #include "../stdlib/stdin.h"
@@ -34,15 +36,17 @@
 typedef struct {
   Logger log;
   TimeLib time;
-  Payload payload;
-  PayloadDigest payload_digest;
   RandomLib random;
   HMACKey hmac;
   EnvLib env;
   FileLib file;
+  NonceLib nonce;
+  SignalLib signal;
   SiglatchOpenSSL_Lib openssl;
   UdpLib udp;
   ArgvLib argv;
+  StrLib str;
+  ParseLib parse;
   PrintLib print;
   StdinLib stdin;
   UnicodeLib unicode;

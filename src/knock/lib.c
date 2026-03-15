@@ -7,15 +7,16 @@
 #include "../stdlib/log.h"
 #include "../stdlib/time.h"
 #include "../stdlib/log_context.h"
-#include "../stdlib/payload.h"
-#include "../stdlib/payload_digest.h"
 #include "../stdlib/random.h"
 #include "../stdlib/hmac_key.h"
+#include "../stdlib/nonce.h"
+#include "../stdlib/signal.h"
 #include "../stdlib/net.h"
 #include "../stdlib/env.h"
 #include "../stdlib/file.h"
 #include "../stdlib/udp.h"
 #include "../stdlib/argv.h"
+#include "../stdlib/parse/parse.h"
 #include "../stdlib/print.h"
 #include "../stdlib/stdin.h"
 #include "../stdlib/utils.h"
@@ -25,12 +26,14 @@ Lib lib = {
     .log = {0},
     .time = {0},
     .random = {0},
-    .payload = {0},
-    .payload_digest = {0},
     .hmac = {0},
     .env = {0},
     .file = {0},
+    .nonce = {0},
+    .signal = {0},
     .udp = {0},
+    .str = {0},
+    .parse = {0},
     .print = {0},
     .stdin = {0},
     .unicode = {0},
@@ -56,34 +59,38 @@ int init_lib(void) {
     const UtilsLib *utils = NULL;
     int time_initialized = 0;
     int net_initialized = 0;
+    int str_initialized = 0;
     int unicode_initialized = 0;
     int print_initialized = 0;
     int stdin_initialized = 0;
     int log_initialized = 0;
     int random_initialized = 0;
-    int payload_initialized = 0;
     int env_initialized = 0;
     int file_initialized = 0;
+    int nonce_initialized = 0;
+    int signal_initialized = 0;
     int openssl_initialized = 0;
     int hmac_initialized = 0;
-    int payload_digest_initialized = 0;
     int udp_initialized = 0;
     int utils_initialized = 0;
     int argv_initialized = 0;
+    int parse_initialized = 0;
 
     //  1. Acquire all libraries first (no init yet)
     lib.net             = *get_lib_net();
     lib.time            = *get_lib_time();
     lib.log             = *get_logger();
     lib.random          = *get_random_lib();
-    lib.payload         = *get_payload_lib();
-    lib.payload_digest  = *get_payload_digest_lib();
     lib.hmac            = *get_hmac_key_lib();
     lib.env             = *get_lib_env();
     lib.file            = *get_lib_file();
+    lib.nonce           = *get_lib_nonce();
+    lib.signal          = *get_lib_signal();
     lib.openssl         = *get_siglatch_openssl();
     lib.udp             = *get_udp_lib();
     lib.argv            = *get_lib_argv();
+    lib.str             = *get_lib_str();
+    lib.parse           = *get_lib_parse();
     lib.print           = *get_lib_print();
     lib.stdin           = *get_lib_stdin();
     lib.unicode         = *get_lib_unicode();
@@ -102,19 +109,27 @@ int init_lib(void) {
      */
     if (!lib.time.init || !lib.time.shutdown ||
         !lib.net.init || !lib.net.shutdown ||
+        !lib.str.init || !lib.str.shutdown ||
         !lib.unicode.init || !lib.unicode.shutdown ||
         !lib.print.init || !lib.print.shutdown ||
         !lib.stdin.init || !lib.stdin.shutdown ||
         !lib.log.init || !lib.log.shutdown ||
         !lib.random.init || !lib.random.shutdown ||
-        !lib.payload.init || !lib.payload.shutdown ||
         !lib.env.init || !lib.env.shutdown ||
         !lib.file.init || !lib.file.shutdown ||
+        !lib.nonce.init || !lib.nonce.shutdown ||
+        !lib.nonce.cache_init || !lib.nonce.cache_shutdown ||
+        !lib.nonce.clear || !lib.nonce.check || !lib.nonce.add ||
+        !lib.signal.init || !lib.signal.shutdown ||
+        !lib.signal.state_reset || !lib.signal.install || !lib.signal.uninstall ||
+        !lib.signal.should_exit || !lib.signal.last_signal ||
+        !lib.signal.take_last_signal || !lib.signal.has_pending ||
+        !lib.signal.clear_pending || !lib.signal.request_exit ||
         !lib.openssl.init || !lib.openssl.shutdown ||
         !lib.hmac.init || !lib.hmac.shutdown ||
-        !lib.payload_digest.init || !lib.payload_digest.shutdown ||
         !lib.udp.init || !lib.udp.shutdown ||
         !lib.argv.init || !lib.argv.shutdown ||
+        !lib.parse.init || !lib.parse.shutdown ||
         !utils->init || !utils->shutdown) {
       fprintf(stderr, "Failed to initialize lib: incomplete function wiring\n");
       return 0;
@@ -138,10 +153,6 @@ int init_lib(void) {
         .hmac  = &lib.hmac,
         .print = &lib.print
     };
-    PayloadDigestContext payload_digest_ctx = {
-      .log = &lib.log,
-      .openssl = &lib.openssl
-    };
     UdpContext udp_ctx = {
       .log = &lib.log,
       .print = &lib.print
@@ -163,6 +174,8 @@ int init_lib(void) {
     time_initialized = 1;
     lib.net.init();
     net_initialized = 1;
+    lib.str.init();
+    str_initialized = 1;
     lib.unicode.init();
     unicode_initialized = 1;
     lib.print.init(&print_ctx);
@@ -173,8 +186,6 @@ int init_lib(void) {
     log_initialized = 1;
     lib.random.init();            // Random can be independent
     random_initialized = 1;
-    lib.payload.init();           // Payload is raw logic (no crypto yet)
-    payload_initialized = 1;
     if (!lib.env.init()) {
       fprintf(stderr, "Failed to initialize lib.env\n");
       goto fail;
@@ -182,6 +193,16 @@ int init_lib(void) {
     env_initialized = 1;
     lib.file.init(&file_ctx);     // FileLib needs options (Unicode etc.)
     file_initialized = 1;
+    if (!lib.nonce.init()) {
+      fprintf(stderr, "Failed to initialize lib.nonce\n");
+      goto fail;
+    }
+    nonce_initialized = 1;
+    if (!lib.signal.init()) {
+      fprintf(stderr, "Failed to initialize lib.signal\n");
+      goto fail;
+    }
+    signal_initialized = 1;
     if (lib.openssl.init(&openssl_ctx) != 0) { // OpenSSL needs log, file, hmac
       fprintf(stderr, "Failed to initialize lib.openssl\n");
       goto fail;
@@ -189,18 +210,30 @@ int init_lib(void) {
     openssl_initialized = 1;
     lib.hmac.init();              // HMAC key manager (after OpenSSL ready)
     hmac_initialized = 1;
-    lib.payload_digest.init(&payload_digest_ctx);
-    payload_digest_initialized = 1;
     lib.udp.init(&udp_ctx);
     udp_initialized = 1;
     utils->init(&utils_ctx);
     utils_initialized = 1;
     lib.argv.init(&argv_context);
     argv_initialized = 1;
+    {
+      ParseContext parse_ctx = {
+        .str = &lib.str
+      };
+
+      if (!lib.parse.init(&parse_ctx)) {
+        fprintf(stderr, "Failed to initialize lib.parse\n");
+        goto fail;
+      }
+    }
+    parse_initialized = 1;
 
     return 1;
 
 fail:
+    if (parse_initialized) {
+      lib.parse.shutdown();
+    }
     if (argv_initialized) {
       lib.argv.shutdown();
     }
@@ -209,9 +242,6 @@ fail:
     }
     if (udp_initialized) {
       lib.udp.shutdown();
-    }
-    if (payload_digest_initialized) {
-      lib.payload_digest.shutdown();
     }
     if (hmac_initialized) {
       lib.hmac.shutdown();
@@ -222,11 +252,14 @@ fail:
     if (file_initialized) {
       lib.file.shutdown();
     }
+    if (nonce_initialized) {
+      lib.nonce.shutdown();
+    }
+    if (signal_initialized) {
+      lib.signal.shutdown();
+    }
     if (env_initialized) {
       lib.env.shutdown();
-    }
-    if (payload_initialized) {
-      lib.payload.shutdown();
     }
     if (random_initialized) {
       lib.random.shutdown();
@@ -242,6 +275,9 @@ fail:
     }
     if (unicode_initialized) {
       lib.unicode.shutdown();
+    }
+    if (str_initialized) {
+      lib.str.shutdown();
     }
     if (net_initialized) {
       lib.net.shutdown();
@@ -274,6 +310,7 @@ fail:
 // ───────────────────────────────────────────────
 void shutdown_lib(void) {
   //  clean close
+  lib.parse.shutdown();
   lib.argv.shutdown();
   get_lib_utils()->shutdown();
   lib.stdin.shutdown();
@@ -283,11 +320,12 @@ void shutdown_lib(void) {
   lib.openssl.shutdown();
   lib.file.shutdown();
   lib.env.shutdown();
+  lib.signal.shutdown();
+  lib.nonce.shutdown();
   lib.hmac.shutdown();
-  lib.payload_digest.shutdown();
-  lib.payload.shutdown();
   lib.random.shutdown();
   lib.log.shutdown();
+  lib.str.shutdown();
   lib.net.shutdown();
   lib.time.shutdown();
 

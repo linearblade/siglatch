@@ -5,12 +5,14 @@
 
 #include "lib.h"
 #include "app/app.h"
+#include "../shared/shared.h"
 #include <stdio.h>
 #include <string.h>
 
 int main(int argc, char *argv[]) {
   int status = 1;
   int lib_initialized = 0;
+  int shared_initialized = 0;
   int app_initialized = 0;
   AppCommand cmd = {0};
 
@@ -19,6 +21,20 @@ int main(int argc, char *argv[]) {
     goto cleanup;
   }
   lib_initialized = 1;
+
+  {
+    SharedContext shared_ctx = {
+      .log = &lib.log,
+      .openssl = &lib.openssl,
+      .print = &lib.print
+    };
+
+    if (!init_shared(&shared_ctx)) {
+      fprintf(stderr, "Failed to initialize knocker shared runtime\n");
+      goto cleanup;
+    }
+  }
+  shared_initialized = 1;
 
   if (!init_app()) {
     fprintf(stderr, "Failed to initialize knocker app runtime\n");
@@ -92,6 +108,9 @@ int main(int argc, char *argv[]) {
 cleanup:
   if (app_initialized) {
     shutdown_app();
+  }
+  if (shared_initialized) {
+    shutdown_shared();
   }
   if (lib_initialized) {
     shutdown_lib();
