@@ -47,7 +47,7 @@ static ssize_t app_inbound_receive_valid_data(
     return -1;
   }
 
-  rv = lib.net.sock_to_ip(client, ip_out, ip_len);
+  rv = lib.net.addr.sock_to_ipv4(client, ip_out, ip_len);
   switch (rv) {
   case 1:
     break;

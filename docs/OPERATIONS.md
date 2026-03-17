@@ -64,22 +64,24 @@ Rotation and key management processes should always be performed carefully.
 
 ### Starting `siglatchd`
 ```bash
-./siglatchd [--dump-config] [--help]
+./siglatchd [--config <path>] [--dump-config] [--help]
 ```
 
 #### Options:
+- `--config <path>` : Override the config file path for this run.
 - `--dump-config` : Print parsed configuration and exit.
 - `--help` : Show this help message.
 
 
-- At present, `siglatchd` expects a configuration located at `/etc/siglatch/`.
-- **Important**: This behavior is expected to change rapidly. By the time you read this document, it is likely that you can specify the configuration directory explicitly:
+- By default, `siglatchd` uses the compiled-in config file path.
+- The default build setting is currently `/etc/siglatch/server.conf`.
+- You can override it at runtime:
 
 ```bash
-./siglatchd -c /path/to/config/
+./siglatchd --config /path/to/server.conf
 ```
 
-- If no `-c` option is provided, it will continue to attempt loading from the default path.
+- If no `--config` option is provided, `siglatchd` loads the compiled-in default path.
 
 ### Stopping `siglatchd`
 - Gracefully terminate the process with `SIGINT` or `SIGTERM`.
@@ -173,4 +175,3 @@ To send a request from the client side:
 ---
 
 *This operational guide will evolve as features like server-to-client communication and automated IP banning are implemented.*
-

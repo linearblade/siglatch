@@ -9,6 +9,7 @@ UNAME_S := $(shell uname -s)
 OUTPUT_MODE ?= unicode
 OUTPUT_MODE_SIGLATCHD ?= $(OUTPUT_MODE)
 OUTPUT_MODE_KNOCKER ?= $(OUTPUT_MODE)
+CONFIG_PATH_SIGLATCHD ?= /etc/siglatch/server.conf
 
 ifeq ($(UNAME_S),Darwin)
     # macOS (Homebrew OpenSSL)
@@ -36,6 +37,7 @@ endef
 
 MODEFLAG_SIGLATCHD := $(call modeflag_for,$(OUTPUT_MODE_SIGLATCHD))
 MODEFLAG_KNOCKER   := $(call modeflag_for,$(OUTPUT_MODE_KNOCKER))
+CONFIGFLAG_SIGLATCHD := -DSL_CONFIG_PATH_DEFAULT=\"$(CONFIG_PATH_SIGLATCHD)\"
 
 ifneq ($(filter $(OUTPUT_MODE_SIGLATCHD),unicode ascii),$(OUTPUT_MODE_SIGLATCHD))
 $(warning ⚠️ Unknown OUTPUT_MODE_SIGLATCHD='$(OUTPUT_MODE_SIGLATCHD)'; defaulting to unicode)
@@ -112,7 +114,10 @@ SRC_SIGLATCHD = \
     src/stdlib/nonce.c \
     src/stdlib/signal.c \
     src/stdlib/time.c \
-    src/stdlib/net.c \
+    src/stdlib/net/net.c \
+    src/stdlib/net/addr/addr.c \
+    src/stdlib/net/socket/socket.c \
+    src/stdlib/net/udp/udp.c \
     src/stdlib/utils.c \
     src/stdlib/openssl.c \
     src/stdlib/print.c \
@@ -149,7 +154,10 @@ SRC_KNOCKER = \
     src/stdlib/str.c \
     src/knock/lib.c \
     src/stdlib/log.c \
-    src/stdlib/net.c \
+    src/stdlib/net/net.c \
+    src/stdlib/net/addr/addr.c \
+    src/stdlib/net/socket/socket.c \
+    src/stdlib/net/udp/udp.c \
     src/stdlib/nonce.c \
     src/stdlib/signal.c \
     src/stdlib/time.c \
@@ -162,7 +170,6 @@ SRC_KNOCKER = \
     src/stdlib/openssl.c \
     src/stdlib/print.c \
     src/stdlib/unicode.c \
-    src/stdlib/udp.c \
     src/stdlib/utils.c
 
 
@@ -173,7 +180,7 @@ all: build-siglatchd build-knocker
 build-siglatchd: $(BIN_SIGLATCHD)
 
 $(BIN_SIGLATCHD): $(SRC_SIGLATCHD)
-	$(DEPLOY) $(CC) $(CFLAGS) $(MODEFLAG_SIGLATCHD) -o $@ $^ $(LDFLAGS)
+	$(DEPLOY) $(CC) $(CFLAGS) $(MODEFLAG_SIGLATCHD) $(CONFIGFLAG_SIGLATCHD) -o $@ $^ $(LDFLAGS)
 
 # Build knocker
 build-knocker: $(BIN_KNOCKER)

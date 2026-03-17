@@ -12,6 +12,7 @@ typedef struct {
   int help_requested;
   int dump_config_requested;
   int output_mode;
+  char config_path[PATH_MAX];
   char server_name[MAX_SERVER_NAME];
 } AppOpts;
 

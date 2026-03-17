@@ -12,6 +12,10 @@
 #include "../../lifecycle.h"
 #include "../../lib.h"
 
+#ifndef SL_CONFIG_PATH_DEFAULT
+#define SL_CONFIG_PATH_DEFAULT "/etc/siglatch/server.conf"
+#endif
+
 static int app_startup_init(void) {
   return 1;
 }
@@ -136,6 +140,8 @@ static void app_startup_apply_logging(const AppStartupState *state) {
 }
 
 static int app_startup_prepare(int argc, char *argv[], AppStartupState *state) {
+  const char *config_path = NULL;
+
   app_startup_reset_state(state);
 
   if (!state) {
@@ -165,7 +171,12 @@ static int app_startup_prepare(int argc, char *argv[], AppStartupState *state) {
   lib.log.set_level(LOG_TRACE);
 
   LOGE("Launching...\n");
-  if (!app.config.load("/etc/siglatch/server.conf")) {
+  config_path = state->parsed.values.config_path[0]
+                    ? state->parsed.values.config_path
+                    : SL_CONFIG_PATH_DEFAULT;
+
+  LOGD("[startup] Loading config from %s\n", config_path);
+  if (!app.config.load(config_path)) {
     siglatch_report_config_error();
     return 0;
   }

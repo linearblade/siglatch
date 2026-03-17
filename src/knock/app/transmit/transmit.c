@@ -62,6 +62,7 @@ static int app_transmit_resolve_payload(Opts *opts) {
 
 static int app_transmit_single_packet(const Opts *opts) {
   int status = 1;
+  int udp_fd = -1;
   SiglatchOpenSSLSession session = {0};
   Opts runtime_opts = {0};
   const Opts *effective = NULL;
@@ -107,9 +108,8 @@ static int app_transmit_single_packet(const Opts *opts) {
     if (!encryptWrapper(effective, &session, packed, packed_len, data, &data_len)) {
       FAIL_SINGLE_PACKET("Failed to prepare payload (encryption or raw mode)\n");
     }
-
-    char ip[INET_ADDRSTRLEN];
-    int rv = lib.net.resolve_host_to_ip(effective->host, ip, sizeof(ip));
+    char ip[INET6_ADDRSTRLEN];
+    int rv = lib.net.addr.resolve_host_to_ip(effective->host, ip, sizeof(ip));
 
     switch (rv) {
       case 1:
@@ -125,12 +125,21 @@ static int app_transmit_single_packet(const Opts *opts) {
         break;
     }
 
-    if (!lib.udp.send(ip, effective->port, data, data_len)) {
+    udp_fd = lib.net.udp.open_auto(ip);
+    if (udp_fd < 0) {
+      FAIL_SINGLE_PACKET("Failed to open UDP socket for target %s\n", ip);
+    }
+
+    if (!lib.net.udp.send(udp_fd, ip, effective->port, data, data_len)) {
       FAIL_SINGLE_PACKET("Failed to send UDP packet\n");
     }
 
     status = 0;
   } while (0);
+
+  if (udp_fd >= 0) {
+    lib.net.udp.close(udp_fd);
+  }
 
   lib.openssl.session_free(&session);
   return status;

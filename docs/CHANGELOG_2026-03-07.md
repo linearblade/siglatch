@@ -1,5 +1,5 @@
 # Changelog (Recent Work)
-Date range: 2026-03-06 to 2026-03-15
+Date range: 2026-03-06 to 2026-03-17
 Scope: in-progress workspace changes since tag `1.0` relevant to current stabilization pass.
 
 ## Added
@@ -311,3 +311,61 @@ Scope: in-progress workspace changes since tag `1.0` relevant to current stabili
 - `./siglatchd --help` succeeds on the new startup path.
 - `./knocker --help` succeeds after the shared-layer move.
 - Existing local OpenSSL/macOS linker-version warnings remain unchanged.
+
+## Update (2026-03-17): Net Tree Promotion + Daemon Config Path Override
+
+### Added
+- New daemon CLI config override:
+  - `--config <path>`
+- New compile-time daemon config default:
+  - `CONFIG_PATH_SIGLATCHD` in `makefile`
+- New top-level stdlib net shim behavior:
+  - `src/stdlib/net.h` now forwards to the promoted `src/stdlib/net/net.h` barrel
+
+### Changed
+- The new `src/stdlib/net/*` tree is now the active `lib.net` implementation.
+- Active stdlib net build wiring now uses:
+  - `src/stdlib/net/net.c`
+  - `src/stdlib/net/addr/addr.c`
+  - `src/stdlib/net/socket/socket.c`
+  - `src/stdlib/net/udp/udp.c`
+- `siglatchd` inbound IP formatting now routes through:
+  - `lib.net.addr.sock_to_ipv4(...)`
+- `knocker` hostname resolution now routes through:
+  - `lib.net.addr.resolve_host_to_ip(...)`
+- `knocker` UDP transmit now uses the promoted net subtree directly:
+  - `lib.net.udp.open_auto(...)`
+  - `lib.net.udp.send(...)`
+  - `lib.net.udp.close(...)`
+- `siglatchd` config loading no longer hardcodes `/etc/siglatch/server.conf` in startup code:
+  - CLI `--config` overrides the compiled default
+  - compiled default comes from `SL_CONFIG_PATH_DEFAULT`
+
+### Removed / Pruned
+- Old stdlib UDP runtime was removed from the active client/runtime path:
+  - `src/stdlib/udp.c`
+  - `src/stdlib/udp.h`
+- Additional dead stdlib files were moved to `__tmp/legacy`:
+  - `src/stdlib/net.c`
+  - `src/stdlib/net_helpers.h`
+  - `src/stdlib/parse_argv.c`
+  - `src/stdlib/parse_argv.h`
+  - `src/stdlib/string.c`
+  - `src/stdlib/time.old.c`
+  - `src/stdlib/time.old.h`
+  - `src/stdlib/old/parse_argv.c`
+  - `src/stdlib/old/parse_argv.h`
+  - `src/stdlib/old_busted/payload_digest.c`
+  - `src/stdlib/old_busted/payload_digest.h`
+
+### Documentation
+- Server operations docs now describe the live daemon config override:
+  - `--config <path>`
+- Compile docs now describe compile-time daemon config path selection via:
+  - `CONFIG_PATH_SIGLATCHD`
+
+### Verification
+- `make build-siglatchd` succeeds after promoting the net subtree and adding daemon config-path support.
+- `make build-knocker` succeeds after removing the old stdlib UDP path from the active client runtime.
+- `./siglatchd --help` shows the new `--config` option.
+- `./siglatchd --config /tmp/does-not-exist.conf --dump-config` fails against the override path, confirming the CLI path is honored.

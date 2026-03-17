@@ -14,7 +14,6 @@
 #include "../stdlib/net.h"
 #include "../stdlib/env.h"
 #include "../stdlib/file.h"
-#include "../stdlib/udp.h"
 #include "../stdlib/argv.h"
 #include "../stdlib/parse/parse.h"
 #include "../stdlib/print.h"
@@ -31,7 +30,6 @@ Lib lib = {
     .file = {0},
     .nonce = {0},
     .signal = {0},
-    .udp = {0},
     .str = {0},
     .parse = {0},
     .print = {0},
@@ -71,7 +69,6 @@ int init_lib(void) {
     int signal_initialized = 0;
     int openssl_initialized = 0;
     int hmac_initialized = 0;
-    int udp_initialized = 0;
     int utils_initialized = 0;
     int argv_initialized = 0;
     int parse_initialized = 0;
@@ -87,7 +84,6 @@ int init_lib(void) {
     lib.nonce           = *get_lib_nonce();
     lib.signal          = *get_lib_signal();
     lib.openssl         = *get_siglatch_openssl();
-    lib.udp             = *get_udp_lib();
     lib.argv            = *get_lib_argv();
     lib.str             = *get_lib_str();
     lib.parse           = *get_lib_parse();
@@ -127,7 +123,6 @@ int init_lib(void) {
         !lib.signal.clear_pending || !lib.signal.request_exit ||
         !lib.openssl.init || !lib.openssl.shutdown ||
         !lib.hmac.init || !lib.hmac.shutdown ||
-        !lib.udp.init || !lib.udp.shutdown ||
         !lib.argv.init || !lib.argv.shutdown ||
         !lib.parse.init || !lib.parse.shutdown ||
         !utils->init || !utils->shutdown) {
@@ -152,10 +147,6 @@ int init_lib(void) {
         .file  = &lib.file,
         .hmac  = &lib.hmac,
         .print = &lib.print
-    };
-    UdpContext udp_ctx = {
-      .log = &lib.log,
-      .print = &lib.print
     };
     ArgvContext argv_context = {
       .strict = 1
@@ -210,8 +201,6 @@ int init_lib(void) {
     openssl_initialized = 1;
     lib.hmac.init();              // HMAC key manager (after OpenSSL ready)
     hmac_initialized = 1;
-    lib.udp.init(&udp_ctx);
-    udp_initialized = 1;
     utils->init(&utils_ctx);
     utils_initialized = 1;
     lib.argv.init(&argv_context);
@@ -239,9 +228,6 @@ fail:
     }
     if (utils_initialized) {
       utils->shutdown();
-    }
-    if (udp_initialized) {
-      lib.udp.shutdown();
     }
     if (hmac_initialized) {
       lib.hmac.shutdown();
@@ -316,7 +302,6 @@ void shutdown_lib(void) {
   lib.stdin.shutdown();
   lib.print.shutdown();
   lib.unicode.shutdown();
-  lib.udp.shutdown();
   lib.openssl.shutdown();
   lib.file.shutdown();
   lib.env.shutdown();

@@ -75,6 +75,21 @@ For `knocker`, precedence is:
 3. `~/.config/siglatch/client.conf` (`output_mode=unicode|ascii`)
 4. compile-time default
 
+### Compile-Time Server Config Path
+
+The Makefile also supports a compile-time default config file path for `siglatchd`:
+
+* `CONFIG_PATH_SIGLATCHD` applies only to `siglatchd`.
+
+Examples:
+
+```bash
+make clean-siglatchd && make CONFIG_PATH_SIGLATCHD=/etc/siglatch/server.conf build-siglatchd
+make clean-siglatchd && make CONFIG_PATH_SIGLATCHD=/usr/local/etc/siglatch/server.conf build-siglatchd
+```
+
+At runtime, `siglatchd --config <path>` still overrides the compiled-in default.
+
 4. Review the `default_config/` directory. Example configurations and sample user settings are provided.
 5. Run the installation script as root:
 

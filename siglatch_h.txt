@@ -1,0 +1,3523 @@
+
+
+# --- begin: knock/app/alias/alias.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_KNOCK_APP_ALIAS_H
+#define SIGLATCH_KNOCK_APP_ALIAS_H
+
+#include <stddef.h>
+#include <stdint.h>
+#include "../command.h"
+
+typedef struct {
+  char name[128];
+  char host[256];
+  uint32_t id;
+} AliasEntry;
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*read_map)(const char *path, AliasEntry **out_list, size_t *out_count);
+  int (*update_entry)(AliasEntry **list, size_t *count, const char *name, const char *host, uint32_t id);
+  int (*write_map)(const char *path, AliasEntry *list, size_t count);
+  uint32_t (*resolve_user)(const char *host, const char *name);
+  uint32_t (*resolve_action)(const char *host, const char *name);
+  int (*execute)(const AppAliasCommand *cmd);
+} AppAliasLib;
+
+const AppAliasLib *get_app_alias_lib(void);
+
+#endif
+
+
+# --- end: knock/app/alias/alias.h ---
+
+
+
+# --- begin: knock/app/alias/command.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_KNOCK_APP_ALIAS_COMMAND_H
+#define SIGLATCH_KNOCK_APP_ALIAS_COMMAND_H
+
+#include "../command.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*execute)(const AppAliasCommand *cmd);
+} AppAliasCommandLib;
+
+const AppAliasCommandLib *get_app_alias_command_lib(void);
+
+#endif // SIGLATCH_KNOCK_APP_ALIAS_COMMAND_H
+
+
+# --- end: knock/app/alias/command.h ---
+
+
+
+# --- begin: knock/app/alias/ops.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_KNOCK_APP_ALIAS_OPS_H
+#define SIGLATCH_KNOCK_APP_ALIAS_OPS_H
+
+#include <stdint.h>
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*set_user)(const char *host, const char *user, uint32_t user_id);
+  int (*set_action)(const char *host, const char *action, uint32_t action_id);
+  int (*show_user)(const char *host);
+  int (*show_user_all)(void);
+  int (*delete_user)(const char *host, const char *user);
+  int (*delete_user_map)(const char *host);
+  int (*show_action)(const char *host);
+  int (*show_action_all)(void);
+  int (*delete_action)(const char *host, const char *action);
+  int (*delete_action_map)(const char *host);
+  int (*show_host)(const char *host);
+  int (*show_hosts)(void);
+  int (*delete_host)(const char *host);
+} AppAliasOpsLib;
+
+const AppAliasOpsLib *get_app_alias_ops_lib(void);
+
+#endif
+
+
+# --- end: knock/app/alias/ops.h ---
+
+
+
+# --- begin: knock/app/app.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_KNOCK_APP_H
+#define SIGLATCH_KNOCK_APP_H
+
+#include "opts/opts.h"
+#include "env/env.h"
+#include "alias/alias.h"
+#include "output_mode/output_mode.h"
+#include "help/help.h"
+#include "transmit/transmit.h"
+#include "error/argv.h"
+
+typedef struct {
+  AppOptsLib opts;
+  AppEnvLib env;
+  AppAliasLib alias;
+  AppOutputModeLib output_mode;
+  AppHelpLib help;
+  AppErrorArgvLib error_argv;
+  AppTransmitLib transmit;
+} App;
+
+extern App app;
+
+int init_app(void);
+void shutdown_app(void);
+
+#endif
+
+
+# --- end: knock/app/app.h ---
+
+
+
+# --- begin: knock/app/command.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_KNOCK_APP_COMMAND_H
+#define SIGLATCH_KNOCK_APP_COMMAND_H
+
+#include <stdint.h>
+#include "opts/contract.h"
+
+typedef enum {
+  APP_CMD_HELP = 0,
+  APP_CMD_TRANSMIT,
+  APP_CMD_ALIAS,
+  APP_CMD_OUTPUT_MODE_DEFAULT,
+  APP_CMD_ERROR
+} AppCommandType;
+
+typedef enum {
+  APP_ALIAS_OP_INVALID = 0,
+  APP_ALIAS_OP_SET_USER,
+  APP_ALIAS_OP_SET_ACTION,
+  APP_ALIAS_OP_SHOW_USER,
+  APP_ALIAS_OP_SHOW_USER_ALL,
+  APP_ALIAS_OP_DELETE_USER,
+  APP_ALIAS_OP_DELETE_USER_MAP,
+  APP_ALIAS_OP_SHOW_ACTION,
+  APP_ALIAS_OP_SHOW_ACTION_ALL,
+  APP_ALIAS_OP_DELETE_ACTION,
+  APP_ALIAS_OP_DELETE_ACTION_MAP,
+  APP_ALIAS_OP_SHOW_HOST,
+  APP_ALIAS_OP_SHOW_HOSTS,
+  APP_ALIAS_OP_DELETE_HOST
+} AppAliasOp;
+
+typedef struct {
+  AppAliasOp op;
+  char host[256];
+  char name[128];
+  uint32_t id;
+  int confirm_yes;
+  int output_mode;
+} AppAliasCommand;
+
+typedef struct {
+  int mode;
+} AppOutputModeDefaultCommand;
+
+typedef struct AppCommand {
+  AppCommandType type;
+  int ok;
+  int exit_code;
+  int dump_requested;
+  char error[256];
+  union {
+    Opts transmit;
+    AppAliasCommand alias;
+    AppOutputModeDefaultCommand outdef;
+  } as;
+} AppCommand;
+
+#endif
+
+
+# --- end: knock/app/command.h ---
+
+
+
+# --- begin: knock/app/env/env.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_KNOCK_APP_ENV_H
+#define SIGLATCH_KNOCK_APP_ENV_H
+
+#include <stddef.h>
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*build_config_root_path)(char *out, size_t out_size);
+  int (*build_host_config_path)(char *out, size_t out_size, const char *host, const char *filename);
+  int (*ensure_host_config_dir)(const char *host);
+  int (*load_output_mode_default)(void);
+  int (*save_output_mode_default)(const char *mode_value);
+} AppEnvLib;
+
+const AppEnvLib *get_app_env_lib(void);
+
+#endif
+
+
+# --- end: knock/app/env/env.h ---
+
+
+
+# --- begin: knock/app/error/argv.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_KNOCK_APP_ERROR_ARGV_H
+#define SIGLATCH_KNOCK_APP_ERROR_ARGV_H
+
+#include <stddef.h>
+#include "../../../stdlib/argv.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*shape)(const ArgvParsed *parsed, char *out, size_t out_size);
+  int (*shape_typed)(const ArgvParsedOption *opt, const ArgvError *err, char *out, size_t out_size);
+} AppErrorArgvLib;
+
+const AppErrorArgvLib *get_app_error_argv_lib(void);
+
+#endif
+
+
+# --- end: knock/app/error/argv.h ---
+
+
+
+# --- begin: knock/app/help/help.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_KNOCK_APP_HELP_H
+#define SIGLATCH_KNOCK_APP_HELP_H
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  void (*printHelp)(void);
+  void (*errorMessage)(void);
+} AppHelpLib;
+
+const AppHelpLib *get_app_help_lib(void);
+
+#endif
+
+
+# --- end: knock/app/help/help.h ---
+
+
+
+# --- begin: knock/app/opts/alias.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_KNOCK_APP_OPTS_ALIAS_H
+#define SIGLATCH_KNOCK_APP_OPTS_ALIAS_H
+
+#include "../../../stdlib/argv.h"
+#include "../command.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  const ArgvOptionSpec *(*spec)(void);
+  int (*parse)(const char *mode_selector, const ArgvParsed *parsed, AppCommand *out);
+  void (*dump)(const AppAliasCommand *cmd);
+} AppOptsAliasLib;
+
+const AppOptsAliasLib *get_app_opts_alias_lib(void);
+
+#endif
+
+
+# --- end: knock/app/opts/alias.h ---
+
+
+
+# --- begin: knock/app/opts/contract.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_KNOCK_APP_OPTS_CONTRACT_H
+#define SIGLATCH_KNOCK_APP_OPTS_CONTRACT_H
+
+#include <limits.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include "../../../stdlib/log.h"
+
+/* Shared option/type contract for knocker app modules. */
+
+typedef enum {
+  HMAC_MODE_NONE = 0,
+  HMAC_MODE_NORMAL = 1,
+  HMAC_MODE_DUMMY = 2
+} HmacMode;
+
+typedef enum {
+  OPTS_RESPONSE_HELP = 1,
+  OPTS_RESPONSE_ERROR = 2,
+  OPTS_RESPONSE_ALIAS = 3,
+  OPTS_RESPONSE_TRANSMIT = 4
+} OptsResponseType;
+
+#define MAX_PAYLOAD_SIZE 200
+
+typedef struct {
+  char hmac_key_path[PATH_MAX];
+  char server_pubkey_path[PATH_MAX];
+  char client_privkey_path[PATH_MAX];
+  char log_file[PATH_MAX];
+  LogLevel log_level;
+
+  char host[256];
+  uint16_t port;
+
+  HmacMode hmac_mode;
+  int encrypt;
+  int dead_drop;
+  int output_mode;
+  int stdin_requested;
+
+  uint32_t user_id;
+  uint32_t action_id;
+  uint8_t payload[MAX_PAYLOAD_SIZE];
+  size_t payload_len;
+
+  int verbose;
+  OptsResponseType response_type;
+} Opts;
+
+#endif
+
+
+# --- end: knock/app/opts/contract.h ---
+
+
+
+# --- begin: knock/app/opts/opts.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_KNOCK_APP_OPTS_H
+#define SIGLATCH_KNOCK_APP_OPTS_H
+
+#include "../command.h"
+
+typedef struct {
+  int reserved;
+} AppOptsContext;
+
+typedef struct {
+  int (*init)(const AppOptsContext *ctx);
+  void (*shutdown)(void);
+  int (*parse_command)(int argc, char *argv[], AppCommand *out);
+  void (*dump_command)(const AppCommand *cmd);
+} AppOptsLib;
+
+const AppOptsLib *get_app_opts_lib(void);
+
+#endif
+
+
+# --- end: knock/app/opts/opts.h ---
+
+
+
+# --- begin: knock/app/opts/transmit.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_KNOCK_APP_OPTS_TRANSMIT_H
+#define SIGLATCH_KNOCK_APP_OPTS_TRANSMIT_H
+
+#include "../../../stdlib/argv.h"
+#include "../command.h"
+#include "contract.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  const ArgvOptionSpec *(*spec)(void);
+  int (*parse)(const char *mode_selector, const ArgvParsed *parsed, AppCommand *out);
+  void (*dump)(const Opts *opts);
+} AppOptsTransmitLib;
+
+const AppOptsTransmitLib *get_app_opts_transmit_lib(void);
+
+#endif
+
+
+# --- end: knock/app/opts/transmit.h ---
+
+
+
+# --- begin: knock/app/output_mode/output_mode.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_KNOCK_APP_OUTPUT_MODE_H
+#define SIGLATCH_KNOCK_APP_OUTPUT_MODE_H
+
+#include "../opts/contract.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  void (*set_from_config)(void);
+  void (*set_from_env)(void);
+  void (*set_from_opts)(const Opts *opts);
+} AppOutputModeLib;
+
+const AppOutputModeLib *get_app_output_mode_lib(void);
+
+#endif
+
+
+# --- end: knock/app/output_mode/output_mode.h ---
+
+
+
+# --- begin: knock/app/transmit/helper.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_KNOCK_APP_TRANSMIT_HELPER_H
+#define SIGLATCH_KNOCK_APP_TRANSMIT_HELPER_H
+
+#include "../../../stdlib/openssl_session.h" // for SiglatchOpenSSLSession
+#include "../../../shared/knock/packet.h"
+#include "../opts/contract.h"
+/**
+ * Build a KnockPacket from a message.
+ */
+int structurePacket(KnockPacket *pkt_out, const uint8_t *payload, size_t len,  uint16_t user_id, uint8_t action_id) ;
+//old way during testing
+//int structurePacket(KnockPacket *pkt_out, const char *payload_data, uint16_t user_id, uint8_t action_id, int is_text);
+/**
+ * Initialize a basic user OpenSSL session.
+ */
+int init_user_openssl_session(const Opts *opts, SiglatchOpenSSLSession *session);
+/**
+ * Sign a packet
+ **/
+int signPacket(SiglatchOpenSSLSession *session, KnockPacket *pkt);
+
+/**
+ * @brief Signs the KnockPacket based on the selected HMAC mode.
+ *
+ * This wrapper handles the logic for different HMAC signing modes, including:
+ * - HMAC_MODE_NORMAL: Performs standard cryptographic HMAC signing using session key.
+ * - HMAC_MODE_DUMMY: Fills the HMAC field with a fixed dummy value (0x42) for testing.
+ * - HMAC_MODE_NONE: Zeros out the HMAC field, skipping signature entirely.
+ *
+ * Logging is routed through standard LOG macros for each case.
+ * Returns 1 on success, 0 on failure (and logs an error).
+ *
+ * @param opts     Parsed runtime options (contains hmac_mode).
+ * @param session  OpenSSL session context, must contain HMAC key.
+ * @param pkt      KnockPacket to be signed (HMAC will be modified in place).
+ * @return int     1 on success, 0 on failure.
+ */
+int signWrapper(const Opts *opts, SiglatchOpenSSLSession *session, KnockPacket *pkt);
+
+
+/**
+ * @brief Encrypts the packed payload if encryption is enabled.
+ *
+ * If opts->encrypt is true, calls OpenSSL encryption.
+ * If false, copies the raw packed data directly to the output buffer.
+ *
+ * @param opts      Runtime configuration (encrypt flag)
+ * @param session   Initialized OpenSSL session (must contain public key)
+ * @param input     Input data to encrypt (packed KnockPacket)
+ * @param input_len Length of input data
+ * @param out_buf   Output buffer to hold encrypted or raw data
+ * @param out_len   Output length written
+ * @return int      1 on success, 0 on failure
+ */
+int encryptWrapper(const Opts *opts, SiglatchOpenSSLSession *session,
+		    const uint8_t *input, size_t input_len,
+		    unsigned char *out_buf, size_t *out_len);
+
+
+/**
+ * @brief Prepares the payload for transmission, depending on mode.
+ *
+ * In dead-drop mode, copies the raw payload buffer.
+ * In structured mode, serializes the KnockPacket into packed format.
+ *
+ * @param opts       Runtime options (for mode and raw payload)
+ * @param pkt        Pointer to KnockPacket (used in structured mode)
+ * @param packed     Output buffer for transmission payload
+ * @param packed_len Output: number of bytes written to `packed`
+ * @return int       1 on success, 0 on failure
+ */
+int structureOrDeadDrop(const Opts *opts, const KnockPacket *pkt,
+			uint8_t *packed, int *packed_len);
+
+#endif // SIGLATCH_KNOCK_APP_TRANSMIT_HELPER_H
+
+
+# --- end: knock/app/transmit/helper.h ---
+
+
+
+# --- begin: knock/app/transmit/transmit.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_KNOCK_APP_TRANSMIT_H
+#define SIGLATCH_KNOCK_APP_TRANSMIT_H
+
+#include "../opts/contract.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*singlePacket)(const Opts *opts);
+} AppTransmitLib;
+
+const AppTransmitLib *get_app_transmit_lib(void);
+
+#endif
+
+
+# --- end: knock/app/transmit/transmit.h ---
+
+
+
+# --- begin: knock/lib.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+
+#ifndef SIGLATCH_LIB_H
+#define SIGLATCH_LIB_H
+
+#include "../stdlib/log.h"
+#include "../stdlib/time.h"
+#include "../stdlib/random.h"
+#include "../stdlib/hmac_key.h"
+#include "../stdlib/file.h"
+#include "../stdlib/nonce.h"
+#include "../stdlib/signal.h"
+#include "../stdlib/env.h"
+#include "../stdlib/openssl.h"
+#include "../stdlib/udp.h"
+#include "../stdlib/argv.h"
+#include "../stdlib/parse/parse.h"
+#include "../stdlib/str.h"
+#include "../stdlib/net.h"
+#include "../stdlib/print.h"
+#include "../stdlib/stdin.h"
+#include "../stdlib/unicode.h"
+/**
+ * @file lib.h
+ * @brief Singleton system library registry for siglatch runtime.
+ *
+ * Provides centralized access to all runtime subsystems such as logging,
+ * time, configuration, and future extensions. This acts as a globally
+ * accessible service locator.
+ */
+
+typedef struct {
+  Logger log;
+  TimeLib time;
+  RandomLib random;
+  HMACKey hmac;
+  EnvLib env;
+  FileLib file;
+  NonceLib nonce;
+  SignalLib signal;
+  SiglatchOpenSSL_Lib openssl;
+  UdpLib udp;
+  ArgvLib argv;
+  StrLib str;
+  ParseLib parse;
+  PrintLib print;
+  StdinLib stdin;
+  UnicodeLib unicode;
+  NetLib net;
+} Lib;
+
+extern Lib lib;
+
+int init_lib(void);
+void shutdown_lib(void);
+
+
+
+/**
+ *  Logging Convenience Macros
+ *
+ * These macros provide short, readable access to the global logger via `lib.log`.
+ * Use them to standardize logging behavior across the codebase - debug to screen,
+ * log to file, or both.
+ *
+ *  What These Do:
+ * +--------+------------------------------+------------------------------------+
+ * | Macro  | Expands To                   |  Use for...                      |
+ * +--------+------------------------------+------------------------------------+
+ * | LOG    | lib.log                      | Full access to logger struct       |
+ * | LOGI() | lib.log.info(...)            | Log-only (audit, config, events)|
+ * | LOGD() | lib.log.debug(...)           | Debug to screen only            |
+ * | LOGB() | lib.log.info_screen(...)     |  Log + screen (critical events)  |
+ * +--------+------------------------------+------------------------------------+
+ *
+ * Example Usage:
+ *   LOGI("Granted access to %s\n", ip);         // Log only
+ *   LOGD("Raw payload: %s\n", hex);             // Debug only
+ *   LOGB("Startup complete on port %d\n", p); // Both
+ */
+#define LOG     lib.log
+
+#define LOGE(...) lib.log.emit(LOG_ERROR, 1, __VA_ARGS__)
+#define LOGW(...) lib.log.emit(LOG_WARN,  1, __VA_ARGS__)
+#define LOGI(...) lib.log.emit(LOG_INFO,  1, __VA_ARGS__)
+#define LOGD(...) lib.log.emit(LOG_DEBUG, 1, __VA_ARGS__)
+#define LOGT(...) lib.log.emit(LOG_TRACE, 1, __VA_ARGS__)
+#define LOGPERR(msg) lib.log.perror(msg)
+
+
+
+#endif // SIGLATCH_LIB_H
+
+
+# --- end: knock/lib.h ---
+
+
+
+# --- begin: shared/knock/codec.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SHARED_KNOCK_CODEC_H
+#define SIGLATCH_SHARED_KNOCK_CODEC_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include "packet.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*pack)(const KnockPacket *pkt, uint8_t *out_buf, size_t maxlen);
+  int (*unpack)(const uint8_t *buf, size_t buflen, KnockPacket *pkt);
+  int (*validate)(const KnockPacket *pkt);
+  int (*deserialize)(const uint8_t *decrypted_buffer, size_t decrypted_len, KnockPacket *pkt);
+  const char *(*deserialize_strerror)(int code);
+} SharedKnockCodecLib;
+
+#define SL_PAYLOAD_OK 0
+#define SL_PAYLOAD_ERR_NULL_PTR -1
+#define SL_PAYLOAD_ERR_UNPACK -2
+#define SL_PAYLOAD_ERR_VALIDATE -3
+#define SL_PAYLOAD_ERR_OVERFLOW -4
+
+int shared_knock_codec_init(void);
+void shared_knock_codec_shutdown(void);
+int shared_knock_codec_pack(const KnockPacket *pkt, uint8_t *out_buf, size_t maxlen);
+int shared_knock_codec_unpack(const uint8_t *buf, size_t buflen, KnockPacket *pkt);
+int shared_knock_codec_validate(const KnockPacket *pkt);
+int shared_knock_codec_deserialize(
+    const uint8_t *decrypted_buffer,
+    size_t decrypted_len,
+    KnockPacket *pkt);
+const char *shared_knock_codec_deserialize_strerror(int code);
+const SharedKnockCodecLib *get_shared_knock_codec_lib(void);
+
+#endif
+
+
+# --- end: shared/knock/codec.h ---
+
+
+
+# --- begin: shared/knock/debug.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SHARED_KNOCK_DEBUG_H
+#define SIGLATCH_SHARED_KNOCK_DEBUG_H
+
+#include "../../stdlib/print.h"
+#include "packet.h"
+
+typedef struct {
+  const PrintLib *print;
+} SharedKnockDebugContext;
+
+typedef struct {
+  int (*init)(const SharedKnockDebugContext *ctx);
+  void (*shutdown)(void);
+  void (*dump_packet_fields)(const char *label, const KnockPacket *pkt);
+} SharedKnockDebugLib;
+
+int shared_knock_debug_init(const SharedKnockDebugContext *ctx);
+void shared_knock_debug_shutdown(void);
+void shared_knock_dump_packet_fields(const char *label, const KnockPacket *pkt);
+const SharedKnockDebugLib *get_shared_knock_debug_lib(void);
+
+#endif
+
+
+# --- end: shared/knock/debug.h ---
+
+
+
+# --- begin: shared/knock/digest.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SHARED_KNOCK_DIGEST_H
+#define SIGLATCH_SHARED_KNOCK_DIGEST_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include "../../stdlib/log.h"
+#include "../../stdlib/openssl.h"
+#include "packet.h"
+
+typedef struct {
+  const Logger *log;
+  const SiglatchOpenSSL_Lib *openssl;
+} SharedKnockDigestContext;
+
+typedef struct {
+  int (*init)(const SharedKnockDigestContext *ctx);
+  void (*shutdown)(void);
+  int (*generate)(const KnockPacket *pkt, uint8_t *out_digest);
+  int (*generate_oneshot)(const KnockPacket *pkt, uint8_t *out_digest);
+  int (*sign)(const uint8_t *hmac_key, const uint8_t *digest, uint8_t *out_hmac);
+  int (*validate)(const uint8_t *hmac_key, const uint8_t *digest, const uint8_t *signature);
+} SharedKnockDigestLib;
+
+int shared_knock_digest_init(const SharedKnockDigestContext *ctx);
+void shared_knock_digest_shutdown(void);
+int shared_knock_digest_generate(const KnockPacket *pkt, uint8_t *out_digest);
+int shared_knock_digest_generate_oneshot(const KnockPacket *pkt, uint8_t *out_digest);
+int shared_knock_digest_sign(
+    const uint8_t *hmac_key,
+    const uint8_t *digest,
+    uint8_t *out_hmac);
+int shared_knock_digest_validate(
+    const uint8_t *hmac_key,
+    const uint8_t *digest,
+    const uint8_t *signature);
+const SharedKnockDigestLib *get_shared_knock_digest_lib(void);
+
+#endif
+
+
+# --- end: shared/knock/digest.h ---
+
+
+
+# --- begin: shared/knock/packet.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SHARED_KNOCK_PACKET_H
+#define SIGLATCH_SHARED_KNOCK_PACKET_H
+
+#include <stdint.h>
+
+typedef struct __attribute__((packed)) {
+  uint8_t version;
+  uint32_t timestamp;
+  uint16_t user_id;
+  uint8_t action_id;
+  uint32_t challenge;
+  uint8_t hmac[32];
+  uint16_t payload_len;
+  uint8_t payload[199];
+} KnockPacket;
+
+#endif
+
+
+# --- end: shared/knock/packet.h ---
+
+
+
+# --- begin: shared/shared.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SHARED_H
+#define SIGLATCH_SHARED_H
+
+#include "../stdlib/log.h"
+#include "../stdlib/openssl.h"
+#include "../stdlib/print.h"
+#include "knock/codec.h"
+#include "knock/debug.h"
+#include "knock/digest.h"
+
+typedef struct {
+  const Logger *log;
+  const SiglatchOpenSSL_Lib *openssl;
+  const PrintLib *print;
+} SharedContext;
+
+typedef struct {
+  SharedKnockCodecLib codec;
+  SharedKnockDebugLib debug;
+  SharedKnockDigestLib digest;
+} SharedKnockLib;
+
+typedef struct {
+  SharedKnockLib knock;
+} Shared;
+
+extern Shared shared;
+
+int init_shared(const SharedContext *ctx);
+void shutdown_shared(void);
+
+#endif
+
+
+# --- end: shared/shared.h ---
+
+
+
+# --- begin: siglatch/app/app.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_H
+#define SIGLATCH_SERVER_APP_H
+
+#include "config/config.h"
+#include "daemon/daemon.h"
+#include "help/help.h"
+#include "inbound/inbound.h"
+#include "keys/keys.h"
+#include "opts/opts.h"
+#include "packet/packet.h"
+#include "payload/payload.h"
+#include "runtime/runtime.h"
+#include "server/server.h"
+#include "signal/signal.h"
+#include "startup/startup.h"
+#include "udp/udp.h"
+
+typedef struct {
+  ConfigLib config;
+  AppDaemonLib daemon;
+  AppHelpLib help;
+  AppInboundLib inbound;
+  AppKeysLib keys;
+  AppOptsLib opts;
+  AppPacketLib packet;
+  AppPayloadLib payload;
+  AppRuntimeLib runtime;
+  AppServerLib server;
+  AppSignalLib signal;
+  AppStartupLib startup;
+  AppUdpLib udp;
+} App;
+
+extern App app;
+
+int init_app(void);
+void shutdown_app(void);
+
+#endif
+
+
+# --- end: siglatch/app/app.h ---
+
+
+
+# --- begin: siglatch/app/config/config.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_CONFIG_H
+#define SIGLATCH_SERVER_APP_CONFIG_H
+
+#include <limits.h>
+#include <stdint.h>
+#include <openssl/evp.h>
+#include "../../../stdlib/parse/ini.h"
+
+#define MAX_USERS 32
+#define MAX_ACTIONS 16
+#define MAX_SERVERS 5
+#define MAX_DEADDROPS 16
+
+#define MAX_ACTION_NAME 32
+#define MAX_KEY_DATA 1024
+#define MAX_SERVER_NAME     64
+#define MAX_DEADDROP_NAME   64
+//#define MAX_ACTIONS         64
+//#define MAX_ACTION_NAME     64
+#define MAX_PATH_LEN        256
+
+#define MAX_DEADDROP_NAME   64
+#define MAX_PATH_LEN        256
+#define MAX_FILTERS         16
+#define MAX_FILTER_LEN      32
+
+/**
+ * @brief Holds per-request or per-daemon scoped view into global config.
+ *
+ * Currently a placeholder. May later include server name, deaddrop binding,
+ * action filtering, or runtime overrides.
+ */
+typedef struct {
+  char path[PATH_MAX];
+} siglatch_config_context;
+
+typedef enum {
+  SL_PAYLOAD_OVERFLOW_REJECT = 1,
+  SL_PAYLOAD_OVERFLOW_CLAMP = 2,
+  SL_PAYLOAD_OVERFLOW_INHERIT = 3
+} siglatch_payload_overflow_policy;
+
+typedef struct {
+  unsigned int id;
+  char name[MAX_ACTION_NAME];
+  char constructor[PATH_MAX];
+  char destructor[PATH_MAX];
+  int keepalive_interval;
+  int enabled;
+  int require_ascii;
+  int exec_split;
+  siglatch_payload_overflow_policy payload_overflow;
+} siglatch_action;
+
+typedef struct {
+  unsigned int id;
+  char name[64];
+  char key_file[PATH_MAX];
+  char hmac_file[PATH_MAX];
+  int enabled;
+  char actions[MAX_ACTIONS][MAX_ACTION_NAME];
+  int action_count;
+
+  // Loaded key data
+  uint8_t key_data[MAX_KEY_DATA];
+  int key_length;
+  EVP_PKEY *pubkey;
+  uint8_t hmac_key[32];
+} siglatch_user;
+
+typedef struct {
+  unsigned int id;
+  char name[MAX_DEADDROP_NAME];                     ///< [deaddrop:<name>] section label
+  char label[MAX_DEADDROP_NAME];                    ///< Optional human-readable display label
+
+  char constructor[MAX_PATH_LEN];                   ///< Path to script or binary
+  char filters[MAX_FILTERS][MAX_FILTER_LEN];        ///< List of prefix filters (optional)
+  int filter_count;
+
+  char starts_with[MAX_FILTERS][MAX_FILTER_LEN];
+  int starts_with_count;
+  int enabled;
+  int require_ascii;
+  int exec_split;
+  // Optional future:
+  // int log_output;
+  // int timeout_ms;
+  // int pass_env;
+} siglatch_deaddrop;
+
+typedef struct {
+  unsigned int id;
+  char name[MAX_SERVER_NAME];                  ///< [server:<name>] machine identifier
+  char label[MAX_SERVER_NAME];                 ///< Optional human-readable display label
+  char priv_key_path[PATH_MAX];
+  int key_owned;
+  int enabled;
+  int logging;
+  char log_file[PATH_MAX];
+  int port;                                    ///< UDP port
+  int secure;                                  ///< 1 = encrypted, 0 = plaintext
+  int output_mode;                             ///< 0=unset, else SL_OUTPUT_MODE_*
+  siglatch_payload_overflow_policy payload_overflow;
+
+  EVP_PKEY *priv_key;                          ///< Loaded OpenSSL private key
+
+  char deaddrops[MAX_ACTIONS][MAX_ACTION_NAME];
+  int deaddrop_count;
+  char actions[MAX_ACTIONS][MAX_ACTION_NAME];  ///< List of allowed actions
+  int action_count;
+} siglatch_server;
+
+typedef struct {
+  // Global log path (used if no per-server override)
+  char log_file[PATH_MAX];
+  char priv_key_path[PATH_MAX];
+  char default_server[MAX_SERVER_NAME];        ///< Startup default server name (global fallback source)
+  int output_mode;                             ///< 0=unset, else SL_OUTPUT_MODE_*
+  siglatch_payload_overflow_policy payload_overflow;
+  EVP_PKEY *master_privkey;                          ///< Loaded OpenSSL private key
+  // Users and their keys
+  siglatch_user users[MAX_USERS];
+  int user_count;
+
+  // Available actions (globally defined, servers link by name)
+  siglatch_action actions[MAX_ACTIONS];
+  int action_count;
+
+  // Server blocks (forked individually)
+  siglatch_server servers[MAX_SERVERS];
+  int server_count;
+
+  // Deaddrop definitions (linked by name from server)
+  siglatch_deaddrop deaddrops[MAX_DEADDROPS];
+  int deaddrop_count;
+} siglatch_config;
+
+
+typedef struct {
+  int (*init)(const siglatch_config_context *ctx);                ///< Prepare internal state, optionally attach a context (else default used)
+  void (*shutdown)(void);
+
+  int  (*load)(const char *path);                        ///< Read, consume, materialize, and attach config from file
+  int  (*consume)(const IniDocument *document);          ///< Build + own config from parsed INI document
+  void (*unload)(void);
+  siglatch_config *(*detach)(void);                       ///< Export + relinquish ownership
+  void (*attach)(siglatch_config * config);   ///< import + acquire ownership
+  const siglatch_config *(*get)(void);                    ///< Read-only access
+
+  int (*set_context)(const siglatch_config_context *ctx);
+  void (*dump)(void);
+  void (*dump_ptr)(const siglatch_config *cfg);
+
+  const siglatch_deaddrop *(*deaddrop_starts_with_buffer)(const uint8_t *payload, size_t payload_len);
+  int (*action_available_by_user)(uint32_t user_id, const char *action);
+  const siglatch_user *(*user_by_id)(uint32_t id);
+  const siglatch_action *(*action_by_id)(uint32_t id);
+  const siglatch_server *(*server_by_name)(const char *name);
+  const siglatch_deaddrop *(*deaddrop_by_name)(const char *name);
+  const char *(*username_by_id)(uint32_t id);
+} ConfigLib;
+
+
+
+
+const ConfigLib *get_app_config_lib(void);
+
+#endif // SIGLATCH_SERVER_APP_CONFIG_H
+
+
+# --- end: siglatch/app/config/config.h ---
+
+
+
+# --- begin: siglatch/app/config/debug.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_CONFIG_DEBUG_H
+#define SIGLATCH_SERVER_APP_CONFIG_DEBUG_H
+
+#include "config.h"
+
+void config_debug_dump(void);
+void config_debug_dump_ptr(const siglatch_config *cfg);
+
+#endif
+
+
+# --- end: siglatch/app/config/debug.h ---
+
+
+
+# --- begin: siglatch/app/daemon/daemon.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_DAEMON_H
+#define SIGLATCH_SERVER_APP_DAEMON_H
+
+#include "../runtime/runtime.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  void (*run)(AppRuntimeListenerState *listener);
+} AppDaemonLib;
+
+const AppDaemonLib *get_app_daemon_lib(void);
+
+#endif
+
+
+# --- end: siglatch/app/daemon/daemon.h ---
+
+
+
+# --- begin: siglatch/app/help/help.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_HELP_H
+#define SIGLATCH_SERVER_APP_HELP_H
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  void (*show)(int argc, char *argv[]);
+} AppHelpLib;
+
+const AppHelpLib *get_app_help_lib(void);
+
+#endif
+
+
+# --- end: siglatch/app/help/help.h ---
+
+
+
+# --- begin: siglatch/app/inbound/crypto/crypto.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_INBOUND_CRYPTO_H
+#define SIGLATCH_SERVER_APP_INBOUND_CRYPTO_H
+
+#include "../../config/config.h"
+#include "../../payload/codec/codec.h"
+#include "../../../../stdlib/openssl_session.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*init_session_for_server)(
+      const siglatch_server *server,
+      SiglatchOpenSSLSession *session);
+  int (*assign_session_to_user)(
+      SiglatchOpenSSLSession *session,
+      const siglatch_user *user);
+  int (*validate_signature)(
+      const SiglatchOpenSSLSession *session,
+      const KnockPacket *pkt);
+} AppInboundCryptoLib;
+
+int app_inbound_crypto_init(void);
+void app_inbound_crypto_shutdown(void);
+int app_inbound_crypto_init_session_for_server(
+    const siglatch_server *server,
+    SiglatchOpenSSLSession *session);
+int app_inbound_crypto_assign_session_to_user(
+    SiglatchOpenSSLSession *session,
+    const siglatch_user *user);
+int app_inbound_crypto_validate_signature(
+    const SiglatchOpenSSLSession *session,
+    const KnockPacket *pkt);
+
+#endif
+
+
+# --- end: siglatch/app/inbound/crypto/crypto.h ---
+
+
+
+# --- begin: siglatch/app/inbound/inbound.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_INBOUND_H
+#define SIGLATCH_SERVER_APP_INBOUND_H
+
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+
+#include "crypto/crypto.h"
+#include "../runtime/runtime.h"
+#include "../../../stdlib/openssl_session.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  ssize_t (*receive_valid_data)(
+      AppRuntimeListenerState *listener,
+      char *buffer,
+      size_t bufsize,
+      struct sockaddr_in *client,
+      char *ip_out,
+      int ip_len);
+  int (*normalize_payload)(
+      SiglatchOpenSSLSession *session,
+      const uint8_t *input,
+      size_t input_len,
+      uint8_t *normalized_out,
+      size_t *normalized_len);
+  AppInboundCryptoLib crypto;
+} AppInboundLib;
+
+const AppInboundLib *get_app_inbound_lib(void);
+
+#endif
+
+
+# --- end: siglatch/app/inbound/inbound.h ---
+
+
+
+# --- begin: siglatch/app/keys/hmac.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_KEYS_HMAC_H
+#define SIGLATCH_SERVER_APP_KEYS_HMAC_H
+
+#include "../config/config.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*load_all)(siglatch_config *cfg);
+} AppKeysHmacLib;
+
+int app_keys_hmac_init(void);
+void app_keys_hmac_shutdown(void);
+int app_keys_hmac_load_all(siglatch_config *cfg);
+
+#endif
+
+
+# --- end: siglatch/app/keys/hmac.h ---
+
+
+
+# --- begin: siglatch/app/keys/keys.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_KEYS_H
+#define SIGLATCH_SERVER_APP_KEYS_H
+
+#include "master.h"
+#include "user.h"
+#include "server.h"
+#include "hmac.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*load)(siglatch_config *cfg);
+  AppKeysMasterLib master;
+  AppKeysUserLib user;
+  AppKeysServerLib server;
+  AppKeysHmacLib hmac;
+} AppKeysLib;
+
+const AppKeysLib *get_app_keys_lib(void);
+
+#endif
+
+
+# --- end: siglatch/app/keys/keys.h ---
+
+
+
+# --- begin: siglatch/app/keys/master.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_KEYS_MASTER_H
+#define SIGLATCH_SERVER_APP_KEYS_MASTER_H
+
+#include "../config/config.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*load)(siglatch_config *cfg);
+} AppKeysMasterLib;
+
+int app_keys_master_init(void);
+void app_keys_master_shutdown(void);
+int app_keys_master_load(siglatch_config *cfg);
+
+#endif
+
+
+# --- end: siglatch/app/keys/master.h ---
+
+
+
+# --- begin: siglatch/app/keys/server.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_KEYS_SERVER_H
+#define SIGLATCH_SERVER_APP_KEYS_SERVER_H
+
+#include "../config/config.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*load_all)(siglatch_config *cfg);
+} AppKeysServerLib;
+
+int app_keys_server_init(void);
+void app_keys_server_shutdown(void);
+int app_keys_server_load_all(siglatch_config *cfg);
+
+#endif
+
+
+# --- end: siglatch/app/keys/server.h ---
+
+
+
+# --- begin: siglatch/app/keys/user.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_KEYS_USER_H
+#define SIGLATCH_SERVER_APP_KEYS_USER_H
+
+#include "../config/config.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*load_all)(siglatch_config *cfg);
+} AppKeysUserLib;
+
+int app_keys_user_init(void);
+void app_keys_user_shutdown(void);
+int app_keys_user_load_all(siglatch_config *cfg);
+
+#endif
+
+
+# --- end: siglatch/app/keys/user.h ---
+
+
+
+# --- begin: siglatch/app/opts/contract.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_OPTS_CONTRACT_H
+#define SIGLATCH_SERVER_APP_OPTS_CONTRACT_H
+
+#include "../config/config.h"
+
+typedef struct {
+  int help_requested;
+  int dump_config_requested;
+  int output_mode;
+  char server_name[MAX_SERVER_NAME];
+} AppOpts;
+
+#endif
+
+
+# --- end: siglatch/app/opts/contract.h ---
+
+
+
+# --- begin: siglatch/app/opts/opts.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_OPTS_H
+#define SIGLATCH_SERVER_APP_OPTS_H
+
+#include "contract.h"
+
+typedef struct {
+  int reserved;
+} AppOptsContext;
+
+typedef struct {
+  int ok;
+  int exit_code;
+  char error[256];
+  AppOpts values;
+} AppParsedOpts;
+
+typedef struct {
+  int (*init)(const AppOptsContext *ctx);
+  void (*shutdown)(void);
+  int (*parse)(int argc, char *argv[], AppParsedOpts *out);
+  void (*dump)(const AppParsedOpts *parsed);
+} AppOptsLib;
+
+const AppOptsLib *get_app_opts_lib(void);
+
+#endif
+
+
+# --- end: siglatch/app/opts/opts.h ---
+
+
+
+# --- begin: siglatch/app/packet/packet.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_PACKET_H
+#define SIGLATCH_SERVER_APP_PACKET_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include "../runtime/runtime.h"
+#include "../../../stdlib/openssl_session.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*consume_normalized)(
+      AppRuntimeListenerState *listener,
+      const uint8_t *normalized_buffer,
+      size_t normalized_len,
+      SiglatchOpenSSLSession *session,
+      const char *ip,
+      int is_encrypted);
+} AppPacketLib;
+
+const AppPacketLib *get_app_packet_lib(void);
+
+#endif
+
+
+# --- end: siglatch/app/packet/packet.h ---
+
+
+
+# --- begin: siglatch/app/payload/codec/codec.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_PAYLOAD_CODEC_H
+#define SIGLATCH_SERVER_APP_PAYLOAD_CODEC_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include "../../../../shared/knock/codec.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*pack)(const KnockPacket *pkt, uint8_t *out_buf, size_t maxlen);
+  int (*unpack)(const uint8_t *buf, size_t buflen, KnockPacket *pkt);
+  int (*validate)(const KnockPacket *pkt);
+  int (*deserialize)(const uint8_t *decrypted_buffer, size_t decrypted_len, KnockPacket *pkt);
+  const char *(*deserialize_strerror)(int code);
+} AppPayloadCodecLib;
+
+int app_payload_codec_init(void);
+void app_payload_codec_shutdown(void);
+int app_payload_codec_pack(const KnockPacket *pkt, uint8_t *out_buf, size_t maxlen);
+int app_payload_codec_unpack(const uint8_t *buf, size_t buflen, KnockPacket *pkt);
+int app_payload_codec_validate(const KnockPacket *pkt);
+int app_payload_codec_deserialize(
+    const uint8_t *decrypted_buffer,
+    size_t decrypted_len,
+    KnockPacket *pkt);
+const char *app_payload_codec_deserialize_strerror(int code);
+const AppPayloadCodecLib *get_app_payload_codec_lib(void);
+
+#endif
+
+
+# --- end: siglatch/app/payload/codec/codec.h ---
+
+
+
+# --- begin: siglatch/app/payload/digest/digest.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_PAYLOAD_DIGEST_H
+#define SIGLATCH_SERVER_APP_PAYLOAD_DIGEST_H
+
+#include <stdint.h>
+
+#include "../codec/codec.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*generate)(const KnockPacket *pkt, uint8_t *out_digest);
+  int (*generate_oneshot)(const KnockPacket *pkt, uint8_t *out_digest);
+  int (*sign)(const uint8_t *hmac_key, const uint8_t *digest, uint8_t *out_hmac);
+  int (*validate)(const uint8_t *hmac_key, const uint8_t *digest, const uint8_t *signature);
+} AppPayloadDigestLib;
+
+int app_payload_digest_init(void);
+void app_payload_digest_shutdown(void);
+int app_payload_digest_generate(const KnockPacket *pkt, uint8_t *out_digest);
+int app_payload_digest_generate_oneshot(const KnockPacket *pkt, uint8_t *out_digest);
+int app_payload_digest_sign(
+    const uint8_t *hmac_key,
+    const uint8_t *digest,
+    uint8_t *out_hmac);
+int app_payload_digest_validate(
+    const uint8_t *hmac_key,
+    const uint8_t *digest,
+    const uint8_t *signature);
+const AppPayloadDigestLib *get_app_payload_digest_lib(void);
+
+#endif
+
+
+# --- end: siglatch/app/payload/digest/digest.h ---
+
+
+
+# --- begin: siglatch/app/payload/payload.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_PAYLOAD_H
+#define SIGLATCH_SERVER_APP_PAYLOAD_H
+
+#include "codec/codec.h"
+#include "digest/digest.h"
+#include "structured.h"
+#include "unstructured.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*run_shell)(const char *script_path, int argc, char *argv[], int exec_split);
+  AppPayloadCodecLib codec;
+  AppPayloadDigestLib digest;
+  AppPayloadStructuredLib structured;
+  AppPayloadUnstructuredLib unstructured;
+} AppPayloadLib;
+
+const AppPayloadLib *get_app_payload_lib(void);
+
+#endif
+
+
+# --- end: siglatch/app/payload/payload.h ---
+
+
+
+# --- begin: siglatch/app/payload/structured.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_PAYLOAD_STRUCTURED_H
+#define SIGLATCH_SERVER_APP_PAYLOAD_STRUCTURED_H
+
+#include "../runtime/runtime.h"
+#include "../../../stdlib/openssl_session.h"
+#include "codec/codec.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  void (*handle)(
+      AppRuntimeListenerState *listener,
+      const KnockPacket *pkt,
+      SiglatchOpenSSLSession *session,
+      const char *ip);
+} AppPayloadStructuredLib;
+
+int app_payload_structured_init(void);
+void app_payload_structured_shutdown(void);
+void app_payload_structured_handle(
+    AppRuntimeListenerState *listener,
+    const KnockPacket *pkt,
+    SiglatchOpenSSLSession *session,
+    const char *ip);
+
+#endif
+
+
+# --- end: siglatch/app/payload/structured.h ---
+
+
+
+# --- begin: siglatch/app/payload/unstructured.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_PAYLOAD_UNSTRUCTURED_H
+#define SIGLATCH_SERVER_APP_PAYLOAD_UNSTRUCTURED_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include "../runtime/runtime.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  void (*handle)(
+      const AppRuntimeListenerState *listener,
+      const uint8_t *payload,
+      size_t payload_len,
+      const char *ip);
+} AppPayloadUnstructuredLib;
+
+int app_payload_unstructured_init(void);
+void app_payload_unstructured_shutdown(void);
+void app_payload_unstructured_handle(
+    const AppRuntimeListenerState *listener,
+    const uint8_t *payload,
+    size_t payload_len,
+    const char *ip);
+
+#endif
+
+
+# --- end: siglatch/app/payload/unstructured.h ---
+
+
+
+# --- begin: siglatch/app/runtime/runtime.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_RUNTIME_H
+#define SIGLATCH_SERVER_APP_RUNTIME_H
+
+#include "../config/config.h"
+#include "../../../stdlib/nonce.h"
+#include "../../../stdlib/signal.h"
+
+typedef struct {
+  SignalState signal;
+} AppRuntimeProcessState;
+
+typedef struct {
+  int sock;
+  const siglatch_server *server;
+  unsigned long packet_count;
+  NonceCache nonce;
+  AppRuntimeProcessState *process;
+} AppRuntimeListenerState;
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+} AppRuntimeLib;
+
+const AppRuntimeLib *get_app_runtime_lib(void);
+
+#endif
+
+
+# --- end: siglatch/app/runtime/runtime.h ---
+
+
+
+# --- begin: siglatch/app/server/server.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_SERVER_H
+#define SIGLATCH_SERVER_APP_SERVER_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include "../config/config.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  const siglatch_server *(*select)(const char *name);
+  int (*action_available)(const siglatch_server *server, const char *action_name);
+  int (*deaddrop_available)(const siglatch_server *server, const char *deaddrop_name);
+  const siglatch_deaddrop *(*deaddrop_starts_with_buffer)(
+      const siglatch_server *server,
+      const uint8_t *payload,
+      size_t payload_len,
+      char *match,
+      int match_buf_size,
+      size_t *matched_prefix_len);
+  siglatch_payload_overflow_policy (*resolve_payload_overflow_by_action)(
+      const siglatch_server *server,
+      uint32_t action_id);
+} AppServerLib;
+
+const AppServerLib *get_app_server_lib(void);
+
+#endif
+
+
+# --- end: siglatch/app/server/server.h ---
+
+
+
+# --- begin: siglatch/app/signal/signal.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+
+#ifndef SIGLATCH_SERVER_APP_SIGNAL_H
+#define SIGLATCH_SERVER_APP_SIGNAL_H
+
+#include "../runtime/runtime.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  void (*install)(AppRuntimeProcessState *process);
+  int (*should_exit)(const AppRuntimeProcessState *process);
+  void (*request_exit)(AppRuntimeProcessState *process);
+} AppSignalLib;
+
+const AppSignalLib *get_app_signal_lib(void);
+
+#endif
+
+
+# --- end: siglatch/app/signal/signal.h ---
+
+
+
+# --- begin: siglatch/app/startup/startup.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_STARTUP_H
+#define SIGLATCH_SERVER_APP_STARTUP_H
+
+#include "../opts/opts.h"
+#include "../runtime/runtime.h"
+
+typedef struct {
+  int should_exit;
+  int exit_code;
+  AppParsedOpts parsed;
+  const siglatch_config *cfg;
+  AppRuntimeProcessState process;
+  AppRuntimeListenerState listener;
+} AppStartupState;
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*prepare)(int argc, char *argv[], AppStartupState *state);
+} AppStartupLib;
+
+const AppStartupLib *get_app_startup_lib(void);
+
+#endif
+
+
+# --- end: siglatch/app/startup/startup.h ---
+
+
+
+# --- begin: siglatch/app/udp/udp.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_UDP_H
+#define SIGLATCH_SERVER_APP_UDP_H
+
+#include "../runtime/runtime.h"
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*start_listener)(AppRuntimeListenerState *listener);
+} AppUdpLib;
+
+const AppUdpLib *get_app_udp_lib(void);
+
+#endif
+
+
+# --- end: siglatch/app/udp/udp.h ---
+
+
+
+# --- begin: siglatch/lib.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+
+#ifndef SIGLATCH_LIB_H
+#define SIGLATCH_LIB_H
+
+#include "../stdlib/log.h"
+#include "../stdlib/time.h"
+#include "../stdlib/hmac_key.h"
+#include "../stdlib/file.h"
+#include "../stdlib/nonce.h"
+#include "../stdlib/signal.h"
+#include "../stdlib/openssl.h"
+#include "../stdlib/net.h"
+#include "../stdlib/str.h"
+#include "../stdlib/argv.h"
+#include "../stdlib/parse/parse.h"
+#include "../stdlib/print.h"
+#include "../stdlib/unicode.h"
+
+#if defined(__GNUC__) || defined(__clang__)
+  #define UNUSED_FN __attribute__((unused))
+#elif defined(_MSC_VER)
+  #define UNUSED_FN __pragma(warning(suppress:4505))  // disables "unreferenced function"
+#else
+  #define UNUSED_FN
+#endif
+
+/**
+ * @file lib.h
+ * @brief Singleton system library registry for siglatch runtime.
+ *
+ * Provides centralized access to all runtime subsystems such as logging,
+ * time, configuration, and future extensions. This acts as a globally
+ * accessible service locator.
+ */
+
+typedef struct {
+  Logger log;
+  TimeLib time;
+  HMACKey hmac;
+  FileLib file;
+  NonceLib nonce;
+  SignalLib signal;
+  SiglatchOpenSSL_Lib openssl;
+  NetLib net;
+  StrLib str;
+  ArgvLib argv;
+  ParseLib parse;
+  PrintLib print;
+  UnicodeLib unicode;
+} Lib;
+
+extern Lib lib;
+
+int init_lib(void);
+void shutdown_lib(void);
+
+
+
+/**
+ *  Logging Convenience Macros
+ *
+ * These macros provide short, readable access to the global logger via `lib.log`.
+ * Use them to standardize logging behavior across the codebase - debug to screen,
+ * log to file, or both.
+ *
+ *  What These Do:
+ * +--------+------------------------------+------------------------------------+
+ * | Macro  | Expands To                   |  Use for...                      |
+ * +--------+------------------------------+------------------------------------+
+ * | LOG    | lib.log                      | Full access to logger struct       |
+ * | LOGI() | lib.log.info(...)            | Log-only (audit, config, events)|
+ * | LOGD() | lib.log.debug(...)           | Debug to screen only            |
+ * | LOGB() | lib.log.info_screen(...)     |  Log + screen (critical events)  |
+ * +--------+------------------------------+------------------------------------+
+ *
+ * Example Usage:
+ *   LOGI("Granted access to %s\n", ip);         // Log only
+ *   LOGD("Raw payload: %s\n", hex);             // Debug only
+ *   LOGB("Startup complete on port %d\n", p); // Both
+ */
+#define LOG     lib.log
+
+#define LOGE(...) lib.log.emit(LOG_ERROR, 1, __VA_ARGS__)
+#define LOGW(...) lib.log.emit(LOG_WARN,  1, __VA_ARGS__)
+#define LOGI(...) lib.log.emit(LOG_INFO,  0, __VA_ARGS__)
+#define LOGD(...) lib.log.emit(LOG_DEBUG, 1, __VA_ARGS__)
+#define LOGT(...) lib.log.emit(LOG_TRACE, 1, __VA_ARGS__)
+#define LOGPERR(msg) lib.log.perror(msg)
+
+
+
+#endif // SIGLATCH_LIB_H
+
+
+# --- end: siglatch/lib.h ---
+
+
+
+# --- begin: siglatch/lifecycle.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_LIFECYCLE_H
+#define SIGLATCH_LIFECYCLE_H
+
+int siglatch_boot(void);
+void siglatch_shutdown(void);
+void siglatch_report_config_error(void);
+void siglatch_report_shutdown_complete(void);
+
+#endif
+
+
+# --- end: siglatch/lifecycle.h ---
+
+
+
+# --- begin: stdlib/argv.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_ARGV_H
+#define SIGLATCH_ARGV_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#define ARGV_MAX_OPTIONS 32
+#define ARGV_MAX_OPTION_ARGS 10
+#define ARGV_MAX_POSITIONALS 8
+
+typedef enum {
+  ARGV_OPT_FLAG = 0,
+  ARGV_OPT_KEYED = 1
+} ArgvOptionType;
+
+typedef enum {
+  ARGV_ERR_NONE = 0,
+  ARGV_ERR_INVALID_INPUT,
+  ARGV_ERR_UNKNOWN_OPTION,
+  ARGV_ERR_NOT_ENOUGH_OPTION_ARGS,
+  ARGV_ERR_TOO_MANY_OPTIONS,
+  ARGV_ERR_TOO_MANY_POSITIONALS,
+  ARGV_ERR_TOO_MANY_OPTION_ARGS,
+  ARGV_ERR_EQUALS_FORM_NOT_ALLOWED,
+  ARGV_ERR_DUPLICATE_OPTION,
+  ARGV_ERR_REQUIRED_OPTION_MISSING,
+  ARGV_ERR_BAD_INTEGER,
+  ARGV_ERR_INTEGER_OUT_OF_RANGE,
+  ARGV_ERR_BAD_ENUM
+} ArgvErrorCode;
+
+typedef struct {
+  ArgvErrorCode code;
+  int arg_index;
+  const char *arg_value;
+  int option_id;
+  const char *option_name;
+} ArgvError;
+
+typedef struct {
+  const char *name;
+  int id;
+  int num_args;
+  ArgvOptionType type;
+  int required;
+  int allow_repeat;
+  int last_wins;
+} ArgvOptionSpec;
+
+typedef struct {
+  const ArgvOptionSpec *spec;
+  const char *args[ARGV_MAX_OPTION_ARGS];
+  int num_args;
+  int source_index;
+} ArgvParsedOption;
+
+typedef struct {
+  ArgvParsedOption options[ARGV_MAX_OPTIONS];
+  int num_options;
+
+  const char *positionals[ARGV_MAX_POSITIONALS];
+  int positional_indices[ARGV_MAX_POSITIONALS];
+  int num_positionals;
+
+  const ArgvOptionSpec *spec;
+  ArgvError error;
+} ArgvParsed;
+
+typedef struct {
+  int strict;
+} ArgvContext;
+
+typedef struct {
+  const char *name;
+  int value;
+} ArgvEnumMap;
+
+typedef struct {
+  void (*init)(const ArgvContext *ctx);
+  void (*shutdown)(void);
+  void (*set_context)(const ArgvContext *ctx);
+  int (*parse)(int argc, char *argv[], ArgvParsed *out, const ArgvOptionSpec *spec);
+  int (*has)(const ArgvParsed *parsed, const char *option_name);
+  void (*dump)(const ArgvParsed *parsed);
+  const ArgvParsedOption *(*find_first_by_id)(const ArgvParsed *parsed, int option_id);
+  const ArgvParsedOption *(*find_last_by_id)(const ArgvParsed *parsed, int option_id);
+  const ArgvParsedOption *(*find_first_by_name)(const ArgvParsed *parsed, const char *option_name);
+  const char *(*option_value)(const ArgvParsedOption *option, int value_index);
+  int (*get_i32)(const ArgvParsedOption *option, int value_index, int min_value, int max_value, int *out, ArgvError *err);
+  int (*get_u16)(const ArgvParsedOption *option, int value_index, uint16_t *out, ArgvError *err);
+  int (*get_enum)(const ArgvParsedOption *option, int value_index, const ArgvEnumMap *map, size_t map_count, int *out, ArgvError *err);
+  const char *(*error_code_name)(ArgvErrorCode code);
+  int (*format_error)(const ArgvError *err, char *out, size_t out_size);
+} ArgvLib;
+
+const ArgvLib *get_lib_argv(void);
+
+#endif
+
+
+# --- end: stdlib/argv.h ---
+
+
+
+# --- begin: stdlib/base64.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_BASE64_H
+#define SIGLATCH_BASE64_H
+
+#include <stddef.h>
+
+/**
+ * Base64-encode a buffer.
+ *
+ * @param input Raw input buffer
+ * @param input_len Length of input buffer
+ * @param output Output buffer to receive base64 string (must be large enough)
+ * @param output_len Length of output buffer
+ * @return Number of bytes written (excluding null terminator), or -1 on error
+ */
+int base64_encode(const unsigned char *input, size_t input_len, char *output, size_t output_len);
+
+#endif // SIGLATCH_BASE64_H
+
+
+# --- end: stdlib/base64.h ---
+
+
+
+# --- begin: stdlib/env.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_ENV_H
+#define SIGLATCH_ENV_H
+
+#include <stddef.h>
+#include <sys/types.h>
+
+typedef struct {
+  const char *(*get)(const char *key);
+  int (*get_required)(const char *key, const char **out);
+} EnvCoreLib;
+
+typedef struct {
+  int (*home)(const char **out);
+  int (*ensure_home_config_dir)(void);
+  int (*build_home_path)(char *out, size_t out_size, const char *relative_path);
+  int (*ensure_dir)(const char *path, mode_t mode);
+} EnvUserLib;
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  EnvCoreLib core;
+  EnvUserLib user;
+} EnvLib;
+
+const EnvLib *get_lib_env(void);
+
+#endif
+
+
+# --- end: stdlib/env.h ---
+
+
+
+# --- begin: stdlib/file.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_FILE_H
+#define SIGLATCH_FILE_H
+
+#include <stddef.h>
+#include <stdio.h>
+#include <stdbool.h> // for bool
+#include <limits.h> // for PATH_MAX
+#include <stdarg.h> //va args
+#include "print.h"
+// ---- Public Constants ----
+
+/**
+ * @brief Maximum size of error message buffer (excluding null terminator).
+ */
+#define FILELIB_ERRBUF_SIZE 256
+
+/**
+ * @brief Safe fallback definition for PATH_MAX if not provided by the system.
+ */
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
+/**
+ * @file file.h
+ * @brief Singleton file utilities library for reading, writing, and path expansion
+ *
+ * This module provides unified file handling for the siglatch runtime.
+ * It supports safe binary and text file IO, tilde path expansion,
+ * and standardized memory management for file operations.
+ *
+ * Access is provided through a singleton FileLib structure.
+ *
+ * To install:
+ *   1. Place file.c and file.h in your stdlib directory
+ *   2. Include file.h where needed
+ *   3. Call `get_lib_file()` once to access the `FileLib` object
+ */
+
+typedef struct {
+    const PrintLib *print; ///< Optional print provider for formatted output
+    bool allow_unicode; ///< Whether Unicode output (emoji) is enabled
+    bool auto_print_errors; ///< Whether to automatically fprintf errors when they happen
+} FileLibContext;
+
+typedef struct {
+  void (*init)(const FileLibContext * ctx); ///< Optional lifecycle setup (reserved for future use)
+  void (*shutdown)(void); ///< Optional teardown logic (reserved)
+  void (*set_context)(const FileLibContext * ctx);
+  int (*expand_tilde)(const char *input_path, char *output_path, size_t output_size);
+
+  unsigned char *(*read)(const char *filepath, size_t *out_size);
+  char *(*read_text)(const char *filepath, size_t *out_size);
+  size_t (*read_fn_bytes)(const char *filepath, void *buffer, size_t size);
+  size_t (*read_ptr_bytes)(FILE *fp, void *buffer, size_t size);
+  
+  int (*write)(const char *filepath, const unsigned char *data, size_t data_size);
+  int (*write_text)(const char *filepath, const char *text);
+
+  FILE *(*open)(const char *filepath, const char *mode);
+  const char *(*last_error)(void);
+} FileLib;
+
+/**
+ * Access the singleton FileLib instance.
+ *
+ * @return Pointer to the FileLib structure.
+ */
+const FileLib *get_lib_file(void);
+
+#endif // SIGLATCH_FILE_H
+
+
+# --- end: stdlib/file.h ---
+
+
+
+# --- begin: stdlib/hmac_key.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_HMAC_KEY_H
+#define SIGLATCH_HMAC_KEY_H
+
+#include <stdint.h>
+#include <stddef.h>
+
+typedef struct {
+  void (*init)(void);  // Optional: future key management setup
+  void (*shutdown)(void); // Optional: cleanup if needed
+
+  /**
+   * normalize
+   * Normalize a loaded HMAC key into 32-byte binary buffer.
+   *
+   * Parameters:
+   *   input      - Pointer to raw file data (binary or hex).
+   *   input_len  - Length of input data.
+   *   output     - Pointer to output buffer (must be at least 32 bytes).
+   *
+   * Returns:
+   *   1 on success,
+   *   0 on failure.
+   */
+  int (*normalize)(const uint8_t *input, size_t input_len, uint8_t *output);
+
+} HMACKey;
+
+// Accessor
+const HMACKey *get_hmac_key_lib(void);
+
+#endif // SIGLATCH_HMAC_KEY_H
+
+
+# --- end: stdlib/hmac_key.h ---
+
+
+
+# --- begin: stdlib/log_context.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_LOG_CONTEXT_H
+#define SIGLATCH_LOG_CONTEXT_H
+#include "time.h"
+#include "print.h"
+
+typedef struct {
+  const TimeLib *time;
+  const PrintLib *print;
+} LogContext;
+
+#endif // SIGLATCH_LOG_CONTEXT_H
+
+
+# --- end: stdlib/log_context.h ---
+
+
+
+# --- begin: stdlib/log.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_LOG_H
+#define SIGLATCH_LOG_H
+
+#include <stdio.h>
+#include <stdarg.h>  // for va_list if needed
+#include <stddef.h>  // for size_t if used in function signatures
+#include "log_context.h"
+// ─────────────────────────────────────────────
+// Log Level Definition
+// ─────────────────────────────────────────────
+
+typedef enum {
+    LOG_NONE   = 0,
+    LOG_ERROR  = 1,
+    LOG_WARN   = 2,
+    LOG_INFO   = 3,
+    LOG_DEBUG  = 4,
+    LOG_TRACE  = 5
+} LogLevel;
+
+// ─────────────────────────────────────────────
+// Logger Interface
+// ─────────────────────────────────────────────
+
+typedef struct {
+  // Lifecycle
+  void (*init)(LogContext ctx);                       // Logger constructor
+  void (*shutdown)(void);                   // Logger destructor
+
+  // File Configuration
+  void (*set_handle)(FILE *fp);
+  int  (*open)(const char *path);
+  void (*close)(void);
+  
+  void (*set_enabled)(int);
+  void (*set_debug)(int);
+  void (*set_level)(int);
+
+  // Output
+
+  void (*write)(const char *fmt, ...);          // File only
+  void (*console)(const char *fmt, ...);        // Screen only
+  void (*console_write)(const char *fmt, ...);  // File + screen
+  void (*perror)(const char *prefix);           // File + screen
+  // Unified routing
+  void (*emit)(LogLevel level, int to_console, const char *fmt, ...); 
+} Logger;
+
+//Logger get_logger(void);  // Returns struct by value
+const Logger *get_logger(void);
+
+
+/*
+  void log_set_file(FILE *fp);
+  void log_set_enabled(int enable);
+  void log_set_level(int level);
+  void log_set_debug(int enable);
+
+  void log_info(const char *fmt, ...);
+  void log_debug(const char *fmt, ...);
+  void log_info_and_screen(const char *fmt, ...);
+*/
+#endif // SIGLATCH_LOG_H
+
+
+# --- end: stdlib/log.h ---
+
+
+
+# --- begin: stdlib/net_helpers.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_NET_HELPERS_H
+#define SIGLATCH_NET_HELPERS_H
+
+#include "log.h"  // You need LOGE etc already included
+/*
+#define CHECK_DECRYPT(cfg, inbuf, inlen, outbuf, outlen_ptr)        
+do {                                                            
+  if (decrypt_knock((cfg), (inbuf), (inlen), (outbuf), (outlen_ptr)) != 0) { 
+    LOGE("[decrypt] Decryption failed, skipping packet\n"); 
+    continue;                                               
+  }                                                           
+ } while (0)
+*/
+#endif // SIGLATCH_NET_HELPERS_H
+
+
+# --- end: stdlib/net_helpers.h ---
+
+
+
+# --- begin: stdlib/net.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_NET_H
+#define SIGLATCH_NET_H
+
+#include <stddef.h>
+#include <stdint.h>
+#include <netinet/in.h>
+
+/**
+ * @file net.h
+ * @brief Generic network base utilities (init, resolver, IP tools)
+ *
+ * This library provides non-protocol-specific tools such as DNS resolution,
+ * IP string formatting, and lifecycle setup. It is designed to be used by
+ * higher-level protocols like UDP, TCP, or secure transports.
+ *
+ * Usage:
+ *   1. Place net.c and net.h in your stdlib directory
+ *   2. Include net.h where needed
+ *   3. Call `get_lib_net()` once to access the `NetLib` object
+ */
+
+typedef struct {
+  void (*init)(void);  ///< Optional startup hook
+  void (*shutdown)(void);  ///< Optional cleanup hook
+
+  /// Resolve a host:port to a sockaddr_in structure
+  /// Returns 0 on success, -1 on failure
+  int (*resolve_host_to_sock)(const char *hostname, uint16_t port, struct sockaddr_in *out);
+  // host to ip string
+  int (*resolve_host_to_ip)(const char *hostname, char *out, size_t outlen);
+  //extract the ip address from a sock
+  
+  int (*sock_to_ip)(const struct sockaddr_in *addr, char *out, size_t outlen);
+
+} NetLib;
+
+const NetLib *get_lib_net(void);
+
+#endif // SIGLATCH_NET_H
+
+
+# --- end: stdlib/net.h ---
+
+
+
+# --- begin: stdlib/nonce.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_NONCE_H
+#define SIGLATCH_NONCE_H
+
+#include <stddef.h>
+#include <time.h>
+
+#define NONCE_DEFAULT_CAPACITY 128
+#define NONCE_DEFAULT_STRLEN 32
+#define NONCE_DEFAULT_TTL_SECONDS 60
+
+typedef struct {
+  char *nonce;
+  time_t timestamp;
+} NonceEntry;
+
+typedef struct {
+  NonceEntry *entries;
+  char *storage;
+  size_t capacity;
+  size_t nonce_strlen;
+  time_t ttl_seconds;
+  size_t next_index;
+} NonceCache;
+
+typedef struct {
+  size_t capacity;
+  size_t nonce_strlen;
+  time_t ttl_seconds;
+} NonceConfig;
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*cache_init)(NonceCache *cache, const NonceConfig *cfg);
+  void (*cache_shutdown)(NonceCache *cache);
+  void (*clear)(NonceCache *cache);
+  int (*check)(NonceCache *cache, const char *nonce, time_t now);
+  void (*add)(NonceCache *cache, const char *nonce, time_t now);
+} NonceLib;
+
+int lib_nonce_init(void);
+void lib_nonce_shutdown(void);
+int lib_nonce_cache_init(NonceCache *cache, const NonceConfig *cfg);
+void lib_nonce_cache_shutdown(NonceCache *cache);
+void lib_nonce_clear(NonceCache *cache);
+int lib_nonce_check(NonceCache *cache, const char *nonce, time_t now);
+void lib_nonce_add(NonceCache *cache, const char *nonce, time_t now);
+const NonceLib *get_lib_nonce(void);
+
+#endif
+
+
+# --- end: stdlib/nonce.h ---
+
+
+
+# --- begin: stdlib/old_busted/payload_digest.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+// payload_digest.h
+
+#ifndef SIGLATCH_PAYLOAD_DIGEST_H
+#define SIGLATCH_PAYLOAD_DIGEST_H
+
+#include <stdint.h>
+#include <stddef.h>
+#include <openssl/evp.h>
+#include "payload.h"  // For KnockPacket
+
+typedef struct {
+  void (*init)(void);                               // Library init
+  void (*shutdown)(void);                           // Library shutdown
+  int  (*generate)(const KnockPacket *pkt, uint8_t *out_digest /* 32 bytes */);  // Create digest
+  int  (*sign)(EVP_PKEY *privkey, const uint8_t *digest, uint8_t *out_signature); // Sign digest
+  int  (*validate)(EVP_PKEY *pubkey, const uint8_t *digest, const uint8_t *signature); // Validate signature
+} PayloadDigest;
+/*
+typedef struct {
+  void (*init)(void);                             // Library init (optional, currently a no-op)
+  void (*shutdown)(void);                         // Library shutdown (optional)
+  int  (*generate)(const KnockPacket *pkt, uint8_t *out_digest ); // 32 bytes  // Create digest
+  int  (*sign)(EVP_PKEY *privkey, KnockPacket *pkt);                             // Sign packet
+  int  (*validate)(EVP_PKEY *pubkey, const KnockPacket *pkt);                    // Validate signature
+} PayloadDigest;
+*/
+// Accessor
+const PayloadDigest *get_payload_digest_lib(void);
+
+#endif // SIGLATCH_PAYLOAD_DIGEST_H
+
+
+# --- end: stdlib/old_busted/payload_digest.h ---
+
+
+
+# --- begin: stdlib/old/parse_argv.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef PARSE_ARGV_H
+#define PARSE_ARGV_H
+
+#include <stddef.h>
+
+typedef enum {
+    OPT_FLAG,
+    OPT_KEYED,
+    OPT_UNKNOWN
+} OptionType;
+
+typedef struct {
+  const char *name;
+  int id;
+  int num_args;
+  OptionType type;
+} OptionSpec;
+
+typedef struct {
+    const OptionSpec *spec;
+    const char *args[10];
+    int num_args;
+} ParsedOption;
+
+typedef struct {
+    ParsedOption options[32];
+    int num_options;
+    const char *positionals[8];
+    int num_positionals;
+    const OptionSpec *spec; // Reference spec table
+} ParsedArgv;
+
+int parse_argv(int argc, char *argv[], ParsedArgv *parsed_out, const OptionSpec *spec_table);
+void parse_argv_dump(const ParsedArgv * parsed);
+int parse_argv_has(const ParsedArgv *parsed, const char *flag); 
+#endif // PARSE_ARGV_H
+
+
+# --- end: stdlib/old/parse_argv.h ---
+
+
+
+# --- begin: stdlib/openssl_context.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef LIB_SIGLATCH_OPENSSL_CONTEXT_H
+#define LIB_SIGLATCH_OPENSSL_CONTEXT_H
+
+#include "file.h"
+#include "log.h"
+#include "hmac_key.h"
+#include "print.h"
+
+// OpenSSL library context
+typedef struct {
+  const FileLib *file; ///< Pointer to file library (e.g., for reading keys from disk)
+  const  Logger *log;   ///< Pointer to logging library (for error reporting)
+  const HMACKey * hmac; //< pointer to hmac key reader
+  const PrintLib *print; ///< Pointer to print library for console/stderr output
+  // Future: random number generation lib, config flags, etc.
+} SiglatchOpenSSLContext;
+
+#endif // LIB_SIGLATCH_OPENSSL_H
+
+
+# --- end: stdlib/openssl_context.h ---
+
+
+
+# --- begin: stdlib/openssl_session.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef LIB_SIGLATCH_OPENSSL_SESSION_H
+#define LIB_SIGLATCH_OPENSSL_SESSION_H
+
+#include <stddef.h>   // For size_t
+#include <stdint.h>   // For uint8_t
+#include <stdbool.h>  // For bool
+#include <openssl/evp.h>  // For EVP_PKEY and EVP_PKEY_CTX
+
+#include "openssl_context.h" // Pulls in SiglatchOpenSSLContext
+
+// OpenSSL session context structure
+typedef struct SiglatchOpenSSLSession {
+  SiglatchOpenSSLContext *parent_ctx; ///< Pointer to the global OpenSSL context (file, log, etc.)
+
+  EVP_PKEY *public_key;    ///< Public key (for encrypting or verifying signatures)
+  EVP_PKEY *private_key;   ///< Private key (for decrypting or signing)
+
+  EVP_PKEY_CTX *public_key_ctx;    ///< Context for public key operations
+  EVP_PKEY_CTX *private_key_ctx;   ///< Context for private key operations
+
+  uint8_t hmac_key[64];    ///< Raw HMAC key storage (if session is used for HMAC operations)
+  size_t hmac_key_len;     ///< Length of the loaded HMAC key (0 if none)
+
+  bool owns_ctx;           ///< True if the session is responsible for freeing its context
+} SiglatchOpenSSLSession;
+
+#endif // LIB_SIGLATCH_OPENSSL_SESSION_H
+
+
+# --- end: stdlib/openssl_session.h ---
+
+
+
+# --- begin: stdlib/openssl.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef LIB_SIGLATCH_OPENSSL_H
+#define LIB_SIGLATCH_OPENSSL_H
+
+#include "file.h"
+#include "log.h"
+#include "openssl_session.h"
+#include "openssl_context.h"
+#include "hmac_key.h"
+
+typedef struct {
+    const void *data;
+    size_t size;
+} DigestItem;
+
+// Struct holding all lib.openssl function pointers
+typedef struct {
+    int (*init)(SiglatchOpenSSLContext *ctx);          ///< Initialize OpenSSL library
+    void (*shutdown)(void);                            ///< Shutdown OpenSSL library
+    void (*set_context)(SiglatchOpenSSLContext *ctx);   ///< Set/override library context
+
+    // Session helpers
+  int (*session_init)(SiglatchOpenSSLSession *session);
+  int (*session_free)(SiglatchOpenSSLSession *session);
+  int (*session_readPrivateKey)(SiglatchOpenSSLSession *session, const char *filename); ///< Load a private key into session
+  int (*session_readPublicKey)(SiglatchOpenSSLSession *session, const char *filename);  ///< Load a public key into session
+  int (*session_readHMAC)(SiglatchOpenSSLSession *session, const char *filename);       ///< Load an HMAC key into session
+  int (*session_encrypt)(SiglatchOpenSSLSession *session, const unsigned char *msg, size_t msg_len, unsigned char *out_buf, size_t *out_len);
+  int (*session_decrypt)(SiglatchOpenSSLSession *session, const unsigned char *input, size_t input_len, unsigned char *output, size_t *output_len);
+  const char *(*session_decrypt_strerror)(int code);
+  // Signing helper
+  int (*sign)(SiglatchOpenSSLSession *session, const uint8_t *digest, uint8_t *out_signature); ///< Sign a digest using session key
+  int (*digest_array)(const DigestItem *items, size_t item_count, uint8_t *out_digest);
+
+} SiglatchOpenSSL_Lib;
+
+// Getter for the OpenSSL library singleton
+const SiglatchOpenSSL_Lib *get_siglatch_openssl(void);
+
+#define SL_SSL_DECRYPT_OK               0
+#define SL_SSL_DECRYPT_ERR_ARGS       -1
+#define SL_SSL_DECRYPT_ERR_CTX_ALLOC  -2
+#define SL_SSL_DECRYPT_ERR_INIT       -3
+#define SL_SSL_DECRYPT_ERR_PADDING    -4
+#define SL_SSL_DECRYPT_ERR_LEN_QUERY  -5
+#define SL_SSL_DECRYPT_ERR_DECRYPT    -6
+
+#endif // LIB_SIGLATCH_OPENSSL_H
+
+
+# --- end: stdlib/openssl.h ---
+
+
+
+# --- begin: stdlib/parse_argv.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_PARSE_ARGV_H
+#define SIGLATCH_PARSE_ARGV_H
+
+#include <stddef.h>
+#include "log.h"
+#include "print.h"
+/**
+ * @file parse_argv.h
+ * @brief Simple argument parsing utility for CLI flags and positionals
+ *
+ * This module supports flag/argument parsing for CLI programs.
+ * It provides a lightweight parser with static option specification
+ * and positional argument capture. Useful for building consistent
+ * command-line interfaces across Siglatch tools.
+ *
+ * Typical usage:
+ *   1. Define an array of OptionSpec objects
+ *   2. Call get_lib_parse_argv() to access the singleton interface
+ *   3. Use .parse() to fill ParsedArgv based on argc/argv
+ *   4. Use .has() or .dump() for analysis/debug
+ */
+
+typedef enum {
+  OPT_FLAG,     ///< Option has no arguments (e.g., --debug)
+  OPT_KEYED,    ///< Option expects 1 or more arguments (e.g., --port 1234)
+  OPT_UNKNOWN   ///< Used for invalid or unknown options
+} OptionType;
+
+typedef struct {
+  const char *name;     ///< Full option name (e.g., "--log")
+  int id;               ///< Unique identifier or enum for lookup
+  int num_args;         ///< How many args it expects (0 for flags)
+  OptionType type;      ///< Option classification
+} OptionSpec;
+
+typedef struct {
+  const OptionSpec *spec;     ///< Backref to the matched OptionSpec
+  const char *args[10];       ///< Arguments parsed for this option
+  int num_args;               ///< How many args were parsed
+} ParsedOption;
+
+typedef struct {
+  ParsedOption options[32];     ///< List of parsed options
+  int num_options;
+
+  const char *positionals[8];   ///< Remaining args (non-option)
+  int num_positionals;
+
+  const OptionSpec *spec;       ///< The spec table used for parsing
+} ParsedArgv;
+
+/**
+ * Optional context for parse_argv library
+ * Reserved for logging or global overrides in future
+ */
+typedef struct {
+  int strict;  ///< If true, reject unknown options
+  int quiet_errors; ///< If true, suppress detailed parse errors
+  const  Logger *log;
+  const PrintLib *print;
+} ParseArgvContext;
+
+typedef struct {
+  void (*init)(const ParseArgvContext *ctx);                     ///< Optional lifecycle init
+  void (*shutdown)(void);                                       ///< shutdown 
+  void (*set_context)(const ParseArgvContext *ctx);             ///< Override parsing context
+  int (*parse)(int argc, char *argv[], ParsedArgv *out, const OptionSpec *spec);
+  int (*has)(const ParsedArgv *parsed, const char *flag);       ///< Lookup by flag name
+  void (*dump)(const ParsedArgv *parsed);                       ///< Debug dump
+} ParseArgvLib;
+
+const ParseArgvLib *get_lib_parse_argv(void);
+
+#endif // SIGLATCH_PARSE_ARGV_H
+
+
+# --- end: stdlib/parse_argv.h ---
+
+
+
+# --- begin: stdlib/parse/ini.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_STDLIB_PARSE_INI_H
+#define SIGLATCH_STDLIB_PARSE_INI_H
+
+#include <stddef.h>
+#include "../str.h"
+
+typedef struct {
+  char *key;
+  char *value;
+  size_t line;
+} IniEntry;
+
+typedef struct {
+  char *name;
+  size_t line;
+  IniEntry *entries;
+  size_t entry_count;
+} IniSection;
+
+typedef struct {
+  IniSection global;
+  IniSection *sections;
+  size_t section_count;
+} IniDocument;
+
+typedef struct {
+  size_t line;
+  char message[256];
+} IniError;
+
+typedef struct {
+  const StrLib *str;
+} IniContext;
+
+typedef struct {
+  int (*init)(const IniContext *ctx);
+  void (*shutdown)(void);
+  int (*set_context)(const IniContext *ctx);
+  IniDocument *(*read_file)(const char *path, IniError *error);
+  void (*destroy)(IniDocument *document);
+  const IniSection *(*find_section)(const IniDocument *document, const char *name);
+  const IniEntry *(*find_entry)(const IniSection *section, const char *key);
+  const char *(*get)(const IniDocument *document, const char *section, const char *key);
+} IniLib;
+
+const IniLib *get_lib_parse_ini(void);
+
+#endif
+
+
+# --- end: stdlib/parse/ini.h ---
+
+
+
+# --- begin: stdlib/parse/parse.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_STDLIB_PARSE_H
+#define SIGLATCH_STDLIB_PARSE_H
+
+#include "ini.h"
+
+typedef struct {
+  const StrLib *str;
+} ParseContext;
+
+typedef struct {
+  int (*init)(const ParseContext *ctx);
+  void (*shutdown)(void);
+  int (*set_context)(const ParseContext *ctx);
+  IniLib ini;
+} ParseLib;
+
+const ParseLib *get_lib_parse(void);
+
+#endif
+
+
+# --- end: stdlib/parse/parse.h ---
+
+
+
+# --- begin: stdlib/print.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_PRINT_H
+#define SIGLATCH_PRINT_H
+
+#include <stdarg.h>
+#include <stdio.h>
+#include "unicode.h"
+
+#define SL_OUTPUT_MODE_UNICODE 1
+#define SL_OUTPUT_MODE_ASCII 2
+
+#ifndef SL_OUTPUT_MODE_DEFAULT
+#define SL_OUTPUT_MODE_DEFAULT SL_OUTPUT_MODE_UNICODE
+#endif
+
+typedef struct {
+    const UnicodeLib *unicode;
+} PrintContext;
+
+typedef struct {
+    void (*init)(const PrintContext *ctx);
+    void (*shutdown)(void);
+    int (*output_parse_mode)(const char *value);
+    const char *(*output_mode_name)(int mode);
+    void (*output_set_mode)(int mode);
+    int (*output_get_mode)(void);
+    int (*output_get_env_mode)(const char *env_name);
+    void (*sl_output_sanitize)(const char *input, char *output, size_t output_size);
+    int (*sl_vfprintf)(FILE *stream, const char *fmt, va_list args);
+    int (*sl_fprintf)(FILE *stream, const char *fmt, ...);
+    int (*sl_printf)(const char *fmt, ...);
+    int (*uc_vfprintf)(FILE *stream, const char *marker, const char *fmt, va_list args);
+    int (*uc_fprintf)(FILE *stream, const char *marker, const char *fmt, ...);
+    int (*uc_printf)(const char *marker, const char *fmt, ...);
+    int (*uc_vsprintf)(char *dst, size_t dst_size, const char *marker, const char *fmt, va_list args);
+    int (*uc_sprintf)(char *dst, size_t dst_size, const char *marker, const char *fmt, ...);
+} PrintLib;
+
+const PrintLib *get_lib_print(void);
+
+#endif
+
+
+# --- end: stdlib/print.h ---
+
+
+
+# --- begin: stdlib/random.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_RANDOM_H
+#define SIGLATCH_RANDOM_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+/**
+ * @file random.h
+ * @brief Singleton random number generator for siglatch runtime
+ *
+ * This module provides basic random number generation for nonces,
+ * challenges, and buffer filling. It supports both integer and
+ * buffer-based randomness. Access is through a singleton RandomLib struct.
+ *
+ * To install:
+ *   1. Place random.c and random.h in your stdlib directory
+ *   2. Include random.h where needed
+ *   3. Call `get_random_lib()` once to access the `RandomLib` object
+ */
+
+typedef struct {
+    // Lifecycle
+    void (*init)(void);                          ///< Optional lifecycle setup
+    void (*shutdown)(void);                      ///< Optional teardown logic
+
+    // Seeding
+    void (*seed_time)(void);                      ///< Seed from time(NULL)
+    void (*seed_time_pid_addr)(void);             ///< Seed from time + pid + memory
+    void (*set_seed)(unsigned int seed);          ///< Force specific seed
+    int  (*is_seeded)(void);                      ///< Check if seeded
+    unsigned int (*get_seed)(void);               ///< Return active seed
+
+    // Random values
+    uint32_t (*challenge)(void);                  ///< Random 32-bit challenge
+    uint32_t (*u32)(void);                        ///< Random 32-bit unsigned int
+    void (*bytes)(uint8_t *buf, size_t len);       ///< Fill a buffer with random bytes
+  void (*ascii)(uint8_t *buf, size_t len);   ///< Random printable ASCII
+  void (*alnum)(uint8_t *buf, size_t len);   ///< Random alphanumeric
+} RandomLib;
+
+const RandomLib *get_random_lib(void);
+
+#endif // SIGLATCH_RANDOM_H
+
+
+# --- end: stdlib/random.h ---
+
+
+
+# --- begin: stdlib/signal.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_STDLIB_SIGNAL_H
+#define SIGLATCH_STDLIB_SIGNAL_H
+
+#include <signal.h>
+#include <stddef.h>
+
+#define LIB_SIGNAL_MAX_SIGNALS 16
+
+typedef struct {
+  volatile sig_atomic_t should_exit;
+  volatile sig_atomic_t last_signal;
+  volatile sig_atomic_t pending;
+  volatile sig_atomic_t delivery_count;
+  int wake_write_fd;
+} SignalState;
+
+typedef enum {
+  LIB_SIGNAL_POLICY_GRACEFUL = 0,
+  LIB_SIGNAL_POLICY_GRACEFUL_THEN_HARD = 1,
+  LIB_SIGNAL_POLICY_HARD_EXIT = 2
+} SignalPolicy;
+
+typedef struct {
+  const int *signals;
+  size_t signal_count;
+  int set_should_exit;
+  int wake_write_fd;
+  SignalPolicy policy;
+} SignalInstallConfig;
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  void (*state_reset)(SignalState *state);
+  int (*install)(SignalState *state, const SignalInstallConfig *cfg);
+  void (*uninstall)(void);
+  int (*should_exit)(const SignalState *state);
+  int (*last_signal)(const SignalState *state);
+  int (*take_last_signal)(SignalState *state);
+  int (*has_pending)(const SignalState *state);
+  void (*clear_pending)(SignalState *state);
+  void (*request_exit)(SignalState *state);
+} SignalLib;
+
+int lib_signal_init(void);
+void lib_signal_shutdown(void);
+void lib_signal_state_reset(SignalState *state);
+int lib_signal_install(SignalState *state, const SignalInstallConfig *cfg);
+void lib_signal_uninstall(void);
+int lib_signal_should_exit(const SignalState *state);
+int lib_signal_last_signal(const SignalState *state);
+int lib_signal_take_last_signal(SignalState *state);
+int lib_signal_has_pending(const SignalState *state);
+void lib_signal_clear_pending(SignalState *state);
+void lib_signal_request_exit(SignalState *state);
+const SignalLib *get_lib_signal(void);
+
+#endif
+
+
+# --- end: stdlib/signal.h ---
+
+
+
+# --- begin: stdlib/stdin.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_STDIN_H
+#define SIGLATCH_STDIN_H
+
+#include <stddef.h>
+#include <stdint.h>
+#include "print.h"
+
+typedef struct {
+  const PrintLib *print;
+} StdinContext;
+
+typedef struct {
+  void (*init)(const StdinContext *ctx);
+  void (*set_context)(const StdinContext *ctx);
+  void (*shutdown)(void);
+  int (*is_terminal)(void);
+  int (*has_piped_input)(void);
+  int (*attach_if_piped)(uint8_t *dst, size_t dst_size, size_t *out_len);
+  int (*read_once)(uint8_t *dst, size_t dst_size, size_t *out_len);
+  int (*read_multiline)(uint8_t *dst, size_t dst_size, size_t *out_len);
+} StdinLib;
+
+const StdinLib *get_lib_stdin(void);
+
+#endif
+
+
+# --- end: stdlib/stdin.h ---
+
+
+
+# --- begin: stdlib/str.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_STR_H
+#define SIGLATCH_STR_H
+
+#include <stddef.h>
+
+/**
+ * @file str.h
+ * @brief Singleton string utility library for safe, portable operations
+ *
+ * Provides safe wrappers for common C string operations such as copying,
+ * concatenation, and length calculation. Uses function pointers in a
+ * singleton StringLib struct for runtime use.
+ *
+ * To install:
+ *   1. Place string.c and string.h in your stdlib directory
+ *   2. Include str.h where needed
+ *   3. Call `get_lib_string()` once to access the `StringLib` object
+ */
+
+typedef struct {
+  void (*init)(void);                           ///< Optional setup (noop for now)
+  void (*shutdown)(void);                           ///< Optional setup (noop for now)
+  size_t (*lcpy)(char *dst, const char *src, size_t dstsize);   ///< Safe strlcpy
+  size_t (*lcat)(char *dst, const char *src, size_t dstsize);    ///< Safe strlcat
+  char *(*dup)(const char *str);               ///< Duplicate string with malloc ownership
+  size_t (*len)(const char *str);              ///< strlen wrapper
+  int (*eq)(const char *a, const char *b);     ///< strcmp == 0
+  int (*is_blank)(const char *str);            ///< Return 1 when string is empty or ASCII whitespace only
+  char *(*trim)(char *str);                    ///< Trim leading/trailing ASCII whitespace in place
+  int (*to_bool)(const char *text, int *out);  ///< Parse yes/no style boolean text into out
+  int (*split_kv)(char *text, char **key_out, char **value_out); ///< Split first key=value pair in place
+  void (*parse_csv_fixed)(char *items, int *count, int max_items, size_t item_size, const char *value); ///< Split CSV text into fixed-width caller-provided slots
+} StrLib;
+
+const StrLib *get_lib_str(void);
+
+#endif /* SIGLATCH_STR_H */
+
+
+# --- end: stdlib/str.h ---
+
+
+
+# --- begin: stdlib/time.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_TIME_H
+#define SIGLATCH_TIME_H
+
+#include <stddef.h>
+#include <time.h>
+
+/**
+ * @file time.h
+ * @brief Singleton time library for formatted and numeric timestamps
+ *
+ * This module provides unified timestamp access for the siglatch runtime.
+ * It supports raw Unix timestamps, formatted strings for logs, and basic
+ * human-readable formats. All access is through function pointers in a
+ * singleton TimeLib struct.
+ *
+ * To install:
+ *   1. Place time.c and time.h in your stdlib directory
+ *   2. Include time.h where needed
+ *   3. Call `get_lib_time()` once to access the `TimeLib` object
+ */
+
+typedef struct {
+  void (*init)(void);                         ///< Optional lifecycle setup
+  void (*shutdown)(void);                     ///< Optional teardown logic
+  time_t (*now)(void);                        ///< time_t
+  long (*unix_ts)(void);                         ///< Unix timestamp as integer
+  const char *(*human)(int cache);            ///< ctime-style human string
+  const char *(*log)(void);                   ///< ISO 8601 formatted time
+  const char *(*unix_string)(void);           ///< Unix timestamp as string
+} TimeLib;
+
+const TimeLib *get_lib_time(void);
+
+#endif // SIGLATCH_TIME_H
+
+
+# --- end: stdlib/time.h ---
+
+
+
+# --- begin: stdlib/time.old.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+
+#ifndef SIGLATCH_TIME_H
+#define SIGLATCH_TIME_H
+
+#include <stddef.h>  // for size_t
+
+typedef struct {
+  void (*init)(void);
+  void (*shutdown)(void);
+
+  long (*unix)(void);               // Unix timestamp (seconds since epoch)
+  const char *(*human)(int);        // Human-readable string (ctime-style, cached)
+  const char *(*log)(void);         // ISO 8601 log format
+  const char *(*unix_string)(void); // Unix timestamp as a string.
+} TimeLib;
+
+const TimeLib *get_lib_time(void);
+
+#endif // SIGLATCH_TIME_H
+
+
+# --- end: stdlib/time.old.h ---
+
+
+
+# --- begin: stdlib/udp.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef LIB_UDP_H
+#define LIB_UDP_H
+
+#include <stddef.h>
+#include <stdint.h>
+#include "log.h" // for Logger
+#include "print.h" // for PrintLib
+
+/**
+ * UdpContext - runtime context for UDP operations.
+ */
+typedef struct {
+    const Logger *log;  ///< Pointer to logging interface (must not be NULL)
+    const PrintLib *print; ///< Pointer to print interface for output rendering
+    // Future: persistent socket, timeout config, etc.
+} UdpContext;
+
+/**
+ * UdpLib - basic UDP send interface with optional lifecycle and context.
+ */
+typedef struct {
+    /**
+     * Initialize the UDP library with optional context.
+     */
+    void (*init)(const UdpContext *ctx);
+
+    /**
+     * Override context after init (for runtime reconfiguration).
+     */
+    void (*set_context)(const UdpContext *ctx);
+
+    /**
+     * Optional shutdown hook.
+     */
+    void (*shutdown)(void);
+
+    /**
+     * Send a UDP payload to a given target:port.
+     *
+     * @param target_ip    String IPv4 address (e.g., "127.0.0.1")
+     * @param port         Destination port (host byte order)
+     * @param data         Pointer to payload buffer
+     * @param data_len     Length of payload buffer
+     * @return 1 on success, 0 on failure
+     */
+    int (*send)(const char *target_ip, uint16_t port,
+                const unsigned char *data, size_t data_len);
+
+} UdpLib;
+
+/**
+ * Get the singleton UDP library instance.
+ */
+const UdpLib *get_udp_lib(void);
+
+#endif // LIB_UDP_H
+
+
+# --- end: stdlib/udp.h ---
+
+
+
+# --- begin: stdlib/unicode.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_UNICODE_H
+#define SIGLATCH_UNICODE_H
+
+#include <stddef.h>
+
+typedef struct {
+    const char *utf8;
+    size_t utf8_len;
+    const char *ascii;
+    size_t ascii_len;
+} UnicodeReplacement;
+
+typedef struct {
+    void (*init)(void);
+    void (*shutdown)(void);
+    const char *(*get)(const char *key);
+    const char *(*get_unicode)(const char *key);
+    const char *(*get_ascii)(const char *key);
+    size_t (*replacement_count)(void);
+    const UnicodeReplacement *(*replacement_at)(size_t index);
+} UnicodeLib;
+
+const UnicodeLib *get_lib_unicode(void);
+
+#endif
+
+
+# --- end: stdlib/unicode.h ---
+
+
+
+# --- begin: stdlib/utils.h ---
+
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_UTILS_H
+#define SIGLATCH_UTILS_H
+#include <stdio.h>
+#include <stdint.h>
+#include "print.h"
+
+typedef struct {
+    const PrintLib *print;
+} UtilsContext;
+
+typedef struct {
+    void (*init)(const UtilsContext *ctx);
+    void (*set_context)(const UtilsContext *ctx);
+    void (*shutdown)(void);
+    const char *(*timestamp_now)(int cache);
+    void (*dump_digest)(const char *label, const uint8_t *digest, size_t len);
+} UtilsLib;
+
+const UtilsLib *get_lib_utils(void);
+
+const char *timestamp_now(int cache);
+void dumpDigest(const char *label, const uint8_t *digest, size_t len) ;
+#endif // SIGLATCH_UTILS_H
+
+
+# --- end: stdlib/utils.h ---
+

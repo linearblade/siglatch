@@ -14,6 +14,7 @@ enum {
   OPT_ID_HELP = 1,
   OPT_ID_DUMP_CONFIG,
   OPT_ID_OUTPUT_MODE,
+  OPT_ID_CONFIG,
   OPT_ID_SERVER
 };
 
@@ -21,6 +22,7 @@ static const ArgvOptionSpec app_opts_specs[] = {
   { "--help", OPT_ID_HELP, 0, ARGV_OPT_FLAG, 0, 1, 1 },
   { "--dump-config", OPT_ID_DUMP_CONFIG, 0, ARGV_OPT_FLAG, 0, 1, 1 },
   { "--output-mode", OPT_ID_OUTPUT_MODE, 1, ARGV_OPT_KEYED, 0, 1, 1 },
+  { "--config", OPT_ID_CONFIG, 1, ARGV_OPT_KEYED, 0, 1, 1 },
   { "--server", OPT_ID_SERVER, 1, ARGV_OPT_KEYED, 0, 1, 1 },
   { NULL, 0, 0, ARGV_OPT_FLAG, 0, 0, 0 }
 };
@@ -211,11 +213,32 @@ static int app_opts_copy_server_name(AppParsedOpts *out, const char *value) {
   return 1;
 }
 
+static int app_opts_copy_config_path(AppParsedOpts *out, const char *value) {
+  int written = 0;
+
+  if (!out || !value) {
+    return app_opts_set_error(out, 2, "Invalid --config value");
+  }
+
+  if (value[0] == '\0') {
+    return app_opts_set_error(out, 2, "Invalid --config value (empty)");
+  }
+
+  written = snprintf(out->values.config_path, sizeof(out->values.config_path), "%s", value);
+  if (written < 0 || (size_t)written >= sizeof(out->values.config_path)) {
+    return app_opts_set_error(out, 2, "Config path is too long");
+  }
+
+  return 1;
+}
+
 static int app_opts_parse(int argc, char *argv[], AppParsedOpts *out) {
   ArgvParsed parsed = {0};
   const ArgvParsedOption *output_mode_opt = NULL;
+  const ArgvParsedOption *config_opt = NULL;
   const ArgvParsedOption *server_opt = NULL;
   ArgvError parse_err = {0};
+  const char *config_path = NULL;
   const char *server_name = NULL;
 
   if (!out) {
@@ -259,6 +282,18 @@ static int app_opts_parse(int argc, char *argv[], AppParsedOpts *out) {
     }
   }
 
+  config_opt = lib.argv.find_last_by_id(&parsed, OPT_ID_CONFIG);
+  if (config_opt) {
+    if (!app_opts_reject_equals_form(out, config_opt, argc, argv)) {
+      return 0;
+    }
+
+    config_path = lib.argv.option_value ? lib.argv.option_value(config_opt, 0) : NULL;
+    if (!app_opts_copy_config_path(out, config_path)) {
+      return 0;
+    }
+  }
+
   server_opt = lib.argv.find_last_by_id(&parsed, OPT_ID_SERVER);
   if (server_opt) {
     if (!app_opts_reject_equals_form(out, server_opt, argc, argv)) {
@@ -291,6 +326,8 @@ static void app_opts_dump(const AppParsedOpts *parsed) {
   lib.print.uc_printf(NULL, "  Output Mode      : %s (%d)\n",
                       lib.print.output_mode_name(parsed->values.output_mode),
                       parsed->values.output_mode);
+  lib.print.uc_printf(NULL, "  Config Path      : %s\n",
+                      parsed->values.config_path[0] ? parsed->values.config_path : "(default)");
   lib.print.uc_printf(NULL, "  Server Name      : %s\n",
                       parsed->values.server_name[0] ? parsed->values.server_name : "(unset)");
 }

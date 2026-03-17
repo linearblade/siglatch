@@ -16,7 +16,6 @@
 #include "../stdlib/signal.h"
 #include "../stdlib/env.h"
 #include "../stdlib/openssl.h"
-#include "../stdlib/udp.h"
 #include "../stdlib/argv.h"
 #include "../stdlib/parse/parse.h"
 #include "../stdlib/str.h"
@@ -43,7 +42,6 @@ typedef struct {
   NonceLib nonce;
   SignalLib signal;
   SiglatchOpenSSL_Lib openssl;
-  UdpLib udp;
   ArgvLib argv;
   StrLib str;
   ParseLib parse;
