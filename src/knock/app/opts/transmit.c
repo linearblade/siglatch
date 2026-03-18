@@ -26,6 +26,7 @@ enum {
   OPT_ID_DUMMY_HMAC,
   OPT_ID_NO_ENCRYPT,
   OPT_ID_DEAD_DROP,
+  OPT_ID_SEND_FROM,
   OPT_ID_VERBOSE,
   OPT_ID_LOG,
   OPT_ID_STDIN,
@@ -43,6 +44,7 @@ static const ArgvOptionSpec option_specs[] = {
   { "--dummy-hmac",  OPT_ID_DUMMY_HMAC,  0, ARGV_OPT_FLAG,  0, 0, 1 },
   { "--no-encrypt",  OPT_ID_NO_ENCRYPT,  0, ARGV_OPT_FLAG,  0, 0, 1 },
   { "--dead-drop",   OPT_ID_DEAD_DROP,   0, ARGV_OPT_FLAG,  0, 0, 1 },
+  { "--send-from",   OPT_ID_SEND_FROM,   1, ARGV_OPT_KEYED, 0, 0, 1 },
   { "--verbose",     OPT_ID_VERBOSE,     1, ARGV_OPT_KEYED, 0, 0, 1 },
   { "--log",         OPT_ID_LOG,         1, ARGV_OPT_KEYED, 0, 0, 1 },
   { "--output-mode", OPT_ID_OUTPUT_MODE, 1, ARGV_OPT_KEYED, 0, 0, 1 },
@@ -178,6 +180,28 @@ static int app_opts_transmit_validate(Opts *opts, AppCommand *cmd) {
     }
   }
 
+  if (opts->host[0] != '\0' &&
+      opts->user_selector[0] != '\0' &&
+      opts->send_from_ip[0] == '\0') {
+    int send_from_rv = app.env.load_host_user_send_from_ip(opts->host,
+                                                           opts->user_selector,
+                                                           opts->send_from_ip,
+                                                           sizeof(opts->send_from_ip));
+    if (send_from_rv < 0) {
+      snprintf(message, sizeof(message),
+               "Invalid host user send_from_ip config for %s/%s",
+               opts->host, opts->user_selector);
+      app_opts_transmit_set_error(cmd, 2, message);
+      valid = 0;
+    }
+  }
+
+  if (opts->send_from_ip[0] != '\0' &&
+      !lib.net.ip.range.is_single_ipv4(opts->send_from_ip)) {
+    app_opts_transmit_set_error(cmd, 2, "Invalid --send-from IPv4 address");
+    valid = 0;
+  }
+
   if (opts->port == 0) {
     opts->port = 50000;
   }
@@ -236,6 +260,9 @@ static int app_opts_transmit_apply_parsed(const ArgvParsed *parsed, Opts *out, A
     case OPT_ID_DEAD_DROP:
       out->dead_drop = 1;
       break;
+    case OPT_ID_SEND_FROM:
+      strncpy(out->send_from_ip, opt->args[1], sizeof(out->send_from_ip) - 1);
+      break;
     case OPT_ID_VERBOSE: {
       int parsed_verbose = 0;
       if (!lib.argv.get_i32(opt, 0, 0, 5, &parsed_verbose, &parse_err)) {
@@ -285,6 +312,7 @@ static int app_opts_transmit_apply_parsed(const ArgvParsed *parsed, Opts *out, A
     const char *action_str = parsed->positionals[2];
 
     strncpy(out->host, host_str, sizeof(out->host) - 1);
+    strncpy(out->user_selector, user_str, sizeof(out->user_selector) - 1);
 
     out->user_id = app.alias.resolve_user(host_str, user_str);
     if (out->user_id == 0) {
@@ -336,6 +364,10 @@ static void app_opts_transmit_dump(const Opts *opts) {
 
   lib.print.uc_printf(NULL, "\nTarget:\n");
   lib.print.uc_printf(NULL, "  Host             : %s\n", opts->host);
+  lib.print.uc_printf(NULL, "  User Selector    : %s\n",
+                      opts->user_selector[0] ? opts->user_selector : "(unset)");
+  lib.print.uc_printf(NULL, "  Send From IP     : %s\n",
+                      opts->send_from_ip[0] ? opts->send_from_ip : "(unset)");
   lib.print.uc_printf(NULL, "  Port             : %u\n", opts->port);
 
   lib.print.uc_printf(NULL, "\nModes:\n");

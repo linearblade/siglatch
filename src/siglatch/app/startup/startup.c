@@ -174,6 +174,9 @@ static int app_startup_prepare(int argc, char *argv[], AppStartupState *state) {
   config_path = state->parsed.values.config_path[0]
                     ? state->parsed.values.config_path
                     : SL_CONFIG_PATH_DEFAULT;
+  lib.str.lcpy(state->listener.config_path,
+               config_path,
+               sizeof(state->listener.config_path));
 
   LOGD("[startup] Loading config from %s\n", config_path);
   if (!app.config.load(config_path)) {

@@ -27,6 +27,13 @@ payload_overflow = reject
   * `reject`: Drop packet immediately.
   * `clamp`: Force `payload_len` to the payload buffer size and continue structured validation/dispatch flow.
 
+Current note:
+
+* `allowed_ips` is now enforced for `server`, `user`, and `action` scopes.
+* `bind_ip` is now honored by startup listener bind.
+* `reload_config` now carries bind changes through automatically when the replacement listener can be staged safely.
+* Current caveat: same-port `bind_ip` changes still require an explicit `rebind_listener` or a full restart.
+
 ---
 
 ## 🔑 Server Definitions
@@ -37,6 +44,8 @@ payload_overflow = reject
 enabled = yes
 label = Secure Server
 port = 50000
+bind_ip = 127.0.0.1
+allowed_ips = 127.0.0.1,192.168.1.0/24
 secure = yes
 output_mode = unicode
 payload_overflow = inherit
@@ -49,7 +58,13 @@ log_file = /custom/log/here
 
 * **enabled**: Enables the secure server instance.
 * **label**: Optional human-readable display label. This does not affect server selection.
-* **port**: TCP port to listen on.
+* **port**: UDP port to listen on.
+* **bind\_ip**: Optional single IPv4 address to bind this listener to. If omitted, the server binds to any local interface. This is honored during startup listener bind and during safe hot reloads.
+* **allowed\_ips**: Optional comma-separated list of IPv4 literals and/or IPv4 CIDR ranges allowed to reach this server at all.
+  * Examples:
+    * `127.0.0.1`
+    * `127.0.0.1,192.168.1.0/24`
+  * This is enforced at runtime before user/action dispatch.
 * **secure**: Enforces encrypted key validation.
 * **priv\_key\_path**: Path to the server's private RSA key.
 * **deaddrops**: Comma-separated list of `deaddrop` modules this server responds to.
@@ -108,6 +123,7 @@ enabled = yes
 constructor = /usr/bin/perl /etc/siglatch/scripts/ipAuth/grant.pl
 exec_split = yes
 payload_overflow = inherit
+allowed_ips = 127.0.0.1,10.0.0.0/8
 ```
 
 * **id**: Numeric action identifier used by clients.
@@ -115,6 +131,11 @@ payload_overflow = inherit
 * **constructor**: Executable path and optional command prefix.
 * **exec\_split**: Whether constructor should be split into command + args before exec.
 * **payload\_overflow**: Per-action override for malformed structured payload length handling. Values: `reject`, `clamp`, `inherit`.
+* **allowed\_ips**: Optional comma-separated list of IPv4 literals and/or IPv4 CIDR ranges allowed to invoke this action.
+  * Examples:
+    * `127.0.0.1`
+    * `127.0.0.1,10.0.0.0/8`
+  * This is enforced at runtime.
 
 ---
 
@@ -127,10 +148,16 @@ id = 1
 enabled = yes
 key_file = /etc/siglatch/keys/root.pub.pem
 hmac_file = /etc/siglatch/keys/root.hmac.key
+allowed_ips = 127.0.0.1/32
 ```
 
 * Grants access to the `root` user. root is arbitrary. any name may be used
 * Keys must match the server's format and ownership expectations.
+* **allowed\_ips**: Optional comma-separated list of IPv4 literals and/or IPv4 CIDR ranges allowed for this user.
+  * Examples:
+    * `127.0.0.1`
+    * `127.0.0.1,192.168.1.0/24`
+  * This is enforced at runtime.
 
 ---
 
@@ -145,5 +172,10 @@ hmac_file = /etc/siglatch/keys/root.hmac.key
 * Scripts will run without the environment. be aware of this when writing scripts.
 * User keys should be created via `install.sh` or copied securely.
 * HMAC keys must be 32 bytes, hex-safe, and kept secret. or 64 bytes hex as ascii
+* `bind_ip` must be a single IPv4 literal.
+* `allowed_ips` entries must be either single IPv4 literals or IPv4 CIDR expressions.
+* IP restriction enforcement order is: `server.allowed_ips`, then `user.allowed_ips`, then `action.allowed_ips`.
+* `reload_config` can automatically rebind when the new listener tuple can be staged safely ahead of commit.
+* Same-port `bind_ip` changes are intentionally not hot-swapped during `reload_config`; use `rebind_listener` or restart for that case.
 * Config parsing is strict. Comments must begin with `#`.
 * Be sure to reload or restart `siglatchd` after making config changes.

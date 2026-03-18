@@ -37,6 +37,8 @@ typedef struct {
   LogLevel log_level;
 
   char host[256];
+  char user_selector[128];
+  char send_from_ip[64];
   uint16_t port;
 
   HmacMode hmac_mode;

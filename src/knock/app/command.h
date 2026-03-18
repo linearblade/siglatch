@@ -14,6 +14,7 @@ typedef enum {
   APP_CMD_TRANSMIT,
   APP_CMD_ALIAS,
   APP_CMD_OUTPUT_MODE_DEFAULT,
+  APP_CMD_SEND_FROM_DEFAULT,
   APP_CMD_ERROR
 } AppCommandType;
 
@@ -47,6 +48,13 @@ typedef struct {
   int mode;
 } AppOutputModeDefaultCommand;
 
+typedef struct {
+  int clear;
+  char host[256];
+  char user[128];
+  char ip[64];
+} AppSendFromDefaultCommand;
+
 typedef struct AppCommand {
   AppCommandType type;
   int ok;
@@ -57,6 +65,7 @@ typedef struct AppCommand {
     Opts transmit;
     AppAliasCommand alias;
     AppOutputModeDefaultCommand outdef;
+    AppSendFromDefaultCommand send_from_default;
   } as;
 } AppCommand;
 

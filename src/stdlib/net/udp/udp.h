@@ -78,6 +78,38 @@ typedef struct {
   int (*open_auto)(const char *hint);
 
   /**
+   * @brief Open and optionally bind an IPv4 UDP socket.
+   *
+   * This is a convenience wrapper over `open_ipv4()` plus the socket-layer
+   * bind helper. If both bind arguments are omitted (`bind_ip` empty/NULL and
+   * `bind_port == 0`), the bind step is treated as a no-op and the socket is
+   * returned unbound, preserving the current convenience behavior.
+   *
+   * @param bind_ip     Optional local IPv4 literal, or NULL
+   * @param bind_port   Optional local UDP port, or 0
+   * @param bound_port  Optional output for the actual bound port
+   * @return socket fd on success, or -1 on failure
+   */
+  int (*open_bound_ipv4)(const char *bind_ip, uint16_t bind_port, uint16_t *bound_port);
+
+  /**
+   * @brief Open and optionally bind a UDP socket using the destination hint.
+   *
+   * For IPv4 hints, this opens an IPv4 socket and applies the optional local
+   * bind settings. For IPv6 hints, this currently supports only the existing
+   * unbound convenience path; explicit local bind parameters are rejected until
+   * the underlying socket bind helper grows IPv6 support.
+   *
+   * @param hint        Destination IPv4 or IPv6 literal
+   * @param bind_ip     Optional local IPv4 literal, or NULL
+   * @param bind_port   Optional local UDP port, or 0
+   * @param bound_port  Optional output for the actual bound port
+   * @return socket fd on success, or -1 on failure
+   */
+  int (*open_bound_auto)(const char *hint, const char *bind_ip,
+                         uint16_t bind_port, uint16_t *bound_port);
+
+  /**
    * @brief Close a UDP socket.
    *
    * This is a thin alias to the socket layer close helper.

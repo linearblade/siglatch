@@ -17,13 +17,19 @@
 
 static void config_free(siglatch_config *config);
 static siglatch_config *config_consume_document_ptr(const IniDocument *document);
+static siglatch_config *config_build_from_path(const char *path);
 static int parse_output_mode_key(const char *value, const char *scope_label);
+static siglatch_action_handler parse_action_handler_key(
+    const char *value,
+    const char *scope_label);
 static siglatch_payload_overflow_policy parse_payload_overflow_key(
     const char *value,
     const char *scope_label,
     int allow_inherit,
     siglatch_payload_overflow_policy fallback);
 static int validate_unique_server_names(const siglatch_config *cfg);
+static int validate_action_handlers(const siglatch_config *cfg);
+static int validate_ip_constraints(const siglatch_config *cfg);
 
 static void apply_server_runtime_defaults(siglatch_config *cfg);
 static void config_apply_defaults(siglatch_config *config);
@@ -36,6 +42,15 @@ static void config_consume_action_entry(siglatch_action *action, const IniEntry 
 static void config_consume_user_entry(siglatch_user *user, const IniEntry *entry);
 static void config_consume_server_entry(siglatch_server *server, const IniEntry *entry);
 static void config_consume_deaddrop_entry(siglatch_deaddrop *deaddrop, const IniEntry *entry);
+static const siglatch_user *config_user_by_id_from_ptr(const siglatch_config *cfg, uint32_t user_id);
+static const siglatch_action *config_action_by_id_from_ptr(const siglatch_config *cfg, uint32_t action_id);
+static const siglatch_server *config_server_by_name_from_ptr(const siglatch_config *cfg, const char *name);
+static const siglatch_deaddrop *config_deaddrop_by_name_from_ptr(const siglatch_config *cfg, const char *name);
+static int config_server_set_port(const char *name, int port);
+static int config_server_set_binding(const char *name, const char *bind_ip, int port);
+static int validate_ip_spec_list(const char specs[][MAX_IP_RANGE_LEN],
+                                 int count,
+                                 const char *scope_label);
 
 static  siglatch_config *_config = NULL;
 static  int _owned = 0;
@@ -88,41 +103,30 @@ static void config_attach(siglatch_config *config) {
 }
 
 static int config_load(const char *path) {
-  IniDocument *document = NULL;
-  IniError error = {0};
   siglatch_config *cfg = NULL;
-
-  if (!path || path[0] == '\0') {
-    LOGE("Invalid config path\n");
-    return 0;
-  }
-
-  document = lib.parse.ini.read_file(path, &error);
-  if (!document) {
-    if (error.message[0] != '\0') {
-      if (error.line) {
-        LOGE("Config parse error on line %zu: %s\n", error.line, error.message);
-      } else {
-        LOGE("Config parse error: %s\n", error.message);
-      }
-    }
-    return 0;
-  }
-
-  cfg = config_consume_document_ptr(document);
-  lib.parse.ini.destroy(document);
-  document = NULL;
-
+  cfg = config_build_from_path(path);
   if (!cfg) {
     return 0;
   }
 
-  if (!app.keys.load(cfg)) {
-    config_free(cfg);
+  config_attach(cfg);
+  return 1;
+}
+
+static int config_load_detached(const char *path, siglatch_config **out_config) {
+  siglatch_config *cfg = NULL;
+
+  if (!out_config) {
     return 0;
   }
 
-  config_attach(cfg);
+  *out_config = NULL;
+  cfg = config_build_from_path(path);
+  if (!cfg) {
+    return 0;
+  }
+
+  *out_config = cfg;
   return 1;
 }
 
@@ -145,6 +149,23 @@ static int parse_output_mode_key(const char *value, const char *scope_label) {
        value ? value : "(null)",
        scope_label ? scope_label : "config");
   return 0;
+}
+
+static siglatch_action_handler parse_action_handler_key(
+    const char *value,
+    const char *scope_label) {
+  if (value && strcasecmp(value, "shell") == 0) {
+    return SL_ACTION_HANDLER_SHELL;
+  }
+
+  if (value && strcasecmp(value, "builtin") == 0) {
+    return SL_ACTION_HANDLER_BUILTIN;
+  }
+
+  LOGW("Invalid action handler '%s' in %s (expected 'shell' or 'builtin')\n",
+       value ? value : "(null)",
+       scope_label ? scope_label : "action");
+  return SL_ACTION_HANDLER_INVALID;
 }
 
 static siglatch_payload_overflow_policy parse_payload_overflow_key(
@@ -171,17 +192,67 @@ static siglatch_payload_overflow_policy parse_payload_overflow_key(
   return fallback;
 }
 
-const siglatch_user *config_user_by_id( uint32_t user_id) {
-    if (!_config) return NULL;
+static siglatch_config *config_build_from_path(const char *path) {
+  IniDocument *document = NULL;
+  IniError error = {0};
+  siglatch_config *cfg = NULL;
 
-    for (int i = 0; i < _config->user_count; ++i) {
-        const siglatch_user *u = &_config->users[i];
+  if (!path || path[0] == '\0') {
+    LOGE("Invalid config path\n");
+    return NULL;
+  }
+
+  document = lib.parse.ini.read_file(path, &error);
+  if (!document) {
+    if (error.message[0] != '\0') {
+      if (error.line) {
+        LOGE("Config parse error on line %zu: %s\n", error.line, error.message);
+      } else {
+        LOGE("Config parse error: %s\n", error.message);
+      }
+    }
+    return NULL;
+  }
+
+  cfg = config_consume_document_ptr(document);
+  lib.parse.ini.destroy(document);
+  document = NULL;
+
+  if (!cfg) {
+    return NULL;
+  }
+
+  if (!app.keys.load(cfg)) {
+    config_free(cfg);
+    return NULL;
+  }
+
+  return cfg;
+}
+
+static const siglatch_user *config_user_by_id_from_ptr(
+    const siglatch_config *cfg,
+    uint32_t user_id) {
+    if (!cfg) return NULL;
+
+    for (int i = 0; i < cfg->user_count; ++i) {
+        const siglatch_user *u = &cfg->users[i];
         if (u->enabled && u->id == user_id) {
             return u;
         }
     }
 
     return NULL;  // Not found
+}
+
+const siglatch_user *config_user_by_id(uint32_t user_id) {
+    return config_user_by_id_from_ptr(_config, user_id);
+}
+
+static const siglatch_user *config_user_by_id_from(
+    const siglatch_config *cfg,
+    uint32_t user_id) {
+  return config_user_by_id_from_ptr(cfg, user_id);
 }
 
 static int config_action_available_by_user(uint32_t user_id, const char *action) {
@@ -207,15 +278,27 @@ const char * config_username_by_id(uint32_t user_id){
     NULL;
 }
 
-const siglatch_action * config_action_by_id(uint32_t action_id){
-  if (!_config) return NULL;
+static const siglatch_action *config_action_by_id_from_ptr(
+    const siglatch_config *cfg,
+    uint32_t action_id) {
+  if (!cfg) return NULL;
   
-  for (int i = 0; i < _config->action_count; ++i) {
-    if (_config->actions[i].id == action_id) {
-      return &_config->actions[i];
+  for (int i = 0; i < cfg->action_count; ++i) {
+    if (cfg->actions[i].id == action_id) {
+      return &cfg->actions[i];
     }
   }
   return NULL;
+}
+
+const siglatch_action *config_action_by_id(uint32_t action_id){
+  return config_action_by_id_from_ptr(_config, action_id);
+}
+
+static const siglatch_action *config_action_by_id_from(
+    const siglatch_config *cfg,
+    uint32_t action_id) {
+  return config_action_by_id_from_ptr(cfg, action_id);
 }
 
 static void apply_server_runtime_defaults(siglatch_config *cfg) {
@@ -264,27 +347,225 @@ static int validate_unique_server_names(const siglatch_config *cfg) {
   return 1;
 }
 
+static int validate_action_handlers(const siglatch_config *cfg) {
+  if (!cfg) {
+    return 0;
+  }
+
+  for (int i = 0; i < cfg->action_count; ++i) {
+    const siglatch_action *action = &cfg->actions[i];
+
+    switch (action->handler) {
+    case SL_ACTION_HANDLER_SHELL:
+      if (action->constructor[0] == '\0') {
+        LOGE("Invalid action [%s]: shell handler requires constructor\n",
+             action->name);
+        return 0;
+      }
+      break;
+
+    case SL_ACTION_HANDLER_BUILTIN:
+      if (action->builtin[0] == '\0') {
+        LOGE("Invalid action [%s]: builtin handler requires builtin name\n",
+             action->name);
+        return 0;
+      }
+
+      if (action->constructor[0] != '\0') {
+        LOGE("Invalid action [%s]: builtin handler cannot define constructor\n",
+             action->name);
+        return 0;
+      }
+
+      if (!app.builtin.supports(action->builtin)) {
+        LOGE("Invalid action [%s]: unsupported builtin '%s'\n",
+             action->name,
+             action->builtin);
+        return 0;
+      }
+      break;
+
+    case SL_ACTION_HANDLER_INVALID:
+    default:
+      LOGE("Invalid action [%s]: unknown handler type\n", action->name);
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+static int validate_ip_spec_list(const char specs[][MAX_IP_RANGE_LEN],
+                                 int count,
+                                 const char *scope_label) {
+  int i = 0;
+
+  for (i = 0; i < count; ++i) {
+    const char *spec = specs[i];
+
+    if (!spec || spec[0] == '\0') {
+      continue;
+    }
+
+    if (lib.net.ip.range.is_single_ipv4(spec) ||
+        lib.net.ip.range.is_cidr_ipv4(spec)) {
+      continue;
+    }
+
+    LOGE("Invalid IP restriction '%s' in %s\n",
+         spec,
+         scope_label ? scope_label : "config");
+    return 0;
+  }
+
+  return 1;
+}
+
+static int validate_ip_constraints(const siglatch_config *cfg) {
+  int i = 0;
+  char scope_label[128] = {0};
+
+  if (!cfg) {
+    return 0;
+  }
+
+  for (i = 0; i < cfg->user_count; ++i) {
+    const siglatch_user *user = &cfg->users[i];
+    snprintf(scope_label, sizeof(scope_label), "[user:%s]", user->name);
+    if (!validate_ip_spec_list(user->allowed_ips, user->allowed_ip_count, scope_label)) {
+      return 0;
+    }
+  }
+
+  for (i = 0; i < cfg->action_count; ++i) {
+    const siglatch_action *action = &cfg->actions[i];
+    snprintf(scope_label, sizeof(scope_label), "[action:%s]", action->name);
+    if (!validate_ip_spec_list(action->allowed_ips, action->allowed_ip_count, scope_label)) {
+      return 0;
+    }
+  }
+
+  for (i = 0; i < cfg->server_count; ++i) {
+    const siglatch_server *server = &cfg->servers[i];
+
+    snprintf(scope_label, sizeof(scope_label), "[server:%s]", server->name);
+    if (!validate_ip_spec_list(server->allowed_ips, server->allowed_ip_count, scope_label)) {
+      return 0;
+    }
+
+    if (server->bind_ip[0] == '\0') {
+      continue;
+    }
+
+    if (!lib.net.ip.range.is_single_ipv4(server->bind_ip)) {
+      LOGE("Invalid bind_ip '%s' in [server:%s]\n",
+           server->bind_ip,
+           server->name);
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+
+static const siglatch_deaddrop *config_deaddrop_by_name_from_ptr(
+    const siglatch_config *cfg,
+    const char *name) {
+  if (!cfg || !name) return NULL;
+
+  for (int i = 0; i < cfg->deaddrop_count; ++i) {
+    if (strcmp(cfg->deaddrops[i].name, name) == 0) {
+      return &cfg->deaddrops[i];
+    }
+  }
+  return NULL;
+}
 
 const siglatch_deaddrop *config_deaddrop_by_name(const char *name) {
-  if (!_config || !name) return NULL;
+  return config_deaddrop_by_name_from_ptr(_config, name);
+}
 
-  for (int i = 0; i < _config->deaddrop_count; ++i) {
-    if (strcmp(_config->deaddrops[i].name, name) == 0) {
-      return &_config->deaddrops[i];
+static const siglatch_deaddrop *config_deaddrop_by_name_from(
+    const siglatch_config *cfg,
+    const char *name) {
+  return config_deaddrop_by_name_from_ptr(cfg, name);
+}
+
+static const siglatch_server *config_server_by_name_from_ptr(
+    const siglatch_config *cfg,
+    const char *name) {
+  if (!cfg || !name) return NULL;
+
+  for (int i = 0; i < cfg->server_count; ++i) {
+    if (strcmp(cfg->servers[i].name, name) == 0) {
+      return &cfg->servers[i];
     }
   }
   return NULL;
 }
 
 const siglatch_server *config_server_by_name(const char *name) {
-  if (!_config || !name) return NULL;
+  return config_server_by_name_from_ptr(_config, name);
+}
 
-  for (int i = 0; i < _config->server_count; ++i) {
-    if (strcmp(_config->servers[i].name, name) == 0) {
-      return &_config->servers[i];
-    }
+static const siglatch_server *config_server_by_name_from(
+    const siglatch_config *cfg,
+    const char *name) {
+  return config_server_by_name_from_ptr(cfg, name);
+}
+
+static int config_server_set_port(const char *name, int port) {
+  siglatch_server *server = NULL;
+
+  if (!_config || !name || name[0] == '\0') {
+    return 0;
   }
-  return NULL;
+
+  if (port <= 0 || port > 65535) {
+    return 0;
+  }
+
+  server = (siglatch_server *)config_server_by_name_from_ptr(_config, name);
+  if (!server) {
+    return 0;
+  }
+
+  server->port = port;
+  return 1;
+}
+
+static int config_server_set_binding(const char *name,
+                                     const char *bind_ip,
+                                     int port) {
+  siglatch_server *server = NULL;
+
+  if (!_config || !name || name[0] == '\0') {
+    return 0;
+  }
+
+  if (port <= 0 || port > 65535) {
+    return 0;
+  }
+
+  server = (siglatch_server *)config_server_by_name_from_ptr(_config, name);
+  if (!server) {
+    return 0;
+  }
+
+  if (bind_ip && bind_ip[0] != '\0' &&
+      !lib.net.ip.range.is_single_ipv4(bind_ip)) {
+    return 0;
+  }
+
+  server->port = port;
+  if (bind_ip && bind_ip[0] != '\0') {
+    lib.str.lcpy(server->bind_ip, bind_ip, sizeof(server->bind_ip));
+  } else {
+    server->bind_ip[0] = '\0';
+  }
+
+  return 1;
 }
 
 
@@ -348,6 +629,7 @@ static siglatch_action *config_append_action(siglatch_config *config, const char
 
   action = &config->actions[config->action_count++];
   lib.str.lcpy(action->name, name, sizeof(action->name));
+  action->handler = SL_ACTION_HANDLER_SHELL;
   action->exec_split = 1;
   action->enabled = 1;
   action->require_ascii = 0;
@@ -429,6 +711,10 @@ static void config_consume_action_entry(siglatch_action *action, const IniEntry 
 
   if (strcmp(key, "constructor") == 0) {
     lib.str.lcpy(action->constructor, val, PATH_MAX);
+  } else if (strcmp(key, "handler") == 0) {
+    action->handler = parse_action_handler_key(val, action->name);
+  } else if (strcmp(key, "builtin") == 0) {
+    lib.str.lcpy(action->builtin, val, sizeof(action->builtin));
   } else if (strcmp(key, "destructor") == 0) {
     lib.str.lcpy(action->destructor, val, PATH_MAX);
   } else if (strcmp(key, "keepalive_interval") == 0) {
@@ -447,6 +733,13 @@ static void config_consume_action_entry(siglatch_action *action, const IniEntry 
   } else if (strcmp(key, "payload_overflow") == 0) {
     action->payload_overflow = parse_payload_overflow_key(
         val, action->name, 1, action->payload_overflow);
+  } else if (strcmp(key, "allowed_ips") == 0) {
+    lib.str.parse_csv_fixed(
+        (char *)action->allowed_ips,
+        &action->allowed_ip_count,
+        MAX_IP_RANGES,
+        MAX_IP_RANGE_LEN,
+        val);
   }
 }
 
@@ -474,6 +767,13 @@ static void config_consume_user_entry(siglatch_user *user, const IniEntry *entry
         MAX_ACTIONS,
         MAX_ACTION_NAME,
         val);
+  } else if (strcmp(key, "allowed_ips") == 0) {
+    lib.str.parse_csv_fixed(
+        (char *)user->allowed_ips,
+        &user->allowed_ip_count,
+        MAX_IP_RANGES,
+        MAX_IP_RANGE_LEN,
+        val);
   }
 }
 
@@ -500,6 +800,15 @@ static void config_consume_server_entry(siglatch_server *server, const IniEntry 
     lib.str.lcpy(server->priv_key_path, val, PATH_MAX);
   } else if (strcmp(key, "log_file") == 0) {
     lib.str.lcpy(server->log_file, val, PATH_MAX);
+  } else if (strcmp(key, "bind_ip") == 0) {
+    lib.str.lcpy(server->bind_ip, val, sizeof(server->bind_ip));
+  } else if (strcmp(key, "allowed_ips") == 0) {
+    lib.str.parse_csv_fixed(
+        (char *)server->allowed_ips,
+        &server->allowed_ip_count,
+        MAX_IP_RANGES,
+        MAX_IP_RANGE_LEN,
+        val);
   } else if (strcmp(key, "port") == 0) {
     server->port = atoi(val);
   } else if (strcmp(key, "secure") == 0) {
@@ -659,6 +968,16 @@ static siglatch_config *config_consume_document_ptr(const IniDocument *document)
     return NULL;
   }
 
+  if (!validate_action_handlers(config)) {
+    config_free(config);
+    return NULL;
+  }
+
+  if (!validate_ip_constraints(config)) {
+    config_free(config);
+    return NULL;
+  }
+
   apply_server_runtime_defaults(config);
 
   return config;
@@ -668,6 +987,10 @@ static void config_unload(void){
   siglatch_config *config = config_detach();
   config_free(config);
   
+}
+
+static void config_destroy(siglatch_config *config) {
+  config_free(config);
 }
 
 static void config_free(siglatch_config *config) {
@@ -704,10 +1027,12 @@ static const ConfigLib config_instance = {
   .shutdown = config_shutdown,
 
   .load = config_load,
+  .load_detached = config_load_detached,
   .consume = config_consume,
   .unload = config_unload,
   .detach = config_detach,
   .attach = config_attach,
+  .destroy = config_destroy,
   .get = config_get,
 
   .set_context = config_set_context,
@@ -716,10 +1041,16 @@ static const ConfigLib config_instance = {
   .dump_ptr = config_debug_dump_ptr,
   .deaddrop_starts_with_buffer = config_deaddrop_starts_with_buffer,
   .user_by_id = config_user_by_id,
+  .user_by_id_from = config_user_by_id_from,
   .action_by_id = config_action_by_id,
+  .action_by_id_from = config_action_by_id_from,
   .action_available_by_user = config_action_available_by_user, 
   .server_by_name = config_server_by_name,
+  .server_by_name_from = config_server_by_name_from,
+  .server_set_port = config_server_set_port,
+  .server_set_binding = config_server_set_binding,
   .deaddrop_by_name = config_deaddrop_by_name,
+  .deaddrop_by_name_from = config_deaddrop_by_name_from,
   .username_by_id = config_username_by_id,
 };
 

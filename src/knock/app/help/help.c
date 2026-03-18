@@ -26,6 +26,7 @@ static void app_help_print_help(void) {
   printf("Example layout:\n");
   printf("  ~/.config/siglatch/localhost/\n");
   printf("  ├── action.map       # Action alias map\n");
+  printf("  ├── client.root.conf # Per-user source-bind defaults (optional)\n");
   printf("  ├── hmac.key         # HMAC key (symmetric)\n");
   printf("  ├── server.pub.pem   # Server public key (for encryption)\n");
   printf("  ├── user.pri.pem     # Client private key (optional, for decryption)\n");
@@ -50,11 +51,21 @@ static void app_help_print_help(void) {
   printf("  \033[36m--opts-dump\033[0m               Dump parsed options for debugging\n");
   printf("  \033[36m--no-encrypt\033[0m              Disable payload encryption\n");
   printf("  \033[36m--dead-drop\033[0m               Send raw payload without structure\n");
+  printf("  \033[36m--send-from <ipv4>\033[0m       Bind outbound UDP sends to a local IPv4\n");
   printf("  \033[36m--verbose <level>\033[0m         Set log verbosity (0-5, default 3 = INFO)\n");
   printf("  \033[36m--log <file>\033[0m              Log output to specified file (optional)\n\n");
   printf("  \033[36m--output-mode <mode>\033[0m      Set output mode for this run: unicode|ascii\n");
   printf("  \033[36m--output-mode-default <mode>\033[0m Save default output mode in ~/.config/siglatch/client.conf\n\n");
   printf("  Output mode precedence: --output-mode, then SIGLATCH_OUTPUT_MODE, then client.conf default, then compile default.\n\n");
+
+  printf("\033[1mSource Bind Defaults:\033[0m\n");
+  printf("  \033[36m--send-from-default <host> <user> <ipv4>\033[0m\n");
+  printf("    Persist a default local IPv4 bind for a specific host/user pair.\n");
+  printf("    Example: program --send-from-default localhost root 192.168.1.210\n\n");
+
+  printf("  \033[36m--send-from-default-clear <host> <user>\033[0m\n");
+  printf("    Clear a persisted local IPv4 bind default for a specific host/user pair.\n");
+  printf("    Example: program --send-from-default-clear localhost root\n\n");
 
   printf("\033[1mAlias Commands:\033[0m\n");
   printf("  \033[36m--alias-user <host> <user> <id>\033[0m\n");
@@ -109,6 +120,9 @@ static void app_help_print_help(void) {
   printf("  program localhost root login \"Hello World\"\n");
   printf("  program myserver.com guest openvpn \"Connect to VPN\"\n");
   printf("  program --stdin localhost root login < input.txt\n");
+  printf("  program --send-from 127.0.0.1 localhost root login \"Hello World\"\n");
+  printf("  program --send-from-default localhost root 192.168.1.210\n");
+  printf("  program --send-from-default-clear localhost root\n");
   printf("\n");
 
   printf("  # Manage aliases\n");

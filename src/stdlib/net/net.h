@@ -7,6 +7,7 @@
 #define SIGLATCH_NET_BARREL_H
 
 #include "addr/addr.h"
+#include "ip/ip.h"
 #include "socket/socket.h"
 #include "udp/udp.h"
 
@@ -18,6 +19,7 @@
  * It exists to assemble the net subtree into one fully wired object:
  *
  *   - addr
+ *   - ip
  *   - socket
  *   - udp
  *
@@ -42,6 +44,7 @@ typedef struct {
   void (*shutdown)(void);
 
   NetAddrLib addr;
+  NetIpLib ip;
   SocketLib socket;
   UdpLib udp;
 } NetLib;

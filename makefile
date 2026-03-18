@@ -80,6 +80,16 @@ BIN_KNOCKER   = knocker
 SRC_SIGLATCHD = \
     src/siglatch/main.c \
     src/siglatch/app/app.c \
+    src/siglatch/app/builtin/builtin.c \
+    src/siglatch/app/builtin/bind_target.c \
+    src/siglatch/app/builtin/probe_rebind.c \
+    src/siglatch/app/builtin/rebind_listener.c \
+    src/siglatch/app/builtin/reload_config.c \
+    src/siglatch/app/builtin/change_setting.c \
+    src/siglatch/app/builtin/save_config.c \
+    src/siglatch/app/builtin/load_config.c \
+    src/siglatch/app/builtin/list_users.c \
+    src/siglatch/app/builtin/test_blurt.c \
     src/siglatch/app/config/config.c \
     src/siglatch/app/config/debug.c \
     src/siglatch/app/daemon/daemon.c \
@@ -98,6 +108,7 @@ SRC_SIGLATCHD = \
     src/siglatch/app/payload/payload.c \
     src/siglatch/app/payload/structured.c \
     src/siglatch/app/payload/unstructured.c \
+    src/siglatch/app/policy/policy.c \
     src/siglatch/app/runtime/runtime.c \
     src/siglatch/app/server/server.c \
     src/siglatch/app/signal/signal.c \
@@ -116,6 +127,8 @@ SRC_SIGLATCHD = \
     src/stdlib/time.c \
     src/stdlib/net/net.c \
     src/stdlib/net/addr/addr.c \
+    src/stdlib/net/ip/ip.c \
+    src/stdlib/net/ip/range/range.c \
     src/stdlib/net/socket/socket.c \
     src/stdlib/net/udp/udp.c \
     src/stdlib/utils.c \
@@ -156,6 +169,8 @@ SRC_KNOCKER = \
     src/stdlib/log.c \
     src/stdlib/net/net.c \
     src/stdlib/net/addr/addr.c \
+    src/stdlib/net/ip/ip.c \
+    src/stdlib/net/ip/range/range.c \
     src/stdlib/net/socket/socket.c \
     src/stdlib/net/udp/udp.c \
     src/stdlib/nonce.c \

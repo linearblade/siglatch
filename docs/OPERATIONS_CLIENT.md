@@ -25,6 +25,7 @@ Client-wide defaults are stored at:
 ```
 ~/.config/siglatch/localhost/
 ├── action.map         # Action alias map
+├── client.root.conf   # Host+user source-bind defaults (optional)
 ├── hmac.key           # HMAC key (symmetric)
 ├── server.pub.pem     # Server public key
 ├── user.pri.pem       # Client private key (optional)
@@ -61,10 +62,37 @@ You may also pipe a payload via `--stdin`, or manage aliases separately.
 | `--opts-dump`            | Dump parsed option state (debugging) |
 | `--no-encrypt`           | Disable payload encryption |
 | `--dead-drop`            | Send raw binary payload (no structure) |
+| `--send-from <ipv4>`     | Bind the outbound UDP socket to a specific local IPv4 |
 | `--verbose <0-5>`        | Verbosity level (default: `3`) |
 | `--log <file>`           | Enable logging to specified file |
 | `--output-mode <mode>`   | Output symbols mode: `unicode` or `ascii` |
 | `--output-mode-default <mode>` | Persist default output mode to `~/.config/siglatch/client.conf` |
+
+Current note:
+
+* `--send-from` now binds the outbound UDP socket to the requested local IPv4.
+* Current caveat: explicit source binding is only supported for IPv4 targets right now.
+* A host+user default source bind can be set with `--send-from-default <host> <user> <ipv4>`.
+
+Host+user source binding:
+
+```ini
+# ~/.config/siglatch/<host>/client.<user>.conf
+send_from_ip = 192.168.1.210
+```
+
+Source binding precedence is:
+
+1. `--send-from`
+2. `~/.config/siglatch/<host>/client.<user>.conf`
+3. no explicit local bind
+
+Manage persisted host+user defaults:
+
+```bash
+program --send-from-default <host> <user> <ipv4>
+program --send-from-default-clear <host> <user>
+```
 
 ---
 
@@ -131,6 +159,18 @@ program localhost root login "Hello World"
 
 # Send knock with piped input
 echo "PING" | program --stdin localhost root ping
+
+# Send from a specific local IPv4
+program --send-from 127.0.0.1 localhost root login "Hello World"
+
+# Save a host/user default in ~/.config/siglatch/localhost/client.root.conf
+program --send-from-default localhost root 192.168.1.210
+
+# then send without repeating --send-from
+program localhost root login "Hello World"
+
+# Clear a host/user default
+program --send-from-default-clear localhost root
 
 # Create aliases
 program --alias-user 127.0.0.1 admin 1

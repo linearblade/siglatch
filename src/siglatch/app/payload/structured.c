@@ -19,6 +19,8 @@ static int app_payload_structured_validate_payload(
 static int app_payload_structured_dispatch_action(
     AppRuntimeListenerState *listener,
     const KnockPacket *pkt,
+    SiglatchOpenSSLSession *session,
+    const siglatch_user *user,
     const char *ip_addr,
     int valid_signature);
 
@@ -75,7 +77,7 @@ void app_payload_structured_handle(
   }
 
   LOGD("routing to handle packet...\n");
-  app_payload_structured_dispatch_action(listener, pkt, ip, signature_valid);
+  app_payload_structured_dispatch_action(listener, pkt, session, user, ip, signature_valid);
 }
 
 static int app_payload_structured_validate_payload(
@@ -105,10 +107,12 @@ static int app_payload_structured_validate_payload(
 static int app_payload_structured_dispatch_action(
     AppRuntimeListenerState *listener,
     const KnockPacket *pkt,
+    SiglatchOpenSSLSession *session,
+    const siglatch_user *user,
     const char *ip_addr,
     int valid_signature) {
-  const char *username = NULL;
   const siglatch_action *action = NULL;
+  AppBuiltinContext builtin_ctx = {0};
   char payload_b64[512] = {0};
   char user_id_str[16];
   char action_id_str[16];
@@ -117,7 +121,7 @@ static int app_payload_structured_dispatch_action(
 
   LOGD("TRYING HANDLE PACKET\n");
 
-  if (!listener || !listener->server || !pkt || !ip_addr) {
+  if (!listener || !listener->server || !pkt || !session || !user || !ip_addr) {
     LOGE("[handle] Invalid arguments to handle_packet\n");
     return 0;
   }
@@ -134,14 +138,13 @@ static int app_payload_structured_dispatch_action(
 
   LOGT("signature validated\n");
 
-  username = app.config.username_by_id(pkt->user_id);
-  if (!username || username[0] == '\0') {
+  if (user->name[0] == '\0') {
     LOGE("[handle] User found for ID=%u, but username is NULL\n", pkt->user_id);
     return 0;
   }
 
   action = app.config.action_by_id(pkt->action_id);
-  if (!action || action->constructor[0] == '\0') {
+  if (!action) {
     LOGW("[handle] Unknown action ID: %u\n", pkt->action_id);
     return 0;
   }
@@ -152,12 +155,59 @@ static int app_payload_structured_dispatch_action(
   }
 
   if (!app.config.action_available_by_user(pkt->user_id, action->name)) {
-    LOGE("[handle] Action (%s) not permitted by this user(%s).\n", action->name, username);
+    LOGE("[handle] Action (%s) not permitted by this user(%s).\n", action->name, user->name);
     return 0;
   }
 
   if (!action->enabled) {
     LOGE("[handle] Action is disabled.\n");
+    return 0;
+  }
+
+  if (!app.policy.request_ip_allowed(listener->server, user, action, ip_addr)) {
+    if (!app.policy.server_ip_allowed(listener->server, ip_addr)) {
+      LOGE("[handle] Source IP (%s) is not permitted on this server(%s).\n",
+           ip_addr,
+           listener->server->name);
+      return 0;
+    }
+
+    if (!app.policy.user_ip_allowed(user, ip_addr)) {
+      LOGE("[handle] Source IP (%s) is not permitted for user(%s).\n",
+           ip_addr,
+           user->name);
+      return 0;
+    }
+
+    if (!app.policy.action_ip_allowed(action, ip_addr)) {
+      LOGE("[handle] Source IP (%s) is not permitted for action(%s).\n",
+           ip_addr,
+           action->name);
+      return 0;
+    }
+
+    LOGE("[handle] Source IP (%s) is not permitted by request policy.\n", ip_addr);
+    return 0;
+  }
+
+  if (app.builtin.is_action(action)) {
+    if (!app.builtin.build_context(
+            &builtin_ctx, listener, pkt, session, user, action, ip_addr)) {
+      LOGE("[handle] Failed to build builtin context for action (%s)\n", action->name);
+      return 0;
+    }
+
+    LOGD("[handle] Routing to builtin: %s (Ip=%s, User=%s, Action=%s)\n",
+         action->builtin,
+         ip_addr,
+         user->name,
+         action->name);
+
+    return app.builtin.handle(&builtin_ctx);
+  }
+
+  if (action->constructor[0] == '\0') {
+    LOGW("[handle] Shell action ID %u has no constructor\n", pkt->action_id);
     return 0;
   }
 
@@ -169,7 +219,7 @@ static int app_payload_structured_dispatch_action(
 
   argv[0] = (char *)ip_addr;
   argv[1] = user_id_str;
-  argv[2] = (char *)username;
+  argv[2] = (char *)user->name;
   argv[3] = action_id_str;
   argv[4] = (char *)action->name;
   argv[5] = encrypted_str;
@@ -179,7 +229,7 @@ static int app_payload_structured_dispatch_action(
   LOGD("[handle] Routing to script: %s (Ip=%s, User=%s, Action=%s,execSplit = %d)\n",
        action->constructor,
        ip_addr,
-       username,
+       user->name,
        action->name,
        action->exec_split);
 

@@ -26,32 +26,36 @@ static void app_daemon_run(AppRuntimeListenerState *listener) {
   char ip[INET_ADDRSTRLEN];
   struct sockaddr_in client;
   SiglatchOpenSSLSession session = {0};
-  const siglatch_server *server_conf = NULL;
-  int is_encrypted = 0;
 
   if (!listener) {
     LOGE("No listener state provided; refusing to start daemon loop\n");
     return;
   }
 
-  server_conf = listener->server;
-  if (!server_conf) {
+  if (!listener->server) {
     LOGE("No current server selected; refusing to start daemon loop\n");
     return;
   }
 
-  if (!app.inbound.crypto.init_session_for_server(server_conf, &session)) {
+  if (!app.inbound.crypto.init_session_for_server(listener->server, &session)) {
     LOGE("Failed to initialize OpenSSL session for server\n");
     return;
   }
 
-  is_encrypted = server_conf->secure;
-
   while (!app.signal.should_exit(listener->process)) {
+    const siglatch_server *server_conf = listener->server;
+    int is_encrypted = 0;
     uint8_t normalized_buffer[512] = {0};
     size_t normalized_len = 0;
     ssize_t n = app.inbound.receive_valid_data(
         listener, buffer, sizeof(buffer), &client, ip, sizeof(ip));
+
+    if (!server_conf) {
+      LOGE("No current server selected; skipping daemon iteration\n");
+      continue;
+    }
+
+    is_encrypted = server_conf->secure;
 
     if (n <= 0) {
       continue;

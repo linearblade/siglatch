@@ -22,6 +22,18 @@ static const char *payload_overflow_policy_name(siglatch_payload_overflow_policy
   }
 }
 
+static const char *action_handler_name(siglatch_action_handler handler) {
+  switch (handler) {
+  case SL_ACTION_HANDLER_SHELL:
+    return "shell";
+  case SL_ACTION_HANDLER_BUILTIN:
+    return "builtin";
+  case SL_ACTION_HANDLER_INVALID:
+  default:
+    return "invalid";
+  }
+}
+
 void config_debug_dump(void) {
   const siglatch_config *cfg = NULL;
 
@@ -55,14 +67,25 @@ void config_debug_dump_ptr(const siglatch_config *cfg) {
   for (int i = 0; i < cfg->action_count; ++i) {
     const siglatch_action *a = &cfg->actions[i];
     lib.log.console("    - [%s]\n", a->name);
-    lib.log.console("      Constructor: %s\n", a->constructor);
-    lib.log.console("      Destructor : %s\n", a->destructor);
+    lib.log.console("      ID         : %u\n", a->id);
+    lib.log.console("      Handler    : %s\n", action_handler_name(a->handler));
+    lib.log.console("      Builtin    : %s\n", a->builtin[0] ? a->builtin : "(none)");
+    lib.log.console("      Constructor: %s\n", a->constructor[0] ? a->constructor : "(none)");
+    lib.log.console("      Destructor : %s\n", a->destructor[0] ? a->destructor : "(none)");
     lib.log.console("      Keepalive  : %d\n", a->keepalive_interval);
     lib.log.console("      Enabled  : %s\n", a->enabled ? "yes" : "no");
     lib.log.console("      Require Ascii Message  : %s\n", a->require_ascii ? "yes" : "no");
     lib.log.console("      exec_split  : %s\n", a->exec_split ? "yes" : "no");
     lib.log.console("      Payload overflow policy : %s\n",
                     payload_overflow_policy_name(a->payload_overflow));
+    lib.log.console("      Allowed IPs:\n");
+    if (a->allowed_ip_count == 0) {
+      lib.log.console("        - (any)\n");
+    } else {
+      for (int j = 0; j < a->allowed_ip_count; ++j) {
+        lib.log.console("        - %s\n", a->allowed_ips[j]);
+      }
+    }
   }
 
   lib.log.console("\n  Users (%d):\n", cfg->user_count);
@@ -71,6 +94,7 @@ void config_debug_dump_ptr(const siglatch_config *cfg) {
     int all_zero = 1;
 
     lib.log.console("    - [%s]\n", u->name);
+    lib.log.console("      ID      : %u\n", u->id);
     lib.log.console("      Enabled : %s\n", u->enabled ? "yes" : "no");
     lib.log.console("      Key file: %s\n", u->key_file);
     if (u->pubkey) {
@@ -93,8 +117,20 @@ void config_debug_dump_ptr(const siglatch_config *cfg) {
     }
 
     lib.log.console("      Actions :\n");
-    for (int j = 0; j < u->action_count; ++j) {
-      lib.log.console("        - %s\n", u->actions[j]);
+    if (u->action_count == 0) {
+      lib.log.console("        - (none)\n");
+    } else {
+      for (int j = 0; j < u->action_count; ++j) {
+        lib.log.console("        - %s\n", u->actions[j]);
+      }
+    }
+    lib.log.console("      Allowed IPs:\n");
+    if (u->allowed_ip_count == 0) {
+      lib.log.console("        - (any)\n");
+    } else {
+      for (int j = 0; j < u->allowed_ip_count; ++j) {
+        lib.log.console("        - %s\n", u->allowed_ips[j]);
+      }
     }
     lib.log.console("\n");
   }
@@ -103,8 +139,12 @@ void config_debug_dump_ptr(const siglatch_config *cfg) {
   for (int i = 0; i < cfg->server_count; ++i) {
     const siglatch_server *s = &cfg->servers[i];
     lib.log.console("    - [%s]\n", s->name);
+    lib.log.console("      ID       : %u\n", s->id);
+    lib.log.console("      Label    : %s\n", s->label[0] ? s->label : "(unset)");
     lib.log.console("      Enabled  : %s\n", s->enabled ? "yes" : "no");
+    lib.log.console("      Logging  : %s\n", s->logging ? "yes" : "no");
     lib.log.console("      Secure   : %s\n", s->secure ? "yes" : "no");
+    lib.log.console("      Bind IP  : %s\n", s->bind_ip[0] ? s->bind_ip : "(any)");
     lib.log.console("      Port     : %d\n", s->port);
     lib.log.console("      Log file : %s\n", s->log_file[0] ? s->log_file : "(none)");
     lib.log.console("      Output Mode : %s\n",
@@ -121,13 +161,30 @@ void config_debug_dump_ptr(const siglatch_config *cfg) {
     }
 
     lib.log.console("      Actions:\n");
-    for (int j = 0; j < s->action_count; ++j) {
-      lib.log.console("        - %s\n", s->actions[j]);
+    if (s->action_count == 0) {
+      lib.log.console("        - (none)\n");
+    } else {
+      for (int j = 0; j < s->action_count; ++j) {
+        lib.log.console("        - %s\n", s->actions[j]);
+      }
+    }
+
+    lib.log.console("      Allowed IPs:\n");
+    if (s->allowed_ip_count == 0) {
+      lib.log.console("        - (any)\n");
+    } else {
+      for (int j = 0; j < s->allowed_ip_count; ++j) {
+        lib.log.console("        - %s\n", s->allowed_ips[j]);
+      }
     }
 
     lib.log.console("      Deaddrops:\n");
-    for (int j = 0; j < s->deaddrop_count; ++j) {
-      lib.log.console("        - %s\n", s->deaddrops[j]);
+    if (s->deaddrop_count == 0) {
+      lib.log.console("        - (none)\n");
+    } else {
+      for (int j = 0; j < s->deaddrop_count; ++j) {
+        lib.log.console("        - %s\n", s->deaddrops[j]);
+      }
     }
 
     lib.log.console("\n");
@@ -137,18 +194,27 @@ void config_debug_dump_ptr(const siglatch_config *cfg) {
   for (int i = 0; i < cfg->deaddrop_count; ++i) {
     const siglatch_deaddrop *d = &cfg->deaddrops[i];
     lib.log.console("    - [%s]\n", d->name);
+    lib.log.console("      ID       : %u\n", d->id);
     lib.log.console("      Label    : %s\n", d->label[0] ? d->label : d->name);
     lib.log.console("      Enabled  : %s\n", d->enabled ? "yes" : "no");
     lib.log.console("      Require Ascii Message  : %s\n", d->require_ascii ? "yes" : "no");
     lib.log.console("      exec_split  : %s\n", d->exec_split ? "yes" : "no");
     lib.log.console("      Constructor: %s\n", d->constructor);
     lib.log.console("      Filters:\n");
-    for (int j = 0; j < d->filter_count; ++j) {
-      lib.log.console("        - %s\n", d->filters[j]);
+    if (d->filter_count == 0) {
+      lib.log.console("        - (none)\n");
+    } else {
+      for (int j = 0; j < d->filter_count; ++j) {
+        lib.log.console("        - %s\n", d->filters[j]);
+      }
     }
     lib.log.console("      Starts With:\n");
-    for (int j = 0; j < d->starts_with_count; ++j) {
-      lib.log.console("        - %s\n", d->starts_with[j]);
+    if (d->starts_with_count == 0) {
+      lib.log.console("        - (none)\n");
+    } else {
+      for (int j = 0; j < d->starts_with_count; ++j) {
+        lib.log.console("        - %s\n", d->starts_with[j]);
+      }
     }
   }
 

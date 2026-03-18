@@ -20,6 +20,7 @@
 #define MAX_KEY_DATA 1024
 #define MAX_SERVER_NAME     64
 #define MAX_DEADDROP_NAME   64
+#define MAX_BUILTIN_NAME    64
 //#define MAX_ACTIONS         64
 //#define MAX_ACTION_NAME     64
 #define MAX_PATH_LEN        256
@@ -28,6 +29,8 @@
 #define MAX_PATH_LEN        256
 #define MAX_FILTERS         16
 #define MAX_FILTER_LEN      32
+#define MAX_IP_RANGES       16
+#define MAX_IP_RANGE_LEN    64
 
 /**
  * @brief Holds per-request or per-daemon scoped view into global config.
@@ -45,9 +48,17 @@ typedef enum {
   SL_PAYLOAD_OVERFLOW_INHERIT = 3
 } siglatch_payload_overflow_policy;
 
+typedef enum {
+  SL_ACTION_HANDLER_INVALID = 0,
+  SL_ACTION_HANDLER_SHELL = 1,
+  SL_ACTION_HANDLER_BUILTIN = 2
+} siglatch_action_handler;
+
 typedef struct {
   unsigned int id;
   char name[MAX_ACTION_NAME];
+  siglatch_action_handler handler;
+  char builtin[MAX_BUILTIN_NAME];
   char constructor[PATH_MAX];
   char destructor[PATH_MAX];
   int keepalive_interval;
@@ -55,6 +66,8 @@ typedef struct {
   int require_ascii;
   int exec_split;
   siglatch_payload_overflow_policy payload_overflow;
+  char allowed_ips[MAX_IP_RANGES][MAX_IP_RANGE_LEN];
+  int allowed_ip_count;
 } siglatch_action;
 
 typedef struct {
@@ -65,6 +78,8 @@ typedef struct {
   int enabled;
   char actions[MAX_ACTIONS][MAX_ACTION_NAME];
   int action_count;
+  char allowed_ips[MAX_IP_RANGES][MAX_IP_RANGE_LEN];
+  int allowed_ip_count;
 
   // Loaded key data
   uint8_t key_data[MAX_KEY_DATA];
@@ -102,6 +117,9 @@ typedef struct {
   int enabled;
   int logging;
   char log_file[PATH_MAX];
+  char bind_ip[MAX_IP_RANGE_LEN];
+  char allowed_ips[MAX_IP_RANGES][MAX_IP_RANGE_LEN];
+  int allowed_ip_count;
   int port;                                    ///< UDP port
   int secure;                                  ///< 1 = encrypted, 0 = plaintext
   int output_mode;                             ///< 0=unset, else SL_OUTPUT_MODE_*
@@ -146,10 +164,12 @@ typedef struct {
   void (*shutdown)(void);
 
   int  (*load)(const char *path);                        ///< Read, consume, materialize, and attach config from file
+  int  (*load_detached)(const char *path, siglatch_config **out_config); ///< Read, consume, materialize, and return owned config without attaching it
   int  (*consume)(const IniDocument *document);          ///< Build + own config from parsed INI document
   void (*unload)(void);
   siglatch_config *(*detach)(void);                       ///< Export + relinquish ownership
   void (*attach)(siglatch_config * config);   ///< import + acquire ownership
+  void (*destroy)(siglatch_config *config);              ///< Destroy a detached config object
   const siglatch_config *(*get)(void);                    ///< Read-only access
 
   int (*set_context)(const siglatch_config_context *ctx);
@@ -159,9 +179,15 @@ typedef struct {
   const siglatch_deaddrop *(*deaddrop_starts_with_buffer)(const uint8_t *payload, size_t payload_len);
   int (*action_available_by_user)(uint32_t user_id, const char *action);
   const siglatch_user *(*user_by_id)(uint32_t id);
+  const siglatch_user *(*user_by_id_from)(const siglatch_config *cfg, uint32_t id);
   const siglatch_action *(*action_by_id)(uint32_t id);
+  const siglatch_action *(*action_by_id_from)(const siglatch_config *cfg, uint32_t id);
   const siglatch_server *(*server_by_name)(const char *name);
+  const siglatch_server *(*server_by_name_from)(const siglatch_config *cfg, const char *name);
+  int (*server_set_port)(const char *name, int port);
+  int (*server_set_binding)(const char *name, const char *bind_ip, int port);
   const siglatch_deaddrop *(*deaddrop_by_name)(const char *name);
+  const siglatch_deaddrop *(*deaddrop_by_name_from)(const siglatch_config *cfg, const char *name);
   const char *(*username_by_id)(uint32_t id);
 } ConfigLib;
 

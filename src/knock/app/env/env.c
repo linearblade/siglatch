@@ -12,12 +12,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "../../lib.h"
 
 #define KNOCKER_CLIENT_CONFIG_DIR ".config/siglatch"
 #define KNOCKER_CLIENT_CONFIG_FILE "client.conf"
 #define KNOCKER_CLIENT_OUTPUT_MODE_KEY "output_mode"
+#define KNOCKER_HOST_USER_CONFIG_PREFIX "client."
+#define KNOCKER_HOST_USER_CONFIG_SUFFIX ".conf"
+#define KNOCKER_HOST_SEND_FROM_KEY "send_from_ip"
 
 static const char *app_env_home_or_error(void);
 static char *trim_ws(char *value);
@@ -25,6 +29,11 @@ static int app_env_build_config_root_path(char *out, size_t out_size);
 static int build_client_config_dir_path(char *out, size_t out_size);
 static int build_client_config_file_path(char *out, size_t out_size);
 static int ensure_client_config_dir_exists(void);
+static int app_env_user_token_valid(const char *user);
+static int app_env_build_host_user_config_filename(char *out, size_t out_size, const char *user);
+static int app_env_load_host_user_send_from_ip(const char *host, const char *user, char *out, size_t out_size);
+static int app_env_save_host_user_send_from_ip(const char *host, const char *user, const char *ip);
+static int app_env_clear_host_user_send_from_ip(const char *host, const char *user);
 
 static int app_env_init(void) {
   return 1;
@@ -181,6 +190,41 @@ static int ensure_client_config_dir_exists(void) {
   return 1;
 }
 
+static int app_env_user_token_valid(const char *user) {
+  size_t i = 0;
+
+  if (!user || !user[0]) {
+    return 0;
+  }
+
+  for (i = 0; user[i] != '\0'; ++i) {
+    unsigned char ch = (unsigned char)user[i];
+    if (!(isalnum(ch) || ch == '_' || ch == '-' || ch == '.')) {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+static int app_env_build_host_user_config_filename(char *out, size_t out_size, const char *user) {
+  int written = 0;
+
+  if (!out || out_size == 0 || !app_env_user_token_valid(user)) {
+    return 0;
+  }
+
+  written = snprintf(out, out_size, "%s%s%s",
+                     KNOCKER_HOST_USER_CONFIG_PREFIX,
+                     user,
+                     KNOCKER_HOST_USER_CONFIG_SUFFIX);
+  if (written < 0 || (size_t)written >= out_size) {
+    return 0;
+  }
+
+  return 1;
+}
+
 static int app_env_load_output_mode_default(void) {
   char config_path[PATH_MAX];
   char line[256];
@@ -237,6 +281,170 @@ static int app_env_load_output_mode_default(void) {
 
   fclose(fp);
   return 0;
+}
+
+static int app_env_load_host_user_send_from_ip(const char *host, const char *user,
+                                               char *out, size_t out_size) {
+  char filename[PATH_MAX];
+  char config_path[PATH_MAX];
+  char line[256];
+  FILE *fp = NULL;
+
+  if (!out || out_size == 0 || !host || !host[0] || !app_env_user_token_valid(user)) {
+    return -1;
+  }
+
+  out[0] = '\0';
+
+  if (!app_env_build_host_user_config_filename(filename, sizeof(filename), user)) {
+    return -1;
+  }
+
+  if (!app_env_build_host_config_path(config_path, sizeof(config_path), host, filename)) {
+    return -1;
+  }
+
+  fp = fopen(config_path, "r");
+  if (!fp) {
+    if (errno == ENOENT) {
+      return 0;
+    }
+    return -1;
+  }
+
+  while (fgets(line, sizeof(line), fp)) {
+    char *entry = trim_ws(line);
+    char *equals = NULL;
+    char *key = NULL;
+    char *value = NULL;
+
+    if (!entry || *entry == '\0' || *entry == '#' || *entry == ';') {
+      continue;
+    }
+
+    equals = strchr(entry, '=');
+    if (!equals) {
+      continue;
+    }
+
+    *equals = '\0';
+    key = trim_ws(entry);
+    value = trim_ws(equals + 1);
+    if (!key || !value) {
+      continue;
+    }
+
+    if (strcmp(key, KNOCKER_HOST_SEND_FROM_KEY) != 0) {
+      continue;
+    }
+
+    if (!lib.net.ip.range.is_single_ipv4(value)) {
+      fclose(fp);
+      return -1;
+    }
+
+    lib.str.lcpy(out, value, out_size);
+    fclose(fp);
+    return 1;
+  }
+
+  fclose(fp);
+  return 0;
+}
+
+static int app_env_save_host_user_send_from_ip(const char *host,
+                                               const char *user,
+                                               const char *ip) {
+  char filename[PATH_MAX];
+  char config_path[PATH_MAX];
+  FILE *fp = NULL;
+
+  if (!host || !host[0] || !app_env_user_token_valid(user) ||
+      !ip || !lib.net.ip.range.is_single_ipv4(ip)) {
+    return 0;
+  }
+
+  if (!app_env_ensure_host_config_dir(host)) {
+    return 0;
+  }
+
+  if (!app_env_build_host_user_config_filename(filename, sizeof(filename), user)) {
+    return 0;
+  }
+
+  if (!app_env_build_host_config_path(config_path, sizeof(config_path), host, filename)) {
+    return 0;
+  }
+
+  fp = fopen(config_path, "w");
+  if (!fp) {
+    lib.print.uc_fprintf(stderr, "err",
+                         "Failed to write host user config: %s (%s)\n",
+                         config_path, strerror(errno));
+    return 0;
+  }
+
+  if (fprintf(fp, "%s = %s\n", KNOCKER_HOST_SEND_FROM_KEY, ip) < 0) {
+    fclose(fp);
+    lib.print.uc_fprintf(stderr, "err",
+                         "Failed to write host user config: %s (%s)\n",
+                         config_path, strerror(errno));
+    return 0;
+  }
+
+  if (fclose(fp) != 0) {
+    lib.print.uc_fprintf(stderr, "err",
+                         "Failed to close host user config: %s (%s)\n",
+                         config_path, strerror(errno));
+    return 0;
+  }
+
+  if (chmod(config_path, 0600) != 0) {
+    lib.print.uc_fprintf(stderr, "warn",
+                         "Could not chmod %s to 0600 (%s)\n",
+                         config_path, strerror(errno));
+  }
+
+  lib.print.uc_printf("ok",
+                      "Saved send_from_ip '%s' for %s/%s in %s\n",
+                      ip, host, user, config_path);
+  return 1;
+}
+
+static int app_env_clear_host_user_send_from_ip(const char *host, const char *user) {
+  char filename[PATH_MAX];
+  char config_path[PATH_MAX];
+
+  if (!host || !host[0] || !app_env_user_token_valid(user)) {
+    return 0;
+  }
+
+  if (!app_env_build_host_user_config_filename(filename, sizeof(filename), user)) {
+    return 0;
+  }
+
+  if (!app_env_build_host_config_path(config_path, sizeof(config_path), host, filename)) {
+    return 0;
+  }
+
+  if (unlink(config_path) != 0) {
+    if (errno == ENOENT) {
+      lib.print.uc_printf("warn",
+                          "No send_from_ip default was set for %s/%s\n",
+                          host, user);
+      return 1;
+    }
+
+    lib.print.uc_fprintf(stderr, "err",
+                         "Failed to clear host user config: %s (%s)\n",
+                         config_path, strerror(errno));
+    return 0;
+  }
+
+  lib.print.uc_printf("ok",
+                      "Cleared send_from_ip default for %s/%s\n",
+                      host, user);
+  return 1;
 }
 
 static int app_env_save_output_mode_default(const char *mode_value) {
@@ -297,6 +505,9 @@ static const AppEnvLib app_env_instance = {
   .build_config_root_path = app_env_build_config_root_path,
   .build_host_config_path = app_env_build_host_config_path,
   .ensure_host_config_dir = app_env_ensure_host_config_dir,
+  .load_host_user_send_from_ip = app_env_load_host_user_send_from_ip,
+  .save_host_user_send_from_ip = app_env_save_host_user_send_from_ip,
+  .clear_host_user_send_from_ip = app_env_clear_host_user_send_from_ip,
   .load_output_mode_default = app_env_load_output_mode_default,
   .save_output_mode_default = app_env_save_output_mode_default
 };

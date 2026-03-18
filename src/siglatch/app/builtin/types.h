@@ -1,0 +1,29 @@
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SERVER_APP_BUILTIN_TYPES_H
+#define SIGLATCH_SERVER_APP_BUILTIN_TYPES_H
+
+#include "../config/config.h"
+#include "../runtime/runtime.h"
+#include "../payload/codec/codec.h"
+#include "../../../stdlib/openssl_session.h"
+
+typedef struct {
+  AppRuntimeListenerState *listener;
+  const KnockPacket *packet;
+  SiglatchOpenSSLSession *session;
+  const siglatch_user *user;
+  const siglatch_action *action;
+  const char *ip_addr;
+} AppBuiltinContext;
+
+typedef struct {
+  int (*init)(void);
+  void (*shutdown)(void);
+  int (*handle)(const AppBuiltinContext *ctx);
+} AppBuiltinHandlerLib;
+
+#endif

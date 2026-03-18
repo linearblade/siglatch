@@ -1,5 +1,5 @@
 # Changelog (Recent Work)
-Date range: 2026-03-06 to 2026-03-17
+Date range: 2026-03-06 to 2026-03-18
 Scope: in-progress workspace changes since tag `1.0` relevant to current stabilization pass.
 
 ## Added
@@ -369,3 +369,126 @@ Scope: in-progress workspace changes since tag `1.0` relevant to current stabili
 - `make build-knocker` succeeds after removing the old stdlib UDP path from the active client runtime.
 - `./siglatchd --help` shows the new `--config` option.
 - `./siglatchd --config /tmp/does-not-exist.conf --dump-config` fails against the override path, confirming the CLI path is honored.
+
+## Update (2026-03-18): Builtin Action Path + Runtime Reload + Listener Rebind
+
+### Added
+- New server builtin action barrel under `src/siglatch/app/builtin/` with shared native builtin context.
+- New builtin action handler families:
+  - `reload_config`
+  - `change_setting`
+  - `save_config`
+  - `load_config`
+  - `list_users`
+  - `test_blurt`
+  - `probe_rebind`
+  - `rebind_listener`
+- New staged config APIs in `app.config`:
+  - `load_detached(path, &cfg)`
+  - `destroy(cfg)`
+  - detached lookup helpers for users/actions/servers/deaddrops
+- New runtime helper for config-backed pointer hygiene:
+  - `app.runtime.invalidate_config_borrows(...)`
+- New runtime config reload orchestration:
+  - `app.runtime.reload_config(...)`
+- New listener runtime state fields:
+  - active config path on listener state
+  - actual bound port on listener state
+- New listener runtime state field:
+  - actual bound IP on listener state
+- New UDP listener helpers:
+  - `app.udp.probe_bind(...)`
+  - `app.udp.rebind_listener(...)`
+- New config mutation helper for active runtime reconciliation:
+  - `app.config.server_set_port(name, port)`
+- New config mutation helper for full live bind reconciliation:
+  - `app.config.server_set_binding(name, bind_ip, port)`
+- New IPv4 range utility family under `lib.net.ip.range`:
+  - single IPv4 validation
+  - IPv4 CIDR validation
+  - spec/range containment helpers for policy checks
+- New server policy barrel:
+  - `app.policy`
+- New client source-bind default commands:
+  - `--send-from-default <host> <user> <ipv4>`
+  - `--send-from-default-clear <host> <user>`
+
+### Changed
+- Action config model now supports execution backends:
+  - `handler = shell|builtin`
+  - `builtin = <name>`
+- Existing action behavior remains backward compatible:
+  - omitted `handler` defaults to `shell`
+  - shell-backed actions still use `constructor`
+- Structured packet dispatch now routes builtin-backed actions through `app.builtin.handle(...)` instead of forcing all actions through shell execution.
+- `reload_config` is now a real builtin:
+  - logs the request
+  - reloads from the active config path
+  - rebuilds runtime config/session bindings
+- Listener rebind behavior is now a first-class runtime operation instead of ad hoc socket mutation.
+- Daemon loop no longer caches selected server encryption mode outside the receive loop:
+  - it now re-reads live listener state each iteration, which makes listener/runtime mutation safer.
+- Successful live rebind now updates the active config's selected server port so runtime state and config state remain aligned.
+- Successful live rebind now updates the active config's selected server bind tuple so runtime state and config state remain aligned.
+- Server config model now supports IPv4 bind and restriction controls:
+  - `[server:*] bind_ip = <ipv4>`
+  - `[server:*] allowed_ips = <ip-or-cidr,...>`
+  - `[user:*] allowed_ips = <ip-or-cidr,...>`
+  - `[action:*] allowed_ips = <ip-or-cidr,...>`
+- Server startup listener bind now honors configured `bind_ip`; unset still binds wildcard/any.
+- `reload_config` now auto-applies listener rebinding when the new bind tuple can be staged safely.
+- Client transmit path now honors `--send-from <ipv4>` by explicitly binding the outbound UDP socket for IPv4 targets.
+- Client now supports persisted per-host, per-user source bind defaults stored as:
+  - `~/.config/siglatch/<host>/client.<user>.conf`
+- `--alias-user-show` now includes the saved per-user `send_from_ip` when one exists.
+- Server `--dump-config` output now includes newer policy/runtime-relevant fields more clearly:
+  - numeric IDs
+  - server label/logging
+  - bind IP
+  - allowed IP lists
+  - explicit `(none)` / `(any)` markers for empty lists and unrestricted IP scopes
+
+### Fixed
+- Builtin-backed actions were no longer incorrectly rejected as “unknown action” just because they do not define a shell constructor.
+- Rebind no-op behavior is now explicit:
+  - same-port rebind requests log “already bound” instead of looking like a real port swap.
+- Runtime reload is now staged instead of destructive-first:
+  - new config is loaded and validated before replacing the live attached config
+  - rollback path keeps the old config/runtime alive on failure
+- Server-side IP restriction enforcement now cleanly gates requests in policy order:
+  - server
+  - user
+  - action
+- Hot config reload now fails early instead of half-reloading when a new bind tuple cannot be safely staged.
+
+### Default Config / Examples
+- Default server config now includes disabled builtin action examples for:
+  - `reload_config`
+  - `change_setting`
+  - `save_config`
+  - `load_config`
+  - `list_users`
+  - `probe_rebind`
+  - `rebind_listener`
+- Added live example builtin action:
+  - `test_blurt`
+
+### Verification
+- `make build-siglatchd` succeeds after the builtin/runtime/rebind additions.
+- `./siglatchd --help` succeeds after the builtin and runtime surface expansion.
+- `make build-knocker` succeeds after client source-bind support and persisted send-from defaults.
+- `./knocker --help` now shows:
+  - `--send-from`
+  - `--send-from-default`
+  - `--send-from-default-clear`
+- Manual end-to-end daemon validation confirmed:
+  - builtin action parsing and authz
+  - successful builtin dispatch via `test_blurt`
+  - successful runtime config reload via `reload_config`
+  - safe bind probing via `probe_rebind`
+  - live socket cutover via `rebind_listener`
+- Manual/local validation also confirmed:
+  - enforced `allowed_ips` behavior for server, user, and action scopes
+  - startup honoring `bind_ip`
+  - client persisted source-bind defaults can be saved and cleared
+  - user-alias display now surfaces saved `send_from_ip`

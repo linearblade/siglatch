@@ -86,6 +86,22 @@ int main(int argc, char *argv[]) {
       status = app.env.save_output_mode_default(mode_name) ? 0 : 2;
       break;
     }
+    case APP_CMD_SEND_FROM_DEFAULT:
+      if (cmd.as.send_from_default.clear) {
+        status = app.env.clear_host_user_send_from_ip(
+                     cmd.as.send_from_default.host,
+                     cmd.as.send_from_default.user)
+                     ? 0
+                     : 2;
+      } else {
+        status = app.env.save_host_user_send_from_ip(
+                     cmd.as.send_from_default.host,
+                     cmd.as.send_from_default.user,
+                     cmd.as.send_from_default.ip)
+                     ? 0
+                     : 2;
+      }
+      break;
     case APP_CMD_ALIAS:
       status = app.alias.execute(&cmd.as.alias) ? 0 : 2;
       break;

@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 App app = {
+  .builtin = {0},
   .config = {0},
   .daemon = {0},
   .help = {0},
@@ -16,6 +17,7 @@ App app = {
   .opts = {0},
   .packet = {0},
   .payload = {0},
+  .policy = {0},
   .runtime = {0},
   .server = {0},
   .signal = {0},
@@ -26,6 +28,7 @@ App app = {
 static int g_app_initialized = 0;
 
 int init_app(void) {
+  int builtin_initialized = 0;
   int config_initialized = 0;
   int daemon_initialized = 0;
   int help_initialized = 0;
@@ -34,6 +37,7 @@ int init_app(void) {
   int opts_initialized = 0;
   int packet_initialized = 0;
   int payload_initialized = 0;
+  int policy_initialized = 0;
   int runtime_initialized = 0;
   int server_initialized = 0;
   int signal_initialized = 0;
@@ -44,6 +48,7 @@ int init_app(void) {
     return 1;
   }
 
+  app.builtin = *get_app_builtin_lib();
   app.config = *get_app_config_lib();
   app.daemon = *get_app_daemon_lib();
   app.help = *get_app_help_lib();
@@ -52,6 +57,7 @@ int init_app(void) {
   app.opts = *get_app_opts_lib();
   app.packet = *get_app_packet_lib();
   app.payload = *get_app_payload_lib();
+  app.policy = *get_app_policy_lib();
   app.runtime = *get_app_runtime_lib();
   app.server = *get_app_server_lib();
   app.signal = *get_app_signal_lib();
@@ -64,7 +70,31 @@ int init_app(void) {
    * by each acquired module are expected to be valid as part of that module's
    * provider contract.
    */
-  if (!app.config.init || !app.config.shutdown ||
+  if (!app.builtin.init || !app.builtin.shutdown ||
+      !app.builtin.supports || !app.builtin.is_action ||
+      !app.builtin.build_context || !app.builtin.handle ||
+      !app.builtin.probe_rebind.init || !app.builtin.probe_rebind.shutdown || !app.builtin.probe_rebind.handle ||
+      !app.builtin.rebind_listener.init || !app.builtin.rebind_listener.shutdown || !app.builtin.rebind_listener.handle ||
+      !app.builtin.reload_config.init || !app.builtin.reload_config.shutdown || !app.builtin.reload_config.handle ||
+      !app.builtin.change_setting.init || !app.builtin.change_setting.shutdown || !app.builtin.change_setting.handle ||
+      !app.builtin.save_config.init || !app.builtin.save_config.shutdown || !app.builtin.save_config.handle ||
+      !app.builtin.load_config.init || !app.builtin.load_config.shutdown || !app.builtin.load_config.handle ||
+      !app.builtin.list_users.init || !app.builtin.list_users.shutdown || !app.builtin.list_users.handle ||
+      !app.builtin.test_blurt.init || !app.builtin.test_blurt.shutdown || !app.builtin.test_blurt.handle ||
+      !app.config.init || !app.config.shutdown ||
+      !app.config.load || !app.config.load_detached ||
+      !app.config.consume || !app.config.unload ||
+      !app.config.detach || !app.config.attach || !app.config.destroy ||
+      !app.config.get || !app.config.set_context ||
+      !app.config.dump || !app.config.dump_ptr ||
+      !app.config.deaddrop_starts_with_buffer ||
+      !app.config.action_available_by_user ||
+      !app.config.user_by_id || !app.config.user_by_id_from ||
+      !app.config.action_by_id || !app.config.action_by_id_from ||
+      !app.config.server_by_name || !app.config.server_by_name_from ||
+      !app.config.server_set_port || !app.config.server_set_binding ||
+      !app.config.deaddrop_by_name || !app.config.deaddrop_by_name_from ||
+      !app.config.username_by_id ||
       !app.daemon.init || !app.daemon.shutdown || !app.daemon.run ||
       !app.help.init || !app.help.shutdown || !app.help.show ||
       !app.inbound.init || !app.inbound.shutdown ||
@@ -72,6 +102,9 @@ int init_app(void) {
       !app.opts.init || !app.opts.shutdown ||
       !app.packet.init || !app.packet.shutdown || !app.packet.consume_normalized ||
       !app.payload.init || !app.payload.shutdown || !app.payload.run_shell ||
+      !app.policy.init || !app.policy.shutdown ||
+      !app.policy.server_ip_allowed || !app.policy.user_ip_allowed ||
+      !app.policy.action_ip_allowed || !app.policy.request_ip_allowed ||
       !app.payload.codec.init || !app.payload.codec.shutdown ||
       !app.payload.codec.pack || !app.payload.codec.unpack ||
       !app.payload.codec.validate || !app.payload.codec.deserialize || !app.payload.codec.deserialize_strerror ||
@@ -81,13 +114,21 @@ int init_app(void) {
       !app.payload.structured.init || !app.payload.structured.shutdown || !app.payload.structured.handle ||
       !app.payload.unstructured.init || !app.payload.unstructured.shutdown || !app.payload.unstructured.handle ||
       !app.runtime.init || !app.runtime.shutdown ||
+      !app.runtime.invalidate_config_borrows || !app.runtime.reload_config ||
       !app.server.init || !app.server.shutdown ||
       !app.signal.init || !app.signal.shutdown || !app.signal.install || !app.signal.should_exit || !app.signal.request_exit ||
       !app.startup.init || !app.startup.shutdown ||
-      !app.udp.init || !app.udp.shutdown) {
+      !app.udp.init || !app.udp.shutdown ||
+      !app.udp.start_listener || !app.udp.probe_bind || !app.udp.rebind_listener) {
     fprintf(stderr, "Siglatch app wiring is incomplete\n");
     return 0;
   }
+
+  if (!app.builtin.init()) {
+    fprintf(stderr, "Failed to initialize app.builtin\n");
+    goto fail;
+  }
+  builtin_initialized = 1;
 
   {
     siglatch_config_context config_ctx = {0};
@@ -140,6 +181,12 @@ int init_app(void) {
   }
   payload_initialized = 1;
 
+  if (!app.policy.init()) {
+    fprintf(stderr, "Failed to initialize app.policy\n");
+    goto fail;
+  }
+  policy_initialized = 1;
+
   if (!app.runtime.init()) {
     fprintf(stderr, "Failed to initialize app.runtime\n");
     goto fail;
@@ -186,6 +233,9 @@ fail:
   if (signal_initialized) {
     app.signal.shutdown();
   }
+  if (policy_initialized) {
+    app.policy.shutdown();
+  }
   if (runtime_initialized) {
     app.runtime.shutdown();
   }
@@ -210,9 +260,13 @@ fail:
   if (help_initialized) {
     app.help.shutdown();
   }
+  if (builtin_initialized) {
+    app.builtin.shutdown();
+  }
   if (config_initialized) {
     app.config.shutdown();
   }
+  app.builtin = (AppBuiltinLib){0};
   app.config = (ConfigLib){0};
   app.daemon = (AppDaemonLib){0};
   app.help = (AppHelpLib){0};
@@ -221,6 +275,7 @@ fail:
   app.opts = (AppOptsLib){0};
   app.packet = (AppPacketLib){0};
   app.payload = (AppPayloadLib){0};
+  app.policy = (AppPolicyLib){0};
   app.runtime = (AppRuntimeLib){0};
   app.server = (AppServerLib){0};
   app.signal = (AppSignalLib){0};
@@ -235,12 +290,14 @@ void shutdown_app(void) {
     return;
   }
 
+  app.builtin.shutdown();
   app.udp.shutdown();
   app.startup.shutdown();
   app.server.shutdown();
   app.signal.shutdown();
   app.runtime.shutdown();
   app.payload.shutdown();
+  app.policy.shutdown();
   app.packet.shutdown();
   app.opts.shutdown();
   app.keys.shutdown();
@@ -248,6 +305,7 @@ void shutdown_app(void) {
   app.daemon.shutdown();
   app.help.shutdown();
   app.config.shutdown();
+  app.builtin = (AppBuiltinLib){0};
   app.config = (ConfigLib){0};
   app.daemon = (AppDaemonLib){0};
   app.help = (AppHelpLib){0};
@@ -256,6 +314,7 @@ void shutdown_app(void) {
   app.opts = (AppOptsLib){0};
   app.packet = (AppPacketLib){0};
   app.payload = (AppPayloadLib){0};
+  app.policy = (AppPolicyLib){0};
   app.runtime = (AppRuntimeLib){0};
   app.server = (AppServerLib){0};
   app.signal = (AppSignalLib){0};

@@ -25,6 +25,12 @@ static int  udp_open(int family);
 static int  udp_open_ipv4(void);
 static int  udp_open_ipv6(void);
 static int  udp_open_auto(const char *hint);
+static int  udp_open_bound(int family, const char *bind_ip,
+                           uint16_t bind_port, uint16_t *bound_port);
+static int  udp_open_bound_ipv4(const char *bind_ip, uint16_t bind_port,
+                                uint16_t *bound_port);
+static int  udp_open_bound_auto(const char *hint, const char *bind_ip,
+                                uint16_t bind_port, uint16_t *bound_port);
 static void udp_close(int fd);
 
 static int  udp_send(int fd, const char *ip, uint16_t port, const void *buf, size_t len);
@@ -52,7 +58,7 @@ static int _apply_context(const UdpContext *ctx)
   if (!ctx->socket || !ctx->addr)
     return 0;
 
-  if (!ctx->socket->open || !ctx->socket->close)
+  if (!ctx->socket->open || !ctx->socket->close || !ctx->socket->bind)
     return 0;
 
   if (!ctx->addr->is_ipv4 || !ctx->addr->is_ipv6)
@@ -105,6 +111,69 @@ static int udp_open_auto(const char *hint)
 
   if (g_udp_ctx.addr->is_ipv6(hint))
     return udp_open_ipv6();
+
+  return -1;
+}
+
+static int udp_open_bound(int family,
+                          const char *bind_ip,
+                          uint16_t bind_port,
+                          uint16_t *bound_port)
+{
+  int fd = -1;
+
+  if (!g_udp_ctx.socket || !g_udp_ctx.socket->bind)
+    return -1;
+
+  if (family != AF_INET) {
+    if ((bind_ip && *bind_ip) || bind_port != 0)
+      return -1;
+
+    if (bound_port)
+      *bound_port = 0;
+
+    return udp_open(family);
+  }
+
+  fd = udp_open(family);
+  if (fd < 0)
+    return -1;
+
+  if (!g_udp_ctx.socket->bind(fd, bind_ip, bind_port, bound_port)) {
+    udp_close(fd);
+    return -1;
+  }
+
+  return fd;
+}
+
+static int udp_open_bound_ipv4(const char *bind_ip,
+                               uint16_t bind_port,
+                               uint16_t *bound_port)
+{
+  return udp_open_bound(AF_INET, bind_ip, bind_port, bound_port);
+}
+
+static int udp_open_bound_auto(const char *hint,
+                               const char *bind_ip,
+                               uint16_t bind_port,
+                               uint16_t *bound_port)
+{
+  if (!hint || !g_udp_ctx.addr)
+    return -1;
+
+  if (g_udp_ctx.addr->is_ipv4(hint))
+    return udp_open_bound_ipv4(bind_ip, bind_port, bound_port);
+
+  if (g_udp_ctx.addr->is_ipv6(hint)) {
+    if ((bind_ip && *bind_ip) || bind_port != 0)
+      return -1;
+
+    if (bound_port)
+      *bound_port = 0;
+
+    return udp_open_ipv6();
+  }
 
   return -1;
 }
@@ -275,6 +344,8 @@ static const UdpLib udp_instance = {
   .open_ipv4   = udp_open_ipv4,
   .open_ipv6   = udp_open_ipv6,
   .open_auto   = udp_open_auto,
+  .open_bound_ipv4 = udp_open_bound_ipv4,
+  .open_bound_auto = udp_open_bound_auto,
   .close       = udp_close,
   .send        = udp_send,
   .send_ipv4   = udp_send_ipv4,

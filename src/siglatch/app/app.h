@@ -6,6 +6,7 @@
 #ifndef SIGLATCH_SERVER_APP_H
 #define SIGLATCH_SERVER_APP_H
 
+#include "builtin/builtin.h"
 #include "config/config.h"
 #include "daemon/daemon.h"
 #include "help/help.h"
@@ -14,6 +15,7 @@
 #include "opts/opts.h"
 #include "packet/packet.h"
 #include "payload/payload.h"
+#include "policy/policy.h"
 #include "runtime/runtime.h"
 #include "server/server.h"
 #include "signal/signal.h"
@@ -21,6 +23,7 @@
 #include "udp/udp.h"
 
 typedef struct {
+  AppBuiltinLib builtin;
   ConfigLib config;
   AppDaemonLib daemon;
   AppHelpLib help;
@@ -29,6 +32,7 @@ typedef struct {
   AppOptsLib opts;
   AppPacketLib packet;
   AppPayloadLib payload;
+  AppPolicyLib policy;
   AppRuntimeLib runtime;
   AppServerLib server;
   AppSignalLib signal;

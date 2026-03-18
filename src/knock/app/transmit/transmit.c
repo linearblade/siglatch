@@ -125,9 +125,28 @@ static int app_transmit_single_packet(const Opts *opts) {
         break;
     }
 
-    udp_fd = lib.net.udp.open_auto(ip);
-    if (udp_fd < 0) {
-      FAIL_SINGLE_PACKET("Failed to open UDP socket for target %s\n", ip);
+    if (effective->send_from_ip[0] != '\0' && lib.net.addr.is_ipv6(ip)) {
+      FAIL_SINGLE_PACKET("Client source bind (--send-from) currently supports only IPv4 targets; resolved %s to %s\n",
+                         effective->host, ip);
+    }
+
+    if (effective->send_from_ip[0] != '\0') {
+      udp_fd = lib.net.udp.open_bound_auto(ip, effective->send_from_ip, 0, NULL);
+      if (udp_fd < 0) {
+        FAIL_SINGLE_PACKET("Failed to open UDP socket for target %s using source %s\n",
+                           ip, effective->send_from_ip);
+      }
+    } else {
+      udp_fd = lib.net.udp.open_auto(ip);
+      if (udp_fd < 0) {
+        FAIL_SINGLE_PACKET("Failed to open UDP socket for target %s\n", ip);
+      }
+    }
+
+    if (effective->send_from_ip[0] != '\0' && lib.log.emit) {
+      lib.log.emit(LOG_INFO, 1,
+                   "Sending UDP packet to %s:%u from %s",
+                   ip, (unsigned int)effective->port, effective->send_from_ip);
     }
 
     if (!lib.net.udp.send(udp_fd, ip, effective->port, data, data_len)) {

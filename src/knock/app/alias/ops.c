@@ -24,6 +24,31 @@ static int app_alias_ops_init(void) {
 static void app_alias_ops_shutdown(void) {
 }
 
+static void app_alias_ops_print_user_entry(const char *host, const AliasEntry *entry) {
+  char send_from_ip[64] = {0};
+  int rv = 0;
+
+  if (!host || !*host || !entry) {
+    return;
+  }
+
+  rv = app.env.load_host_user_send_from_ip(host, entry->name,
+                                           send_from_ip, sizeof(send_from_ip));
+  if (rv > 0) {
+    printf("  - %s -> %s (id=%u, send_from=%s)\n",
+           entry->name, entry->host, entry->id, send_from_ip);
+    return;
+  }
+
+  if (rv < 0) {
+    printf("  - %s -> %s (id=%u, send_from=INVALID)\n",
+           entry->name, entry->host, entry->id);
+    return;
+  }
+
+  printf("  - %s -> %s (id=%u)\n", entry->name, entry->host, entry->id);
+}
+
 static int app_alias_ops_set_user(const char *host, const char *user, uint32_t user_id) {
   char path[PATH_MAX] = {0};
   AliasEntry *aliases = NULL;
@@ -136,7 +161,7 @@ static int app_alias_ops_show_user(const char *host) {
 
   lib.print.uc_printf("users", "User Aliases for %s:\n", host);
   for (size_t i = 0; i < alias_count; i++) {
-    printf("  - %s -> %s (id=%u)\n", aliases[i].name, aliases[i].host, aliases[i].id);
+    app_alias_ops_print_user_entry(host, &aliases[i]);
   }
 
   if (alias_count == 0) {

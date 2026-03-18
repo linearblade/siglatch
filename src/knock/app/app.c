@@ -42,6 +42,9 @@ int init_app(void) {
    */
   if (!app.opts.init || !app.opts.shutdown ||
       !app.env.init || !app.env.shutdown ||
+      !app.env.load_host_user_send_from_ip ||
+      !app.env.save_host_user_send_from_ip ||
+      !app.env.clear_host_user_send_from_ip ||
       !app.alias.init || !app.alias.shutdown ||
       !app.output_mode.init || !app.output_mode.shutdown ||
       !app.help.init || !app.help.shutdown ||

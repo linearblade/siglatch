@@ -12,6 +12,10 @@ typedef struct {
   int (*init)(void);
   void (*shutdown)(void);
   int (*start_listener)(AppRuntimeListenerState *listener);
+  int (*probe_bind)(const AppRuntimeListenerState *listener,
+                    const siglatch_server *server);
+  int (*rebind_listener)(AppRuntimeListenerState *listener,
+                         const siglatch_server *server);
 } AppUdpLib;
 
 const AppUdpLib *get_app_udp_lib(void);

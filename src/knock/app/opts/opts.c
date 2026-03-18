@@ -41,6 +41,7 @@ static void app_opts_shutdown(void) {
 typedef enum {
   APP_OPTS_PARSE_MODE_HELP = 0,
   APP_OPTS_PARSE_MODE_OUTPUT_MODE_DEFAULT,
+  APP_OPTS_PARSE_MODE_SEND_FROM_DEFAULT,
   APP_OPTS_PARSE_MODE_ALIAS,
   APP_OPTS_PARSE_MODE_TRANSMIT
 } AppOptsParseMode;
@@ -55,12 +56,22 @@ typedef struct {
 
 enum {
   OPT_ID_OUTPUT_MODE_DEFAULT = 1,
-  OPT_ID_OUTPUT_MODE_DEFAULT_DUMP
+  OPT_ID_OUTPUT_MODE_DEFAULT_DUMP,
+  OPT_ID_SEND_FROM_DEFAULT,
+  OPT_ID_SEND_FROM_DEFAULT_CLEAR,
+  OPT_ID_SEND_FROM_DEFAULT_DUMP
 };
 
 static const ArgvOptionSpec output_mode_default_specs[] = {
   { "--output-mode-default", OPT_ID_OUTPUT_MODE_DEFAULT,      1, ARGV_OPT_KEYED, 1, 0, 1 },
   { "--opts-dump", OPT_ID_OUTPUT_MODE_DEFAULT_DUMP, 0, ARGV_OPT_FLAG, 0, 0, 1 },
+  { NULL, 0, 0, ARGV_OPT_FLAG, 0, 0, 0 }
+};
+
+static const ArgvOptionSpec send_from_default_specs[] = {
+  { "--send-from-default", OPT_ID_SEND_FROM_DEFAULT, 3, ARGV_OPT_KEYED, 0, 0, 0 },
+  { "--send-from-default-clear", OPT_ID_SEND_FROM_DEFAULT_CLEAR, 2, ARGV_OPT_KEYED, 0, 0, 0 },
+  { "--opts-dump", OPT_ID_SEND_FROM_DEFAULT_DUMP, 0, ARGV_OPT_FLAG, 0, 0, 1 },
   { NULL, 0, 0, ARGV_OPT_FLAG, 0, 0, 0 }
 };
 
@@ -108,6 +119,11 @@ static AppOptsParseMode app_opts_get_parse_mode(int argc, char *argv[]) {
 
   if (strcmp(argv[1], "--output-mode-default") == 0) {
     return APP_OPTS_PARSE_MODE_OUTPUT_MODE_DEFAULT;
+  }
+
+  if (strcmp(argv[1], "--send-from-default") == 0 ||
+      strcmp(argv[1], "--send-from-default-clear") == 0) {
+    return APP_OPTS_PARSE_MODE_SEND_FROM_DEFAULT;
   }
 
   if (strcmp(argv[1], "--help") == 0) {
@@ -162,6 +178,60 @@ static int app_opts_parse_output_mode_default(const char *mode_selector, const A
   return 1;
 }
 
+static int app_opts_parse_send_from_default(const char *mode_selector,
+                                            const ArgvParsed *parsed,
+                                            AppCommand *out) {
+  const ArgvParsedOption *set_opt = NULL;
+  const ArgvParsedOption *clear_opt = NULL;
+
+  (void)mode_selector;
+
+  if (!parsed || !out) {
+    return 0;
+  }
+
+  set_opt = lib.argv.find_first_by_id(parsed, OPT_ID_SEND_FROM_DEFAULT);
+  clear_opt = lib.argv.find_first_by_id(parsed, OPT_ID_SEND_FROM_DEFAULT_CLEAR);
+
+  if ((set_opt && clear_opt) || (!set_opt && !clear_opt)) {
+    return app_opts_set_error(out, 2,
+                              "Expected exactly one of --send-from-default or --send-from-default-clear");
+  }
+
+  if (parsed->num_positionals > 0) {
+    return app_opts_set_error(out, 2,
+                              "Too many positional arguments for send-from-default command");
+  }
+
+  out->type = APP_CMD_SEND_FROM_DEFAULT;
+  out->ok = 1;
+  out->exit_code = 0;
+  out->dump_requested = lib.argv.has(parsed, "--opts-dump") ? 1 : 0;
+  memset(&out->as.send_from_default, 0, sizeof(out->as.send_from_default));
+
+  if (set_opt) {
+    out->as.send_from_default.clear = 0;
+    strncpy(out->as.send_from_default.host, set_opt->args[1],
+            sizeof(out->as.send_from_default.host) - 1);
+    strncpy(out->as.send_from_default.user, set_opt->args[2],
+            sizeof(out->as.send_from_default.user) - 1);
+    strncpy(out->as.send_from_default.ip, set_opt->args[3],
+            sizeof(out->as.send_from_default.ip) - 1);
+
+    if (!lib.net.ip.range.is_single_ipv4(out->as.send_from_default.ip)) {
+      return app_opts_set_error(out, 2, "Invalid IPv4 for --send-from-default");
+    }
+  } else {
+    out->as.send_from_default.clear = 1;
+    strncpy(out->as.send_from_default.host, clear_opt->args[1],
+            sizeof(out->as.send_from_default.host) - 1);
+    strncpy(out->as.send_from_default.user, clear_opt->args[2],
+            sizeof(out->as.send_from_default.user) - 1);
+  }
+
+  return 1;
+}
+
 static int app_opts_get_mode_parser(AppOptsParseMode parse_mode, AppOptsModeParser *out) {
   if (!out) {
     return 0;
@@ -174,6 +244,11 @@ static int app_opts_get_mode_parser(AppOptsParseMode parse_mode, AppOptsModePars
       out->argv_offset = 0;
       out->spec = output_mode_default_specs;
       out->parse = app_opts_parse_output_mode_default;
+      return 1;
+    case APP_OPTS_PARSE_MODE_SEND_FROM_DEFAULT:
+      out->argv_offset = 0;
+      out->spec = send_from_default_specs;
+      out->parse = app_opts_parse_send_from_default;
       return 1;
     case APP_OPTS_PARSE_MODE_ALIAS:
       out->argv_offset = 1;
@@ -217,6 +292,7 @@ static int app_opts_parse_command(int argc, char *argv[], AppCommand *out) {
       out->exit_code = 0;
       return 1;
     case APP_OPTS_PARSE_MODE_OUTPUT_MODE_DEFAULT:
+    case APP_OPTS_PARSE_MODE_SEND_FROM_DEFAULT:
     case APP_OPTS_PARSE_MODE_ALIAS:
     case APP_OPTS_PARSE_MODE_TRANSMIT:
       break;
@@ -267,6 +343,19 @@ static void app_opts_dump_command(const AppCommand *cmd) {
       lib.print.uc_printf(NULL, "  Mode             : %s (%d)\n",
                           lib.print.output_mode_name(cmd->as.outdef.mode),
                           cmd->as.outdef.mode);
+      break;
+    case APP_CMD_SEND_FROM_DEFAULT:
+      lib.print.uc_printf("debug", "Dumping Send-From Default Command:\n");
+      lib.print.uc_printf(NULL, "  Clear            : %s\n",
+                          cmd->as.send_from_default.clear ? "Yes" : "No");
+      lib.print.uc_printf(NULL, "  Host             : %s\n",
+                          cmd->as.send_from_default.host);
+      lib.print.uc_printf(NULL, "  User             : %s\n",
+                          cmd->as.send_from_default.user);
+      lib.print.uc_printf(NULL, "  IP               : %s\n",
+                          cmd->as.send_from_default.ip[0]
+                              ? cmd->as.send_from_default.ip
+                              : "(unset)");
       break;
     case APP_CMD_HELP:
       lib.print.uc_printf("debug", "Dumping Help Command:\n");
