@@ -12,7 +12,8 @@ int app_builtin_list_users_init(void) {
 void app_builtin_list_users_shutdown(void) {
 }
 
-int app_builtin_list_users_handle(const AppBuiltinContext *ctx) {
+int app_builtin_list_users_handle(const AppBuiltinContext *ctx, AppActionReply *reply) {
   (void)ctx;
+  app_action_reply_set(reply, 0, "UNIMPLEMENTED list_users");
   return 0;
 }

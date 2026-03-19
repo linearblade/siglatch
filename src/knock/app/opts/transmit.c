@@ -180,6 +180,14 @@ static int app_opts_transmit_validate(Opts *opts, AppCommand *cmd) {
     }
   }
 
+  if (opts->host[0] != '\0' && opts->client_privkey_path[0] == '\0') {
+    if (!app.env.build_host_config_path(opts->client_privkey_path, PATH_MAX, opts->host, "user.pri.pem")) {
+      snprintf(message, sizeof(message), "Failed to resolve client key path for host: %s", opts->host);
+      app_opts_transmit_set_error(cmd, 2, message);
+      valid = 0;
+    }
+  }
+
   if (opts->host[0] != '\0' &&
       opts->user_selector[0] != '\0' &&
       opts->send_from_ip[0] == '\0') {

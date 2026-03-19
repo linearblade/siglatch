@@ -11,6 +11,7 @@
 #include "../stdlib/nonce.h"
 #include "../stdlib/signal.h"
 #include "../stdlib/parse/parse.h"
+#include "../stdlib/process/process.h"
 #include "../stdlib/print.h"
 #include "../stdlib/unicode.h"
 #include "../stdlib/utils.h"
@@ -24,6 +25,7 @@ Lib lib = {
     .nonce = {0},
     .signal = {0},
     .net = {0},
+    .process = {0},
     .str = {0},
     .parse = {0},
     .print = {0},
@@ -50,6 +52,7 @@ int init_lib(void) {
   int time_initialized = 0;
   int net_initialized = 0;
   int str_initialized = 0;
+  int process_initialized = 0;
   int argv_initialized = 0;
   int parse_initialized = 0;
   int unicode_initialized = 0;
@@ -65,6 +68,7 @@ int init_lib(void) {
   // constructors first so init order and failure handling stay centralized
   lib.time = *get_lib_time();
   lib.net = *get_lib_net();
+  lib.process = *get_lib_process();
   lib.str = *get_lib_str();
   lib.argv = *get_lib_argv();
   lib.parse = *get_lib_parse();
@@ -85,6 +89,7 @@ int init_lib(void) {
 
   if (!lib.time.init || !lib.time.shutdown ||
       !lib.net.init || !lib.net.shutdown ||
+      !lib.process.init || !lib.process.shutdown ||
       !lib.str.init || !lib.str.shutdown ||
       !lib.argv.init || !lib.argv.shutdown ||
       !lib.parse.init || !lib.parse.shutdown ||
@@ -112,6 +117,12 @@ int init_lib(void) {
 
   lib.net.init();
   net_initialized = 1;
+
+  if (!lib.process.init()) {
+    fprintf(stderr, "Failed to initialize siglatchd lib.process\n");
+    goto fail;
+  }
+  process_initialized = 1;
 
   lib.str.init();
   str_initialized = 1;
@@ -241,6 +252,9 @@ fail:
   }
   if (str_initialized) {
     lib.str.shutdown();
+  }
+  if (process_initialized) {
+    lib.process.shutdown();
   }
   if (net_initialized) {
     lib.net.shutdown();

@@ -19,7 +19,7 @@ static int app_builtin_build_context(
     const siglatch_user *user,
     const siglatch_action *action,
     const char *ip_addr);
-static int app_builtin_handle(const AppBuiltinContext *ctx);
+static int app_builtin_handle(const AppBuiltinContext *ctx, AppActionReply *reply);
 
 static int app_builtin_init(void) {
   if (!app_builtin_probe_rebind_init()) {
@@ -144,41 +144,41 @@ static int app_builtin_build_context(
   return 1;
 }
 
-static int app_builtin_handle(const AppBuiltinContext *ctx) {
+static int app_builtin_handle(const AppBuiltinContext *ctx, AppActionReply *reply) {
   if (!ctx || !ctx->action) {
     return 0;
   }
 
   if (strcmp(ctx->action->builtin, "reload_config") == 0) {
-    return app_builtin_reload_config_handle(ctx);
+    return app_builtin_reload_config_handle(ctx, reply);
   }
 
   if (strcmp(ctx->action->builtin, "probe_rebind") == 0) {
-    return app_builtin_probe_rebind_handle(ctx);
+    return app_builtin_probe_rebind_handle(ctx, reply);
   }
 
   if (strcmp(ctx->action->builtin, "rebind_listener") == 0) {
-    return app_builtin_rebind_listener_handle(ctx);
+    return app_builtin_rebind_listener_handle(ctx, reply);
   }
 
   if (strcmp(ctx->action->builtin, "change_setting") == 0) {
-    return app_builtin_change_setting_handle(ctx);
+    return app_builtin_change_setting_handle(ctx, reply);
   }
 
   if (strcmp(ctx->action->builtin, "save_config") == 0) {
-    return app_builtin_save_config_handle(ctx);
+    return app_builtin_save_config_handle(ctx, reply);
   }
 
   if (strcmp(ctx->action->builtin, "load_config") == 0) {
-    return app_builtin_load_config_handle(ctx);
+    return app_builtin_load_config_handle(ctx, reply);
   }
 
   if (strcmp(ctx->action->builtin, "list_users") == 0) {
-    return app_builtin_list_users_handle(ctx);
+    return app_builtin_list_users_handle(ctx, reply);
   }
 
   if (strcmp(ctx->action->builtin, "test_blurt") == 0) {
-    return app_builtin_test_blurt_handle(ctx);
+    return app_builtin_test_blurt_handle(ctx, reply);
   }
 
   LOGE("Unsupported builtin action handler: %s\n", ctx->action->builtin);

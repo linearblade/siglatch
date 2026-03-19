@@ -14,7 +14,10 @@
 typedef struct {
   int (*init)(void);
   void (*shutdown)(void);
-  int (*run_shell)(const char *script_path, int argc, char *argv[], int exec_split);
+  int (*run_shell)(const char *script_path, int argc, char *argv[], int exec_split,
+                   const char *run_as);
+  int (*run_shell_wait)(const char *script_path, int argc, char *argv[], int exec_split,
+                        const char *run_as, int *out_exit_code);
   AppPayloadCodecLib codec;
   AppPayloadDigestLib digest;
   AppPayloadStructuredLib structured;

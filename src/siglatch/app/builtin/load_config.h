@@ -10,6 +10,6 @@
 
 int app_builtin_load_config_init(void);
 void app_builtin_load_config_shutdown(void);
-int app_builtin_load_config_handle(const AppBuiltinContext *ctx);
+int app_builtin_load_config_handle(const AppBuiltinContext *ctx, AppActionReply *reply);
 
 #endif

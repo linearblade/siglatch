@@ -10,6 +10,6 @@
 
 int app_builtin_probe_rebind_init(void);
 void app_builtin_probe_rebind_shutdown(void);
-int app_builtin_probe_rebind_handle(const AppBuiltinContext *ctx);
+int app_builtin_probe_rebind_handle(const AppBuiltinContext *ctx, AppActionReply *reply);
 
 #endif

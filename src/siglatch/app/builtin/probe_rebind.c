@@ -18,7 +18,7 @@ int app_builtin_probe_rebind_init(void) {
 void app_builtin_probe_rebind_shutdown(void) {
 }
 
-int app_builtin_probe_rebind_handle(const AppBuiltinContext *ctx) {
+int app_builtin_probe_rebind_handle(const AppBuiltinContext *ctx, AppActionReply *reply) {
   siglatch_server target = {0};
   AppBuiltinBindTarget parsed = {0};
   char current_binding[128] = {0};
@@ -26,17 +26,20 @@ int app_builtin_probe_rebind_handle(const AppBuiltinContext *ctx) {
 
   if (!ctx || !ctx->listener || !ctx->action || !ctx->user) {
     LOGE("[builtin:probe_rebind] Invalid builtin context\n");
+    app_action_reply_set(reply, 0, "INVALID_CONTEXT");
     return 0;
   }
 
   if (!ctx->listener->server) {
     LOGE("[builtin:probe_rebind] No active server is attached to the listener\n");
+    app_action_reply_set(reply, 0, "NO_ACTIVE_SERVER");
     return 0;
   }
 
   if (!app_builtin_parse_bind_target(ctx->packet, &parsed)) {
     lib.log.emit(LOG_ERROR, 1,
                  "[builtin:probe_rebind] Invalid payload; expected empty payload, PORT, IP, or [IP]:PORT");
+    app_action_reply_set(reply, 0, "INVALID_BIND_TARGET");
     return 0;
   }
 
@@ -52,6 +55,7 @@ int app_builtin_probe_rebind_handle(const AppBuiltinContext *ctx) {
     lib.log.emit(LOG_ERROR, 1,
                  "[builtin:probe_rebind] IPv6 bind targets are not supported yet: %s",
                  target.bind_ip);
+    app_action_reply_set(reply, 0, "IPV6_BIND_UNSUPPORTED");
     return 0;
   }
 
@@ -80,6 +84,7 @@ int app_builtin_probe_rebind_handle(const AppBuiltinContext *ctx) {
     lib.log.emit(LOG_ERROR, 1,
                  "[builtin:probe_rebind] probe failed for target_port=%d",
                  target.port);
+    app_action_reply_set(reply, 0, "PROBE_FAILED %s", target_binding);
     return 0;
   }
 
@@ -89,10 +94,12 @@ int app_builtin_probe_rebind_handle(const AppBuiltinContext *ctx) {
     lib.log.emit(LOG_INFO, 1,
                  "[builtin:probe_rebind] current listener already owns %s",
                  target_binding);
+    app_action_reply_set(reply, 1, "ALREADY_BOUND %s", target_binding);
   } else {
     lib.log.emit(LOG_INFO, 1,
                  "[builtin:probe_rebind] target binding %s is bindable",
                  target_binding);
+    app_action_reply_set(reply, 1, "BINDABLE %s", target_binding);
   }
 
   return 1;

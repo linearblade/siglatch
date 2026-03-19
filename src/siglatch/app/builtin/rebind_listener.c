@@ -18,7 +18,7 @@ int app_builtin_rebind_listener_init(void) {
 void app_builtin_rebind_listener_shutdown(void) {
 }
 
-int app_builtin_rebind_listener_handle(const AppBuiltinContext *ctx) {
+int app_builtin_rebind_listener_handle(const AppBuiltinContext *ctx, AppActionReply *reply) {
   siglatch_server target = {0};
   const char *server_name = NULL;
   AppBuiltinBindTarget parsed = {0};
@@ -28,11 +28,13 @@ int app_builtin_rebind_listener_handle(const AppBuiltinContext *ctx) {
 
   if (!ctx || !ctx->listener || !ctx->action || !ctx->user) {
     LOGE("[builtin:rebind_listener] Invalid builtin context\n");
+    app_action_reply_set(reply, 0, "INVALID_CONTEXT");
     return 0;
   }
 
   if (!ctx->listener->server) {
     LOGE("[builtin:rebind_listener] No active server is attached to the listener\n");
+    app_action_reply_set(reply, 0, "NO_ACTIVE_SERVER");
     return 0;
   }
 
@@ -43,6 +45,7 @@ int app_builtin_rebind_listener_handle(const AppBuiltinContext *ctx) {
   if (!app_builtin_parse_bind_target(ctx->packet, &parsed)) {
     lib.log.emit(LOG_ERROR, 1,
                  "[builtin:rebind_listener] Invalid payload; expected empty payload, PORT, IP, or [IP]:PORT");
+    app_action_reply_set(reply, 0, "INVALID_BIND_TARGET");
     return 0;
   }
 
@@ -58,6 +61,7 @@ int app_builtin_rebind_listener_handle(const AppBuiltinContext *ctx) {
     lib.log.emit(LOG_ERROR, 1,
                  "[builtin:rebind_listener] IPv6 bind targets are not supported yet: %s",
                  target.bind_ip);
+    app_action_reply_set(reply, 0, "IPV6_BIND_UNSUPPORTED");
     return 0;
   }
 
@@ -89,6 +93,7 @@ int app_builtin_rebind_listener_handle(const AppBuiltinContext *ctx) {
       lib.log.emit(LOG_ERROR, 1,
                    "[builtin:rebind_listener] failed to reconcile config binding for server=%s",
                    server_name);
+      app_action_reply_set(reply, 0, "CONFIG_BIND_SYNC_FAILED");
       return 0;
     }
 
@@ -99,6 +104,7 @@ int app_builtin_rebind_listener_handle(const AppBuiltinContext *ctx) {
     lib.log.emit(LOG_INFO, 1,
                  "[builtin:rebind_listener] listener already bound to %s",
                  current_binding);
+    app_action_reply_set(reply, 1, "ALREADY_BOUND %s", current_binding);
     return 1;
   }
 
@@ -106,6 +112,7 @@ int app_builtin_rebind_listener_handle(const AppBuiltinContext *ctx) {
     lib.log.emit(LOG_ERROR, 1,
                  "[builtin:rebind_listener] rebind failed for target_port=%d",
                  target.port);
+    app_action_reply_set(reply, 0, "REBIND_FAILED %s", target_binding);
     return 0;
   }
 
@@ -115,6 +122,7 @@ int app_builtin_rebind_listener_handle(const AppBuiltinContext *ctx) {
     lib.log.emit(LOG_ERROR, 1,
                  "[builtin:rebind_listener] listener rebound but failed to update config binding for server=%s",
                  server_name);
+    app_action_reply_set(reply, 0, "CONFIG_BIND_SYNC_FAILED");
     return 0;
   }
 
@@ -129,5 +137,6 @@ int app_builtin_rebind_listener_handle(const AppBuiltinContext *ctx) {
   lib.log.emit(LOG_INFO, 1,
                "[builtin:rebind_listener] listener now bound to %s",
                target_binding);
+  app_action_reply_set(reply, 1, "BOUND %s", target_binding);
   return 1;
 }

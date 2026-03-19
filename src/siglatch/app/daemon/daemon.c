@@ -87,6 +87,7 @@ static void app_daemon_run(AppRuntimeListenerState *listener) {
         normalized_len,
         &session,
         ip,
+        ntohs(client.sin_port),
         is_encrypted);
   }
 }

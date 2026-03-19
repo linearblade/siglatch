@@ -20,12 +20,13 @@ int app_builtin_test_blurt_init(void) {
 void app_builtin_test_blurt_shutdown(void) {
 }
 
-int app_builtin_test_blurt_handle(const AppBuiltinContext *ctx) {
+int app_builtin_test_blurt_handle(const AppBuiltinContext *ctx, AppActionReply *reply) {
   char payload_text[257] = {0};
   size_t copy_len = 0;
 
   if (!ctx || !ctx->listener || !ctx->packet || !ctx->user || !ctx->action || !ctx->ip_addr) {
     LOGE("[builtin:test_blurt] Invalid builtin context\n");
+    app_action_reply_set(reply, 0, "INVALID_CONTEXT");
     return 0;
   }
 
@@ -41,6 +42,7 @@ int app_builtin_test_blurt_handle(const AppBuiltinContext *ctx) {
 
   if (ctx->packet->payload_len == 0) {
     lib.log.emit(LOG_INFO, 1, "[builtin:test_blurt] payload=(empty)");
+    app_action_reply_set(reply, 1, "TEST_BLURT (empty)");
     return 1;
   }
 
@@ -49,6 +51,7 @@ int app_builtin_test_blurt_handle(const AppBuiltinContext *ctx) {
           ctx->packet->payload_len)) {
     lib.log.emit(LOG_INFO, 1,
                  "[builtin:test_blurt] payload is not printable ASCII; skipping text dump");
+    app_action_reply_set(reply, 1, "TEST_BLURT payload skipped");
     return 1;
   }
 
@@ -61,6 +64,7 @@ int app_builtin_test_blurt_handle(const AppBuiltinContext *ctx) {
   payload_text[copy_len] = '\0';
 
   lib.log.emit(LOG_INFO, 1, "[builtin:test_blurt] payload=%s", payload_text);
+  app_action_reply_set(reply, 1, "%s", payload_text);
   return 1;
 }
 

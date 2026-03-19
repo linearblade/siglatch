@@ -10,6 +10,6 @@
 
 int app_builtin_list_users_init(void);
 void app_builtin_list_users_shutdown(void);
-int app_builtin_list_users_handle(const AppBuiltinContext *ctx);
+int app_builtin_list_users_handle(const AppBuiltinContext *ctx, AppActionReply *reply);
 
 #endif

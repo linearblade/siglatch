@@ -162,7 +162,15 @@ static siglatch_action_handler parse_action_handler_key(
     return SL_ACTION_HANDLER_BUILTIN;
   }
 
-  LOGW("Invalid action handler '%s' in %s (expected 'shell' or 'builtin')\n",
+  if (value && strcasecmp(value, "static") == 0) {
+    return SL_ACTION_HANDLER_STATIC;
+  }
+
+  if (value && strcasecmp(value, "dynamic") == 0) {
+    return SL_ACTION_HANDLER_DYNAMIC;
+  }
+
+  LOGW("Invalid action handler '%s' in %s (expected 'shell', 'builtin', 'static', or 'dynamic')\n",
        value ? value : "(null)",
        scope_label ? scope_label : "action");
   return SL_ACTION_HANDLER_INVALID;
@@ -362,6 +370,14 @@ static int validate_action_handlers(const siglatch_config *cfg) {
              action->name);
         return 0;
       }
+
+      if (action->builtin[0] != '\0' ||
+          action->object[0] != '\0' ||
+          action->object_path[0] != '\0') {
+        LOGE("Invalid action [%s]: shell handler cannot define builtin/object fields\n",
+             action->name);
+        return 0;
+      }
       break;
 
     case SL_ACTION_HANDLER_BUILTIN:
@@ -377,10 +393,73 @@ static int validate_action_handlers(const siglatch_config *cfg) {
         return 0;
       }
 
+      if (action->object[0] != '\0' || action->object_path[0] != '\0') {
+        LOGE("Invalid action [%s]: builtin handler cannot define object fields\n",
+             action->name);
+        return 0;
+      }
+
+      if (action->run_as[0] != '\0') {
+        LOGE("Invalid action [%s]: builtin handler cannot define run_as\n",
+             action->name);
+        return 0;
+      }
+
       if (!app.builtin.supports(action->builtin)) {
         LOGE("Invalid action [%s]: unsupported builtin '%s'\n",
              action->name,
              action->builtin);
+        return 0;
+      }
+      break;
+
+    case SL_ACTION_HANDLER_STATIC:
+      if (action->object[0] == '\0') {
+        LOGE("Invalid action [%s]: static handler requires object name\n",
+             action->name);
+        return 0;
+      }
+
+      if (action->constructor[0] != '\0' ||
+          action->builtin[0] != '\0' ||
+          action->object_path[0] != '\0') {
+        LOGE("Invalid action [%s]: static handler only accepts object and optional run_as\n",
+             action->name);
+        return 0;
+      }
+
+      if (!app.object.supports_static(action->object)) {
+        LOGE("Invalid action [%s]: unsupported static object '%s'\n",
+             action->name,
+             action->object);
+        return 0;
+      }
+      break;
+
+    case SL_ACTION_HANDLER_DYNAMIC:
+      if (action->object[0] == '\0') {
+        LOGE("Invalid action [%s]: dynamic handler requires object name\n",
+             action->name);
+        return 0;
+      }
+
+      if (action->object_path[0] == '\0') {
+        LOGE("Invalid action [%s]: dynamic handler requires object_path\n",
+             action->name);
+        return 0;
+      }
+
+      if (action->constructor[0] != '\0' || action->builtin[0] != '\0') {
+        LOGE("Invalid action [%s]: dynamic handler cannot define constructor/builtin\n",
+             action->name);
+        return 0;
+      }
+
+      if (!app.object.supports_dynamic(action->object_path, action->object)) {
+        LOGE("Invalid action [%s]: unsupported dynamic object '%s' from '%s'\n",
+             action->name,
+             action->object,
+             action->object_path);
         return 0;
       }
       break;
@@ -711,10 +790,22 @@ static void config_consume_action_entry(siglatch_action *action, const IniEntry 
 
   if (strcmp(key, "constructor") == 0) {
     lib.str.lcpy(action->constructor, val, PATH_MAX);
+  } else if (strcmp(key, "label") == 0) {
+    lib.str.lcpy(action->label, val, sizeof(action->label));
+  } else if (strcmp(key, "name") == 0) {
+    lib.str.lcpy(action->label, val, sizeof(action->label));
+    LOGW("Deprecated key 'name' in [action:%s]; use 'label' instead (action identity remains section label)\n",
+         action->name);
   } else if (strcmp(key, "handler") == 0) {
     action->handler = parse_action_handler_key(val, action->name);
   } else if (strcmp(key, "builtin") == 0) {
     lib.str.lcpy(action->builtin, val, sizeof(action->builtin));
+  } else if (strcmp(key, "object") == 0) {
+    lib.str.lcpy(action->object, val, sizeof(action->object));
+  } else if (strcmp(key, "object_path") == 0) {
+    lib.str.lcpy(action->object_path, val, sizeof(action->object_path));
+  } else if (strcmp(key, "run_as") == 0) {
+    lib.str.lcpy(action->run_as, val, sizeof(action->run_as));
   } else if (strcmp(key, "destructor") == 0) {
     lib.str.lcpy(action->destructor, val, PATH_MAX);
   } else if (strcmp(key, "keepalive_interval") == 0) {
@@ -859,6 +950,8 @@ static void config_consume_deaddrop_entry(siglatch_deaddrop *deaddrop, const Ini
          deaddrop->name);
   } else if (strcmp(key, "constructor") == 0) {
     lib.str.lcpy(deaddrop->constructor, val, MAX_PATH_LEN);
+  } else if (strcmp(key, "run_as") == 0) {
+    lib.str.lcpy(deaddrop->run_as, val, sizeof(deaddrop->run_as));
   } else if (strcmp(key, "filter") == 0 || strcmp(key, "filters") == 0) {
     lib.str.parse_csv_fixed(
         (char *)deaddrop->filters,

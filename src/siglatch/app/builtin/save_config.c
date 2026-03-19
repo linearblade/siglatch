@@ -12,7 +12,8 @@ int app_builtin_save_config_init(void) {
 void app_builtin_save_config_shutdown(void) {
 }
 
-int app_builtin_save_config_handle(const AppBuiltinContext *ctx) {
+int app_builtin_save_config_handle(const AppBuiltinContext *ctx, AppActionReply *reply) {
   (void)ctx;
+  app_action_reply_set(reply, 0, "UNIMPLEMENTED save_config");
   return 0;
 }

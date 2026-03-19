@@ -4,7 +4,7 @@ $(info ⚠️  It will locate OpenSSL installations and suggest flags.)
 $(info ⚠️  Then open make file and edit accordingly.)
 $(info -----------------------------------------------------------)
 
-.PHONY: all build-knocker build-siglatchd clean clean-knocker clean-siglatchd
+.PHONY: all build-knocker build-siglatchd build-sample-objects clean clean-knocker clean-siglatchd
 UNAME_S := $(shell uname -s)
 OUTPUT_MODE ?= unicode
 OUTPUT_MODE_SIGLATCHD ?= $(OUTPUT_MODE)
@@ -15,10 +15,14 @@ ifeq ($(UNAME_S),Darwin)
     # macOS (Homebrew OpenSSL)
     OPENSSL_CFLAGS = -mmacosx-version-min=12.0 -I/opt/homebrew/opt/openssl@3/include
     OPENSSL_LDFLAGS = -L/opt/homebrew/opt/openssl@3/lib
+    SHARED_EXT = dylib
+    SHARED_LDFLAGS = -dynamiclib
 else
     # Linux default OpenSSL
     OPENSSL_CFLAGS = -I/usr/include
     OPENSSL_LDFLAGS = -L/usr/lib64
+    SHARED_EXT = so
+    SHARED_LDFLAGS = -shared
 endif
 
 
@@ -71,6 +75,7 @@ endif
 # Output binaries
 BIN_SIGLATCHD = siglatchd
 BIN_KNOCKER   = knocker
+BIN_SAMPLE_DYNAMIC = build/objects/libsample_blurt_dynamic.$(SHARED_EXT)
 .PHONY: $(BIN_SIGLATCHD) $(BIN_KNOCKER)
 
 # Source files
@@ -101,11 +106,15 @@ SRC_SIGLATCHD = \
     src/siglatch/app/keys/user.c \
     src/siglatch/app/keys/server.c \
     src/siglatch/app/keys/hmac.c \
+    src/siglatch/app/object/object.c \
+    src/siglatch/app/object/test_static.c \
+    src/siglatch/objects/static/sample_blurt.c \
     src/siglatch/app/opts/opts.c \
     src/siglatch/app/packet/packet.c \
     src/siglatch/app/payload/codec/codec.c \
     src/siglatch/app/payload/digest/digest.c \
     src/siglatch/app/payload/payload.c \
+    src/siglatch/app/payload/reply.c \
     src/siglatch/app/payload/structured.c \
     src/siglatch/app/payload/unstructured.c \
     src/siglatch/app/policy/policy.c \
@@ -118,8 +127,11 @@ SRC_SIGLATCHD = \
     src/siglatch/lib.c \
     src/shared/shared.c \
     src/shared/knock/codec.c \
+    src/shared/knock/detect.c \
     src/shared/knock/debug.c \
     src/shared/knock/digest.c \
+    src/shared/knock/v1_codec.c \
+    src/shared/knock/v2_form1_codec.c \
     src/stdlib/log.c \
     src/stdlib/hmac_key.c \
     src/stdlib/nonce.c \
@@ -131,6 +143,8 @@ SRC_SIGLATCHD = \
     src/stdlib/net/ip/range/range.c \
     src/stdlib/net/socket/socket.c \
     src/stdlib/net/udp/udp.c \
+    src/stdlib/process/process.c \
+    src/stdlib/process/user/user.c \
     src/stdlib/utils.c \
     src/stdlib/openssl.c \
     src/stdlib/print.c \
@@ -159,8 +173,11 @@ SRC_KNOCKER = \
     src/knock/app/transmit/helper.c \
     src/shared/shared.c \
     src/shared/knock/codec.c \
+    src/shared/knock/detect.c \
     src/shared/knock/debug.c \
     src/shared/knock/digest.c \
+    src/shared/knock/v1_codec.c \
+    src/shared/knock/v2_form1_codec.c \
     src/stdlib/argv.c \
     src/stdlib/parse/ini.c \
     src/stdlib/parse/parse.c \
@@ -203,9 +220,16 @@ build-knocker: $(BIN_KNOCKER)
 $(BIN_KNOCKER): $(SRC_KNOCKER)
 	$(DEPLOY) $(CC) $(CFLAGS) $(MODEFLAG_KNOCKER) -o $@ $^ $(LDFLAGS)
 
+# Build sample dynamic objects
+build-sample-objects: $(BIN_SAMPLE_DYNAMIC)
+
+$(BIN_SAMPLE_DYNAMIC): src/siglatch/objects/dynamic/sample_blurt.c
+	mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -I. $(SHARED_LDFLAGS) -o $@ $<
+
 # Clean targets
 clean:
-	rm -f $(BIN_SIGLATCHD) $(BIN_KNOCKER)
+	rm -f $(BIN_SIGLATCHD) $(BIN_KNOCKER) $(BIN_SAMPLE_DYNAMIC)
 
 clean-knocker:
 	rm -f $(BIN_KNOCKER)

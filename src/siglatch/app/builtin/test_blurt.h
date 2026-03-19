@@ -10,6 +10,6 @@
 
 int app_builtin_test_blurt_init(void);
 void app_builtin_test_blurt_shutdown(void);
-int app_builtin_test_blurt_handle(const AppBuiltinContext *ctx);
+int app_builtin_test_blurt_handle(const AppBuiltinContext *ctx, AppActionReply *reply);
 
 #endif

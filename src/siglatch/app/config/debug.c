@@ -28,6 +28,10 @@ static const char *action_handler_name(siglatch_action_handler handler) {
     return "shell";
   case SL_ACTION_HANDLER_BUILTIN:
     return "builtin";
+  case SL_ACTION_HANDLER_STATIC:
+    return "static";
+  case SL_ACTION_HANDLER_DYNAMIC:
+    return "dynamic";
   case SL_ACTION_HANDLER_INVALID:
   default:
     return "invalid";
@@ -68,8 +72,12 @@ void config_debug_dump_ptr(const siglatch_config *cfg) {
     const siglatch_action *a = &cfg->actions[i];
     lib.log.console("    - [%s]\n", a->name);
     lib.log.console("      ID         : %u\n", a->id);
+    lib.log.console("      Label      : %s\n", a->label[0] ? a->label : "(unset)");
     lib.log.console("      Handler    : %s\n", action_handler_name(a->handler));
     lib.log.console("      Builtin    : %s\n", a->builtin[0] ? a->builtin : "(none)");
+    lib.log.console("      Object     : %s\n", a->object[0] ? a->object : "(none)");
+    lib.log.console("      Object Path: %s\n", a->object_path[0] ? a->object_path : "(none)");
+    lib.log.console("      Run As     : %s\n", a->run_as[0] ? a->run_as : "(daemon)");
     lib.log.console("      Constructor: %s\n", a->constructor[0] ? a->constructor : "(none)");
     lib.log.console("      Destructor : %s\n", a->destructor[0] ? a->destructor : "(none)");
     lib.log.console("      Keepalive  : %d\n", a->keepalive_interval);
@@ -199,6 +207,7 @@ void config_debug_dump_ptr(const siglatch_config *cfg) {
     lib.log.console("      Enabled  : %s\n", d->enabled ? "yes" : "no");
     lib.log.console("      Require Ascii Message  : %s\n", d->require_ascii ? "yes" : "no");
     lib.log.console("      exec_split  : %s\n", d->exec_split ? "yes" : "no");
+    lib.log.console("      Run As     : %s\n", d->run_as[0] ? d->run_as : "(daemon)");
     lib.log.console("      Constructor: %s\n", d->constructor);
     lib.log.console("      Filters:\n");
     if (d->filter_count == 0) {

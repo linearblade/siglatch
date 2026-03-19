@@ -10,6 +10,6 @@
 
 int app_builtin_rebind_listener_init(void);
 void app_builtin_rebind_listener_shutdown(void);
-int app_builtin_rebind_listener_handle(const AppBuiltinContext *ctx);
+int app_builtin_rebind_listener_handle(const AppBuiltinContext *ctx, AppActionReply *reply);
 
 #endif

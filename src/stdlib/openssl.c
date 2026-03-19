@@ -140,10 +140,39 @@ static void _session_free_evp_ctx(EVP_PKEY_CTX **ctx) {
 }
 
 static int siglatch_openssl_session_readPrivateKey(SiglatchOpenSSLSession *session, const char *filename) {
-    (void)session;
-    (void)filename;
-    // TODO: Implement private key loading
-    return 0; // Stub returns failure by default
+    FILE *fp = NULL;
+    EVP_PKEY *privkey = NULL;
+
+    if (!session || !filename || !session->parent_ctx || !session->parent_ctx->file) {
+        return 0;
+    }
+
+    fp = session->parent_ctx->file->open(filename, "rb");
+    if (!fp) {
+        if (session->parent_ctx->log) {
+            session->parent_ctx->log->console("Failed to open private key file: %s\n", filename);
+        }
+        return 0;
+    }
+
+    privkey = PEM_read_PrivateKey(fp, NULL, NULL, NULL);
+    fclose(fp);
+
+    if (!privkey) {
+        if (session->parent_ctx->log) {
+            session->parent_ctx->log->console("Failed to read private key from file: %s\n", filename);
+        }
+        return 0;
+    }
+
+    _session_free_evp_key(&session->private_key);
+    session->private_key = privkey;
+
+    if (session->parent_ctx->log) {
+        session->parent_ctx->log->console("Loaded private key from: %s\n", filename);
+    }
+
+    return 1;
 }
 
 

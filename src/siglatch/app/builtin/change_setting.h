@@ -10,6 +10,6 @@
 
 int app_builtin_change_setting_init(void);
 void app_builtin_change_setting_shutdown(void);
-int app_builtin_change_setting_handle(const AppBuiltinContext *ctx);
+int app_builtin_change_setting_handle(const AppBuiltinContext *ctx, AppActionReply *reply);
 
 #endif

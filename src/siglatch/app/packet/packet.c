@@ -75,6 +75,7 @@ static int app_packet_consume_normalized(
     size_t normalized_len,
     SiglatchOpenSSLSession *session,
     const char *ip,
+    uint16_t client_port,
     int is_encrypted) {
   KnockPacket pkt = {0};
   int payload_rc = 0;
@@ -88,7 +89,7 @@ static int app_packet_consume_normalized(
   if (payload_rc == SL_PAYLOAD_OK) {
     LOGT("[deserialize] Valid %s KnockPacket - User ID: %u, Action ID: %u\n",
          is_encrypted ? "encrypted" : "unencrypted", pkt.user_id, pkt.action_id);
-    app.payload.structured.handle(listener, &pkt, session, ip);
+    app.payload.structured.handle(listener, &pkt, session, ip, client_port);
     return 1;
   }
 
@@ -96,7 +97,7 @@ static int app_packet_consume_normalized(
     if (app_packet_enforce_payload_overflow_policy(listener, &pkt)) {
       LOGT("[deserialize] Overflow packet accepted by policy - User ID: %u, Action ID: %u, payload_len=%u\n",
            pkt.user_id, pkt.action_id, (unsigned int)pkt.payload_len);
-      app.payload.structured.handle(listener, &pkt, session, ip);
+      app.payload.structured.handle(listener, &pkt, session, ip, client_port);
     }
     return 1;
   }

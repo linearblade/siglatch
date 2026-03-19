@@ -21,6 +21,8 @@
 #define MAX_SERVER_NAME     64
 #define MAX_DEADDROP_NAME   64
 #define MAX_BUILTIN_NAME    64
+#define MAX_OBJECT_NAME     64
+#define MAX_RUN_AS_NAME     64
 //#define MAX_ACTIONS         64
 //#define MAX_ACTION_NAME     64
 #define MAX_PATH_LEN        256
@@ -51,14 +53,20 @@ typedef enum {
 typedef enum {
   SL_ACTION_HANDLER_INVALID = 0,
   SL_ACTION_HANDLER_SHELL = 1,
-  SL_ACTION_HANDLER_BUILTIN = 2
+  SL_ACTION_HANDLER_BUILTIN = 2,
+  SL_ACTION_HANDLER_STATIC = 3,
+  SL_ACTION_HANDLER_DYNAMIC = 4
 } siglatch_action_handler;
 
 typedef struct {
   unsigned int id;
   char name[MAX_ACTION_NAME];
+  char label[MAX_ACTION_NAME];
   siglatch_action_handler handler;
   char builtin[MAX_BUILTIN_NAME];
+  char object[MAX_OBJECT_NAME];
+  char object_path[PATH_MAX];
+  char run_as[MAX_RUN_AS_NAME];
   char constructor[PATH_MAX];
   char destructor[PATH_MAX];
   int keepalive_interval;
@@ -94,6 +102,7 @@ typedef struct {
   char label[MAX_DEADDROP_NAME];                    ///< Optional human-readable display label
 
   char constructor[MAX_PATH_LEN];                   ///< Path to script or binary
+  char run_as[MAX_RUN_AS_NAME];
   char filters[MAX_FILTERS][MAX_FILTER_LEN];        ///< List of prefix filters (optional)
   int filter_count;
 

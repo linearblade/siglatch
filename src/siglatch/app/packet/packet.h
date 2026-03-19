@@ -21,6 +21,7 @@ typedef struct {
       size_t normalized_len,
       SiglatchOpenSSLSession *session,
       const char *ip,
+      uint16_t client_port,
       int is_encrypted);
 } AppPacketLib;
 

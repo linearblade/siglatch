@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 
+#include "reply.h"
 #include "../app.h"
 #include "../../../shared/shared.h"
 #include "../../lib.h"
@@ -22,6 +23,7 @@ static int app_payload_structured_dispatch_action(
     SiglatchOpenSSLSession *session,
     const siglatch_user *user,
     const char *ip_addr,
+    uint16_t client_port,
     int valid_signature);
 
 int app_payload_structured_init(void) {
@@ -35,7 +37,8 @@ void app_payload_structured_handle(
     AppRuntimeListenerState *listener,
     const KnockPacket *pkt,
     SiglatchOpenSSLSession *session,
-    const char *ip) {
+    const char *ip,
+    uint16_t client_port) {
   const siglatch_user *user = NULL;
   int signature_valid = 0;
 
@@ -77,7 +80,7 @@ void app_payload_structured_handle(
   }
 
   LOGD("routing to handle packet...\n");
-  app_payload_structured_dispatch_action(listener, pkt, session, user, ip, signature_valid);
+  app_payload_structured_dispatch_action(listener, pkt, session, user, ip, client_port, signature_valid);
 }
 
 static int app_payload_structured_validate_payload(
@@ -110,14 +113,20 @@ static int app_payload_structured_dispatch_action(
     SiglatchOpenSSLSession *session,
     const siglatch_user *user,
     const char *ip_addr,
+    uint16_t client_port,
     int valid_signature) {
   const siglatch_action *action = NULL;
   AppBuiltinContext builtin_ctx = {0};
+  AppActionReply builtin_reply = {0};
+  AppObjectContext object_ctx = {0};
+  AppActionReply object_reply = {0};
+  AppActionReply shell_reply = {0};
   char payload_b64[512] = {0};
   char user_id_str[16];
   char action_id_str[16];
   char encrypted_str[8];
   char *argv[8] = {0};
+  int shell_exit_code = 127;
 
   LOGD("TRYING HANDLE PACKET\n");
 
@@ -191,6 +200,8 @@ static int app_payload_structured_dispatch_action(
   }
 
   if (app.builtin.is_action(action)) {
+    const siglatch_user *reply_user = user;
+
     if (!app.builtin.build_context(
             &builtin_ctx, listener, pkt, session, user, action, ip_addr)) {
       LOGE("[handle] Failed to build builtin context for action (%s)\n", action->name);
@@ -203,7 +214,71 @@ static int app_payload_structured_dispatch_action(
          user->name,
          action->name);
 
-    return app.builtin.handle(&builtin_ctx);
+    if (!app.builtin.handle(&builtin_ctx, &builtin_reply)) {
+      if (builtin_reply.should_reply) {
+        reply_user = app.config.user_by_id(pkt->user_id);
+        if (!reply_user || !app.inbound.crypto.assign_session_to_user(session, reply_user)) {
+          LOGE("[handle] Failed to rebuild user crypto context for builtin error reply (%s)\n",
+               action->name);
+          return 0;
+        }
+      }
+
+      if (builtin_reply.should_reply &&
+          !app_payload_reply_send_v1(listener, session, pkt, ip_addr, client_port, &builtin_reply)) {
+        LOGE("[handle] Builtin error reply send failed for action (%s)\n", action->name);
+      }
+      return 0;
+    }
+
+    if (builtin_reply.should_reply) {
+      reply_user = app.config.user_by_id(pkt->user_id);
+      if (!reply_user || !app.inbound.crypto.assign_session_to_user(session, reply_user)) {
+        LOGE("[handle] Failed to rebuild user crypto context for builtin reply (%s)\n",
+             action->name);
+        return 0;
+      }
+    }
+
+    if (builtin_reply.should_reply &&
+        !app_payload_reply_send_v1(listener, session, pkt, ip_addr, client_port, &builtin_reply)) {
+      LOGE("[handle] Builtin reply send failed for action (%s)\n", action->name);
+      return 0;
+    }
+
+    return 1;
+  }
+
+  if (action->handler == SL_ACTION_HANDLER_STATIC ||
+      action->handler == SL_ACTION_HANDLER_DYNAMIC) {
+    int object_ok = 0;
+
+    if (!app.object.build_context(
+            &object_ctx, listener, pkt, session, user, action, ip_addr)) {
+      LOGE("[handle] Failed to build object context for action (%s)\n", action->name);
+      return 0;
+    }
+
+    LOGD("[handle] Routing to %s object: %s (Ip=%s, User=%s, Action=%s)\n",
+         action->handler == SL_ACTION_HANDLER_STATIC ? "static" : "dynamic",
+         action->object,
+         ip_addr,
+         user->name,
+         action->name);
+
+    if (action->handler == SL_ACTION_HANDLER_STATIC) {
+      object_ok = app.object.run_static(&object_ctx, &object_reply);
+    } else {
+      object_ok = app.object.run_dynamic(&object_ctx, &object_reply);
+    }
+
+    if (object_reply.should_reply &&
+        !app_payload_reply_send_v1(listener, session, pkt, ip_addr, client_port, &object_reply)) {
+      LOGE("[handle] Object reply send failed for action (%s)\n", action->name);
+      return 0;
+    }
+
+    return object_ok;
   }
 
   if (action->constructor[0] == '\0') {
@@ -233,5 +308,32 @@ static int app_payload_structured_dispatch_action(
        action->name,
        action->exec_split);
 
-  return app.payload.run_shell(action->constructor, 7, argv, action->exec_split);
+  if (!app.payload.run_shell_wait(
+          action->constructor,
+          7,
+          argv,
+          action->exec_split,
+          action->run_as[0] ? action->run_as : NULL,
+          &shell_exit_code)) {
+    app_action_reply_set(&shell_reply, 0, "ERROR %s exec_failed", action->name);
+    if (!app_payload_reply_send_v1(listener, session, pkt, ip_addr, client_port, &shell_reply)) {
+      LOGE("[handle] Shell error reply send failed for action (%s)\n", action->name);
+    }
+    return 0;
+  }
+
+  if (shell_exit_code == 0) {
+    app_action_reply_set(&shell_reply, 1, "OK %s", action->name);
+  } else if (shell_exit_code == 126 && action->run_as[0] != '\0') {
+    app_action_reply_set(&shell_reply, 0, "ERROR %s run_as_failed", action->name);
+  } else {
+    app_action_reply_set(&shell_reply, 0, "ERROR %s rc=%d", action->name, shell_exit_code);
+  }
+
+  if (!app_payload_reply_send_v1(listener, session, pkt, ip_addr, client_port, &shell_reply)) {
+    LOGE("[handle] Shell reply send failed for action (%s)\n", action->name);
+    return 0;
+  }
+
+  return shell_exit_code == 0;
 }

@@ -14,6 +14,7 @@ App app = {
   .help = {0},
   .inbound = {0},
   .keys = {0},
+  .object = {0},
   .opts = {0},
   .packet = {0},
   .payload = {0},
@@ -34,6 +35,7 @@ int init_app(void) {
   int help_initialized = 0;
   int inbound_initialized = 0;
   int keys_initialized = 0;
+  int object_initialized = 0;
   int opts_initialized = 0;
   int packet_initialized = 0;
   int payload_initialized = 0;
@@ -54,6 +56,7 @@ int init_app(void) {
   app.help = *get_app_help_lib();
   app.inbound = *get_app_inbound_lib();
   app.keys = *get_app_keys_lib();
+  app.object = *get_app_object_lib();
   app.opts = *get_app_opts_lib();
   app.packet = *get_app_packet_lib();
   app.payload = *get_app_payload_lib();
@@ -99,9 +102,13 @@ int init_app(void) {
       !app.help.init || !app.help.shutdown || !app.help.show ||
       !app.inbound.init || !app.inbound.shutdown ||
       !app.keys.init || !app.keys.shutdown ||
+      !app.object.init || !app.object.shutdown ||
+      !app.object.supports_static || !app.object.supports_dynamic ||
+      !app.object.build_context || !app.object.run_static || !app.object.run_dynamic ||
       !app.opts.init || !app.opts.shutdown ||
       !app.packet.init || !app.packet.shutdown || !app.packet.consume_normalized ||
-      !app.payload.init || !app.payload.shutdown || !app.payload.run_shell ||
+      !app.payload.init || !app.payload.shutdown ||
+      !app.payload.run_shell || !app.payload.run_shell_wait ||
       !app.policy.init || !app.policy.shutdown ||
       !app.policy.server_ip_allowed || !app.policy.user_ip_allowed ||
       !app.policy.action_ip_allowed || !app.policy.request_ip_allowed ||
@@ -162,6 +169,12 @@ int init_app(void) {
     goto fail;
   }
   keys_initialized = 1;
+
+  if (!app.object.init()) {
+    fprintf(stderr, "Failed to initialize app.object\n");
+    goto fail;
+  }
+  object_initialized = 1;
 
   if (!app.opts.init(NULL)) {
     fprintf(stderr, "Failed to initialize app.opts\n");
@@ -251,6 +264,9 @@ fail:
   if (keys_initialized) {
     app.keys.shutdown();
   }
+  if (object_initialized) {
+    app.object.shutdown();
+  }
   if (inbound_initialized) {
     app.inbound.shutdown();
   }
@@ -272,6 +288,7 @@ fail:
   app.help = (AppHelpLib){0};
   app.inbound = (AppInboundLib){0};
   app.keys = (AppKeysLib){0};
+  app.object = (AppObjectLib){0};
   app.opts = (AppOptsLib){0};
   app.packet = (AppPacketLib){0};
   app.payload = (AppPayloadLib){0};
@@ -301,6 +318,7 @@ void shutdown_app(void) {
   app.packet.shutdown();
   app.opts.shutdown();
   app.keys.shutdown();
+  app.object.shutdown();
   app.inbound.shutdown();
   app.daemon.shutdown();
   app.help.shutdown();
@@ -311,6 +329,7 @@ void shutdown_app(void) {
   app.help = (AppHelpLib){0};
   app.inbound = (AppInboundLib){0};
   app.keys = (AppKeysLib){0};
+  app.object = (AppObjectLib){0};
   app.opts = (AppOptsLib){0};
   app.packet = (AppPacketLib){0};
   app.payload = (AppPayloadLib){0};

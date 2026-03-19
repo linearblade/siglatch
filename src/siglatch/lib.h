@@ -15,6 +15,7 @@
 #include "../stdlib/signal.h"
 #include "../stdlib/openssl.h"
 #include "../stdlib/net.h"
+#include "../stdlib/process/process.h"
 #include "../stdlib/str.h"
 #include "../stdlib/argv.h"
 #include "../stdlib/parse/parse.h"
@@ -47,6 +48,7 @@ typedef struct {
   SignalLib signal;
   SiglatchOpenSSL_Lib openssl;
   NetLib net;
+  ProcessLib process;
   StrLib str;
   ArgvLib argv;
   ParseLib parse;

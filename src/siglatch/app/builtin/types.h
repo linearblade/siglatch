@@ -7,8 +7,8 @@
 #define SIGLATCH_SERVER_APP_BUILTIN_TYPES_H
 
 #include "../config/config.h"
+#include "../payload/reply.h"
 #include "../runtime/runtime.h"
-#include "../payload/codec/codec.h"
 #include "../../../stdlib/openssl_session.h"
 
 typedef struct {
@@ -23,7 +23,7 @@ typedef struct {
 typedef struct {
   int (*init)(void);
   void (*shutdown)(void);
-  int (*handle)(const AppBuiltinContext *ctx);
+  int (*handle)(const AppBuiltinContext *ctx, AppActionReply *reply);
 } AppBuiltinHandlerLib;
 
 #endif

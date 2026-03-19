@@ -28,7 +28,7 @@ typedef struct {
       const siglatch_user *user,
       const siglatch_action *action,
       const char *ip_addr);
-  int (*handle)(const AppBuiltinContext *ctx);
+  int (*handle)(const AppBuiltinContext *ctx, AppActionReply *reply);
   AppBuiltinHandlerLib probe_rebind;
   AppBuiltinHandlerLib rebind_listener;
   AppBuiltinHandlerLib reload_config;
