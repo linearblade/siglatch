@@ -42,7 +42,7 @@ int app_builtin_rebind_listener_handle(const AppBuiltinContext *ctx, AppActionRe
                     ? ctx->listener->server->name
                     : NULL;
 
-  if (!app_builtin_parse_bind_target(ctx->packet, &parsed)) {
+  if (!app_builtin_parse_bind_target(ctx->job, &parsed)) {
     lib.log.emit(LOG_ERROR, 1,
                  "[builtin:rebind_listener] Invalid payload; expected empty payload, PORT, IP, or [IP]:PORT");
     app_action_reply_set(reply, 0, "INVALID_BIND_TARGET");

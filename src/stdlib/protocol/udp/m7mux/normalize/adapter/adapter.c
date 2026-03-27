@@ -409,6 +409,7 @@ static void m7mux_normalize_adapter_copy_shared_to_mux(const SharedKnockNormaliz
   memcpy(dst->ip, src->ip, sizeof(dst->ip));
   dst->client_port = src->client_port;
   dst->encrypted = src->encrypted;
+  dst->authorized = src->authorized;
   dst->payload_len = src->payload_len;
   if (src->payload_len > 0u) {
     memcpy(dst->payload_buffer, src->payload, src->payload_len);
@@ -453,6 +454,7 @@ static int m7mux_normalize_adapter_copy_mux_to_shared(const M7MuxNormalizedPacke
   memcpy(dst->ip, src->ip, sizeof(dst->ip));
   dst->client_port = src->client_port;
   dst->encrypted = src->encrypted;
+  dst->authorized = src->authorized;
   dst->payload_len = payload_len;
   if (payload_len > 0u) {
     memcpy(dst->payload, payload, payload_len);

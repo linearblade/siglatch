@@ -16,7 +16,6 @@ App app = {
   .keys = {0},
   .object = {0},
   .opts = {0},
-  .packet = {0},
   .payload = {0},
   .policy = {0},
   .runtime = {0},
@@ -34,6 +33,7 @@ int init_app(void) {
   int config_initialized = 0;
   int daemon3_initialized = 0;
   int daemon3_helper_initialized = 0;
+  int daemon3_auth_initialized = 0;
   int daemon3_request_initialized = 0;
   int daemon3_policy_initialized = 0;
   int daemon3_payload_initialized = 0;
@@ -42,7 +42,6 @@ int init_app(void) {
   int keys_initialized = 0;
   int object_initialized = 0;
   int opts_initialized = 0;
-  int packet_initialized = 0;
   int payload_initialized = 0;
   int policy_initialized = 0;
   int runtime_initialized = 0;
@@ -65,7 +64,6 @@ int init_app(void) {
   app.keys = *get_app_keys_lib();
   app.object = *get_app_object_lib();
   app.opts = *get_app_opts_lib();
-  app.packet = *get_app_packet_lib();
   app.payload = *get_app_payload_lib();
   app.policy = *get_app_policy_lib();
   app.runtime = *get_app_runtime_lib();
@@ -112,6 +110,8 @@ int init_app(void) {
       !app.daemon3.helper.copy_mux_ingress_to_job ||
       !app.daemon3.helper.copy_job_reply_to_mux ||
       !app.daemon3.helper.time_until_ms ||
+      !app.daemon3.auth.init || !app.daemon3.auth.shutdown ||
+      !app.daemon3.auth.authorize ||
       !app.daemon3.request.init || !app.daemon3.request.shutdown ||
       !app.daemon3.request.resolve_user_action ||
       !app.daemon3.request.bind_user_action ||
@@ -134,7 +134,6 @@ int init_app(void) {
       !app.object.supports_static || !app.object.supports_dynamic ||
       !app.object.build_context || !app.object.run_static || !app.object.run_dynamic ||
       !app.opts.init || !app.opts.shutdown ||
-      !app.packet.init || !app.packet.shutdown || !app.packet.consume_normalized ||
       !app.payload.init || !app.payload.shutdown ||
       !app.payload.run_shell || !app.payload.run_shell_wait ||
       !app.policy.init || !app.policy.shutdown ||
@@ -147,7 +146,6 @@ int init_app(void) {
       !app.payload.digest.generate || !app.payload.digest.generate_oneshot ||
       !app.payload.digest.sign || !app.payload.digest.validate ||
       !app.payload.reply.reset || !app.payload.reply.set ||
-      !app.payload.structured.init || !app.payload.structured.shutdown || !app.payload.structured.handle ||
       !app.payload.unstructured.init || !app.payload.unstructured.shutdown || !app.payload.unstructured.handle ||
       !app.runtime.init || !app.runtime.shutdown ||
       !app.runtime.invalidate_config_borrows || !app.runtime.reload_config ||
@@ -187,6 +185,12 @@ int init_app(void) {
     goto fail;
   }
   daemon3_helper_initialized = 1;
+
+  if (!app.daemon3.auth.init()) {
+    fprintf(stderr, "Failed to initialize app.daemon3.auth\n");
+    goto fail;
+  }
+  daemon3_auth_initialized = 1;
 
   if (!app.daemon3.request.init()) {
     fprintf(stderr, "Failed to initialize app.daemon3.request\n");
@@ -235,12 +239,6 @@ int init_app(void) {
     goto fail;
   }
   opts_initialized = 1;
-
-  if (!app.packet.init()) {
-    fprintf(stderr, "Failed to initialize app.packet\n");
-    goto fail;
-  }
-  packet_initialized = 1;
 
   if (!app.payload.init()) {
     fprintf(stderr, "Failed to initialize app.payload\n");
@@ -327,9 +325,6 @@ fail:
   if (payload_initialized) {
     app.payload.shutdown();
   }
-  if (packet_initialized) {
-    app.packet.shutdown();
-  }
   if (opts_initialized) {
     app.opts.shutdown();
   }
@@ -345,6 +340,9 @@ fail:
   if (daemon3_initialized) {
     if (daemon3_helper_initialized) {
       app.daemon3.helper.shutdown();
+    }
+    if (daemon3_auth_initialized) {
+      app.daemon3.auth.shutdown();
     }
     if (daemon3_request_initialized) {
       app.daemon3.request.shutdown();
@@ -374,7 +372,6 @@ fail:
   app.keys = (AppKeysLib){0};
   app.object = (AppObjectLib){0};
   app.opts = (AppOptsLib){0};
-  app.packet = (AppPacketLib){0};
   app.payload = (AppPayloadLib){0};
   app.policy = (AppPolicyLib){0};
   app.runtime = (AppRuntimeLib){0};
@@ -394,6 +391,7 @@ void shutdown_app(void) {
 
   app.builtin.shutdown();
   app.daemon3.helper.shutdown();
+  app.daemon3.auth.shutdown();
   app.daemon3.request.shutdown();
   app.daemon3.payload.shutdown();
   app.daemon3.shutdown();
@@ -406,7 +404,6 @@ void shutdown_app(void) {
   app.runtime.shutdown();
   app.payload.shutdown();
   app.policy.shutdown();
-  app.packet.shutdown();
   app.opts.shutdown();
   app.keys.shutdown();
   app.object.shutdown();
@@ -421,7 +418,6 @@ void shutdown_app(void) {
   app.keys = (AppKeysLib){0};
   app.object = (AppObjectLib){0};
   app.opts = (AppOptsLib){0};
-  app.packet = (AppPacketLib){0};
   app.payload = (AppPayloadLib){0};
   app.policy = (AppPolicyLib){0};
   app.runtime = (AppRuntimeLib){0};

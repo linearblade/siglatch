@@ -40,14 +40,7 @@ static int app_payload_init(void) {
     return 0;
   }
 
-  if (!app_payload_structured_init()) {
-    app_payload_digest_shutdown();
-    app_payload_codec_shutdown();
-    return 0;
-  }
-
   if (!app_payload_unstructured_init()) {
-    app_payload_structured_shutdown();
     app_payload_digest_shutdown();
     app_payload_codec_shutdown();
     return 0;
@@ -58,7 +51,6 @@ static int app_payload_init(void) {
 
 static void app_payload_shutdown(void) {
   app_payload_unstructured_shutdown();
-  app_payload_structured_shutdown();
   app_payload_digest_shutdown();
   app_payload_codec_shutdown();
 }
@@ -297,11 +289,6 @@ static const AppPayloadLib app_payload_instance = {
   .reply = {
     .reset = app_action_reply_reset,
     .set = app_action_reply_set
-  },
-  .structured = {
-    .init = app_payload_structured_init,
-    .shutdown = app_payload_structured_shutdown,
-    .handle = app_payload_structured_handle
   },
   .unstructured = {
     .init = app_payload_unstructured_init,

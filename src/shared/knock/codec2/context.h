@@ -26,6 +26,7 @@ typedef struct SiglatchOpenSSLSession SiglatchOpenSSLSession;
  * host when a runner has an active session.
  */
 typedef struct SharedKnockCodecKeyEntry {
+  uint32_t user_id;
   const char *name;
   EVP_PKEY *public_key;
   EVP_PKEY *private_key;

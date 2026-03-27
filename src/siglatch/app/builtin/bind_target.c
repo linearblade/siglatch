@@ -17,7 +17,7 @@ static int app_builtin_parse_port_text(const char *text, int *out_port);
 static int app_builtin_is_all_digits(const char *text);
 static int app_builtin_is_ip_literal(const char *text);
 
-int app_builtin_parse_bind_target(const KnockPacket *packet,
+int app_builtin_parse_bind_target(const AppConnectionJob *job,
                                   AppBuiltinBindTarget *out_target) {
   char payload[128] = {0};
   char *text = payload;
@@ -30,16 +30,16 @@ int app_builtin_parse_bind_target(const KnockPacket *packet,
 
   memset(out_target, 0, sizeof(*out_target));
 
-  if (!packet || packet->payload_len == 0) {
+  if (!job || job->payload_len == 0) {
     return 1;
   }
 
-  if (packet->payload_len >= sizeof(payload)) {
+  if (job->payload_len >= sizeof(payload)) {
     return 0;
   }
 
-  copy_len = packet->payload_len;
-  memcpy(payload, packet->payload, copy_len);
+  copy_len = job->payload_len;
+  memcpy(payload, job->payload_buffer, copy_len);
   payload[copy_len] = '\0';
 
   while (*text && isspace((unsigned char)*text)) {

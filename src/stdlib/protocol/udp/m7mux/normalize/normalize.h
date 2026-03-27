@@ -34,6 +34,7 @@ typedef struct M7MuxNormalizedPacket {
   char ip[64];
   uint16_t client_port;
   int encrypted;
+  int authorized;
   uint8_t payload_buffer[M7MUX_NORMALIZED_PACKET_BUFFER_SIZE];
   size_t payload_len;
   uint8_t response_buffer[M7MUX_NORMALIZED_PACKET_BUFFER_SIZE];

@@ -9,7 +9,6 @@
 #include "codec/codec.h"
 #include "digest/digest.h"
 #include "reply.h"
-#include "structured.h"
 #include "unstructured.h"
 
 typedef struct {
@@ -22,7 +21,6 @@ typedef struct {
   AppPayloadCodecLib codec;
   AppPayloadDigestLib digest;
   AppPayloadReplyLib reply;
-  AppPayloadStructuredLib structured;
   AppPayloadUnstructuredLib unstructured;
 } AppPayloadLib;
 

@@ -27,6 +27,7 @@ const AppDaemon3 *get_app_daemon3_lib(void) {
   lib.shutdown = app_daemon3_shutdown;
   lib.process = app_daemon3_process;
   lib.helper = *get_app_daemon3_helper_lib();
+  lib.auth = *get_app_daemon3_auth_lib();
   lib.request = *get_app_daemon3_request_lib();
   lib.policy = *get_app_daemon3_policy_lib();
   lib.runner = *get_app_daemon3_runner_lib();

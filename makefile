@@ -104,6 +104,7 @@ SRC_SIGLATCHD = \
     src/siglatch/app/config/debug.c \
     src/siglatch/app/daemon3/daemon3.c \
     src/siglatch/app/daemon3/helper.c \
+    src/siglatch/app/daemon3/auth.c \
     src/siglatch/app/daemon3/job.c \
     src/siglatch/app/daemon3/request.c \
     src/siglatch/app/daemon3/policy.c \
@@ -122,12 +123,10 @@ SRC_SIGLATCHD = \
     src/siglatch/app/object/test_static.c \
     src/siglatch/objects/static/sample_blurt.c \
     src/siglatch/app/opts/opts.c \
-    src/siglatch/app/packet/packet.c \
     src/siglatch/app/payload/codec/codec.c \
     src/siglatch/app/payload/digest/digest.c \
     src/siglatch/app/payload/payload.c \
     src/siglatch/app/payload/reply.c \
-    src/siglatch/app/payload/structured.c \
     src/siglatch/app/payload/unstructured.c \
     src/siglatch/app/policy/policy.c \
     src/siglatch/app/runtime/runtime.c \

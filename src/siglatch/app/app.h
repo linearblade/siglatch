@@ -14,7 +14,6 @@
 #include "keys/keys.h"
 #include "object/object.h"
 #include "opts/opts.h"
-#include "packet/packet.h"
 #include "payload/payload.h"
 #include "policy/policy.h"
 #include "runtime/runtime.h"
@@ -33,7 +32,6 @@ typedef struct {
   AppKeysLib keys;
   AppObjectLib object;
   AppOptsLib opts;
-  AppPacketLib packet;
   AppPayloadLib payload;
   AppPolicyLib policy;
   AppRuntimeLib runtime;

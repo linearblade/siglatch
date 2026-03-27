@@ -73,6 +73,7 @@ typedef struct {
   char ip[64];
   uint16_t client_port;
   int encrypted;
+  int authorized;
   uint8_t payload_buffer[APP_CONNECTION_BUFFER_SIZE];
   size_t payload_len;
   uint8_t response_buffer[APP_CONNECTION_BUFFER_SIZE];

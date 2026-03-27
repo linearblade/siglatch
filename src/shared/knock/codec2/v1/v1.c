@@ -24,6 +24,10 @@ struct SharedKnockCodec2V1State {
 
 static const SharedKnockCodecContext *g_context = NULL;
 static const SharedKnockCodecContext *shared_knock_codec2_v1_context(void);
+static const SharedKnockCodecKeyEntry *shared_knock_codec2_v1_keychain_entry_for_user_id(
+    const SharedKnockCodecContext *context,
+    uint32_t user_id);
+static int shared_knock_codec2_v1_authorize_normalized(const SharedKnockNormalizedUnit *normal);
 static int shared_knock_codec2_v1_sync_nonce_cache(SharedKnockCodec2V1State *state);
 static int shared_knock_codec2_v1_private_decrypt(const uint8_t *input,
                                                   size_t input_len,
@@ -36,6 +40,26 @@ void shared_knock_codec2_v1_destroy_state(SharedKnockCodec2V1State *state);
 
 static const SharedKnockCodecContext *shared_knock_codec2_v1_context(void) {
   return g_context;
+}
+
+static const SharedKnockCodecKeyEntry *shared_knock_codec2_v1_keychain_entry_for_user_id(
+    const SharedKnockCodecContext *context,
+    uint32_t user_id) {
+  size_t i = 0;
+
+  if (!context || !context->keychain || context->keychain_len == 0u) {
+    return NULL;
+  }
+
+  for (i = 0; i < context->keychain_len; ++i) {
+    const SharedKnockCodecKeyEntry *entry = &context->keychain[i];
+
+    if (entry->name && entry->user_id == user_id) {
+      return entry;
+    }
+  }
+
+  return NULL;
 }
 
 static time_t shared_knock_codec2_v1_nonce_ttl(void) {
@@ -314,6 +338,7 @@ int shared_knock_codec2_v1_decode(const SharedKnockCodec2V1State *state,
         free(decrypted_buf);
         return 0;
       }
+      out->authorized = shared_knock_codec2_v1_authorize_normalized(out);
       if (!shared_knock_codec2_v1_packet_nonce_accept((SharedKnockCodec2V1State *)state,
                                                       out->timestamp,
                                                       out->challenge)) {
@@ -329,6 +354,8 @@ int shared_knock_codec2_v1_decode(const SharedKnockCodec2V1State *state,
   if (rc != SL_PAYLOAD_OK) {
     return 0;
   }
+
+  out->authorized = shared_knock_codec2_v1_authorize_normalized(out);
 
   if (!shared_knock_codec2_v1_packet_nonce_accept((SharedKnockCodec2V1State *)state,
                                                   out->timestamp,
@@ -399,6 +426,42 @@ int shared_knock_codec2_v1_encode(const SharedKnockCodec2V1State *state,
 
   *out_len = SHARED_KNOCK_V1_PACKET_SIZE;
   return 1;
+}
+
+static int shared_knock_codec2_v1_authorize_normalized(const SharedKnockNormalizedUnit *normal) {
+  const SharedKnockCodecContext *context = shared_knock_codec2_v1_context();
+  const SharedKnockCodecKeyEntry *entry = NULL;
+  KnockPacket pkt = {0};
+  uint8_t digest[32] = {0};
+
+  if (!context || !normal) {
+    return 0;
+  }
+
+  if (normal->payload_len > sizeof(pkt.payload)) {
+    return 0;
+  }
+
+  entry = shared_knock_codec2_v1_keychain_entry_for_user_id(context, normal->user_id);
+  if (!entry || !entry->hmac_key || entry->hmac_key_len < sizeof(pkt.hmac)) {
+    return 0;
+  }
+
+  pkt.version = SHARED_KNOCK_V1_VERSION;
+  pkt.timestamp = normal->timestamp;
+  pkt.user_id = normal->user_id;
+  pkt.action_id = normal->action_id;
+  pkt.challenge = normal->challenge;
+  pkt.payload_len = (uint16_t)normal->payload_len;
+  if (normal->payload_len > 0u) {
+    memcpy(pkt.payload, normal->payload, normal->payload_len);
+  }
+
+  if (!shared.knock.digest.generate(&pkt, digest)) {
+    return 0;
+  }
+
+  return shared.knock.digest.validate(entry->hmac_key, digest, normal->hmac);
 }
 
 static const SharedKnockCodec2V1Lib shared_knock_codec2_v1 = {

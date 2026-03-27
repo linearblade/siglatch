@@ -92,6 +92,7 @@ static int app_job_enqueue(AppJobState *state, AppConnectionJob *job) {
     tail->ip[sizeof(tail->ip) - 1] = '\0';
     tail->client_port = job->client_port;
     tail->encrypted = job->encrypted;
+    tail->authorized &= job->authorized;
     memset(tail->response_buffer, 0, sizeof(tail->response_buffer));
     tail->response_len = 0;
     return 1;
@@ -162,6 +163,7 @@ static int app_job_flush_buffer(AppConnectionJob *job) {
   job->complete = 0;
   job->should_reply = 0;
   job->synthetic_session = 0;
+  job->authorized = 0;
   job->fragment_index = 0;
   job->fragment_count = 0;
   return 1;

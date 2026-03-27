@@ -249,6 +249,7 @@ static int app_startup_sync_codec_context(const AppStartupState *state) {
     }
 
     entry.name = user->name;
+    entry.user_id = user->id;
     entry.public_key = user->pubkey;
     entry.private_key = NULL;
     entry.hmac_key = user->hmac_key;

@@ -79,6 +79,7 @@ static void app_daemon3_copy_mux_ingress_to_job(const M7MuxNormalizedPacket *nor
   out_job->ip[sizeof(out_job->ip) - 1] = '\0';
   out_job->client_port = normal->client_port;
   out_job->encrypted = normal->encrypted;
+  out_job->authorized = normal->authorized;
   out_job->payload_len = normal->payload_len;
   if (normal->payload_len > 0u) {
     memcpy(out_job->payload_buffer, normal->payload_buffer, normal->payload_len);
@@ -112,6 +113,7 @@ static void app_daemon3_copy_job_reply_to_mux(const AppConnectionJob *job,
   out_normal->ip[sizeof(out_normal->ip) - 1] = '\0';
   out_normal->client_port = job->client_port;
   out_normal->encrypted = job->encrypted;
+  out_normal->authorized = job->authorized;
   out_normal->payload_len = job->response_len;
   if (job->response_len > 0u) {
     memcpy(out_normal->payload_buffer, job->response_buffer, job->response_len);

@@ -48,6 +48,7 @@ static int m7mux_normalize_raw_copy(const M7MuxIngress *ingress, M7MuxNormalized
   memcpy(out->ip, ingress->ip, sizeof(out->ip));
   out->client_port = ingress->client_port;
   out->encrypted = ingress->encrypted;
+  out->authorized = 1;
   memcpy(out->payload_buffer, ingress->buffer, ingress->len);
   return 1;
 }

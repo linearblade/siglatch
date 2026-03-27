@@ -17,7 +17,7 @@ static int app_daemon3_payload_reply_action_prefix(uint8_t action_id,
                                                    char *out,
                                                    size_t out_size);
 static int app_daemon3_payload_build_semantic_reply(
-    const KnockPacket *request_pkt,
+    const AppConnectionJob *job,
     const AppActionReply *reply,
     uint8_t *out_buf,
     size_t out_size,
@@ -25,7 +25,6 @@ static int app_daemon3_payload_build_semantic_reply(
 static int app_daemon3_payload_stage_reply(
     AppRuntimeListenerState *listener,
     SiglatchOpenSSLSession *session,
-    const KnockPacket *request_pkt,
     AppConnectionJob *job,
     const AppActionReply *reply);
 static int app_daemon3_payload_dispatch_action(
@@ -63,7 +62,7 @@ static int app_daemon3_payload_reply_action_prefix(uint8_t action_id,
 }
 
 static int app_daemon3_payload_build_semantic_reply(
-    const KnockPacket *request_pkt,
+    const AppConnectionJob *job,
     const AppActionReply *reply,
     uint8_t *out_buf,
     size_t out_size,
@@ -75,7 +74,7 @@ static int app_daemon3_payload_build_semantic_reply(
   size_t max_text_len = 0;
   size_t message_len = 0;
 
-  if (!request_pkt || !reply || !out_buf || !out_len) {
+  if (!job || !reply || !out_buf || !out_len) {
     return 0;
   }
 
@@ -90,9 +89,9 @@ static int app_daemon3_payload_build_semantic_reply(
   }
 
   out_buf[0] = reply->ok ? SL_KNOCK_RESPONSE_STATUS_OK : SL_KNOCK_RESPONSE_STATUS_ERROR;
-  out_buf[1] = request_pkt->action_id;
+  out_buf[1] = job->action_id;
 
-  if (app_daemon3_payload_reply_action_prefix(request_pkt->action_id,
+  if (app_daemon3_payload_reply_action_prefix(job->action_id,
                                               action_prefix,
                                               sizeof(action_prefix))) {
     if (reply->message[0] != '\0') {
@@ -139,6 +138,22 @@ static int app_daemon3_payload_consume(AppRuntimeListenerState *listener,
   if (!listener || !listener->server || !job || !session) {
     return 0;
   }
+  /*
+
+   // legacy route until I finish inspecting
+      if (!app.inbound.crypto.validate_signature(session, &pkt)) {
+    LOGE("[daemon3.payload] Dropping structured packet due to invalid signature (user_id=%u action_id=%u)\n",
+         job->user_id,
+         job->action_id);
+    return 0;
+  }
+   */
+  if (!job->authorized) {
+    LOGW("[daemon3.payload] Dropping unauthorized job (user_id=%u action_id=%u)\n",
+         job->user_id,
+         job->action_id);
+    return 0;
+  }
 
   if (job->wire_version == 0u) {
     LOGD("[daemon3.payload] Routing raw unstructured payload to fallback handler\n");
@@ -163,12 +178,11 @@ static int app_daemon3_payload_consume(AppRuntimeListenerState *listener,
 static int app_daemon3_payload_stage_reply(
     AppRuntimeListenerState *listener,
     SiglatchOpenSSLSession *session,
-    const KnockPacket *request_pkt,
     AppConnectionJob *job,
     const AppActionReply *reply) {
   size_t response_len = 0;
 
-  if (!listener || !session || !request_pkt || !job || !reply) {
+  if (!listener || !session || !job || !reply) {
     return 0;
   }
 
@@ -183,7 +197,7 @@ static int app_daemon3_payload_stage_reply(
   (void)listener;
   (void)session;
 
-  if (!app_daemon3_payload_build_semantic_reply(request_pkt,
+  if (!app_daemon3_payload_build_semantic_reply(job,
                                                 reply,
                                                 job->response_buffer,
                                                 sizeof(job->response_buffer),
@@ -202,7 +216,6 @@ static int app_daemon3_payload_dispatch_action(
     const siglatch_user *user,
     const siglatch_action *action,
     AppConnectionJob *out_job) {
-  KnockPacket pkt = {0};
   AppBuiltinContext builtin_ctx = {0};
   AppBuiltinContext *builtin_ctx_ptr = &builtin_ctx;
   AppActionReply builtin_reply = {0};
@@ -224,23 +237,11 @@ static int app_daemon3_payload_dispatch_action(
     return 0;
   }
 
-  if (!app.daemon3.helper.copy_job_to_knock_packet(job, &pkt)) {
-    LOGE("[daemon3.payload] Failed to reconstruct request packet from normalized job\n");
-    return 0;
-  }
-
-  if (!app.inbound.crypto.validate_signature(session, &pkt)) {
-    LOGE("[daemon3.payload] Dropping structured packet due to invalid signature (user_id=%u action_id=%u)\n",
-         job->user_id,
-         job->action_id);
-    return 0;
-  }
-
   if (app.builtin.is_action(action)) {
     const siglatch_user *reply_user = user;
 
     if (!app.builtin.build_context(
-            builtin_ctx_ptr, listener, &pkt, session, user, action, job->ip)) {
+            builtin_ctx_ptr, listener, job, session, user, action, job->ip)) {
       LOGE("[daemon3.payload] Failed to build builtin context for action (%s)\n", action->name);
       return 0;
     }
@@ -262,7 +263,7 @@ static int app_daemon3_payload_dispatch_action(
         }
       }
 
-      if (!app_daemon3_payload_stage_reply(listener, session, &pkt, out_job, &builtin_reply)) {
+      if (!app_daemon3_payload_stage_reply(listener, session, out_job, &builtin_reply)) {
         LOGE("[daemon3.payload] Builtin error reply stage failed for action (%s)\n", action->name);
         return 0;
       }
@@ -278,7 +279,7 @@ static int app_daemon3_payload_dispatch_action(
       }
     }
 
-    if (!app_daemon3_payload_stage_reply(listener, session, &pkt, out_job, &builtin_reply)) {
+    if (!app_daemon3_payload_stage_reply(listener, session, out_job, &builtin_reply)) {
       LOGE("[daemon3.payload] Builtin reply stage failed for action (%s)\n", action->name);
       return 0;
     }
@@ -289,7 +290,7 @@ static int app_daemon3_payload_dispatch_action(
   if (action->handler == SL_ACTION_HANDLER_STATIC ||
       action->handler == SL_ACTION_HANDLER_DYNAMIC) {
     if (!app.object.build_context(
-            &object_ctx, listener, &pkt, session, user, action, job->ip)) {
+            &object_ctx, listener, job, session, user, action, job->ip)) {
       LOGE("[daemon3.payload] Failed to build object context for action (%s)\n", action->name);
       return 0;
     }
@@ -307,7 +308,7 @@ static int app_daemon3_payload_dispatch_action(
       ok = app.object.run_dynamic(&object_ctx, &object_reply);
     }
 
-    if (!app_daemon3_payload_stage_reply(listener, session, &pkt, out_job, &object_reply)) {
+    if (!app_daemon3_payload_stage_reply(listener, session, out_job, &object_reply)) {
       LOGE("[daemon3.payload] Object reply stage failed for action (%s)\n", action->name);
       return 0;
     }
@@ -322,7 +323,7 @@ static int app_daemon3_payload_dispatch_action(
 
   // $fixup: this scratch buffer is still capped at 512 bytes; widen it when
   // shell payload handling is revisited.
-  base64_encode(pkt.payload, pkt.payload_len, payload_b64, sizeof(payload_b64));
+  base64_encode(job->payload_buffer, job->payload_len, payload_b64, sizeof(payload_b64));
 
   snprintf(user_id_str, sizeof(user_id_str), "%u", job->user_id);
   snprintf(action_id_str, sizeof(action_id_str), "%u", job->action_id);
@@ -352,7 +353,7 @@ static int app_daemon3_payload_dispatch_action(
           action->run_as[0] ? action->run_as : NULL,
           &shell_exit_code)) {
     app.payload.reply.set(&shell_reply, 0, "ERROR %s exec_failed", action->name);
-    if (!app_daemon3_payload_stage_reply(listener, session, &pkt, out_job, &shell_reply)) {
+    if (!app_daemon3_payload_stage_reply(listener, session, out_job, &shell_reply)) {
       LOGE("[daemon3.payload] Shell error reply stage failed for action (%s)\n", action->name);
     }
     return 0;
@@ -366,7 +367,7 @@ static int app_daemon3_payload_dispatch_action(
     app.payload.reply.set(&shell_reply, 0, "ERROR %s rc=%d", action->name, shell_exit_code);
   }
 
-  if (!app_daemon3_payload_stage_reply(listener, session, &pkt, out_job, &shell_reply)) {
+  if (!app_daemon3_payload_stage_reply(listener, session, out_job, &shell_reply)) {
     LOGE("[daemon3.payload] Shell reply stage failed for action (%s)\n", action->name);
     return 0;
   }

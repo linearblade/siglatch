@@ -17,7 +17,7 @@ typedef struct {
   int port;
 } AppBuiltinBindTarget;
 
-int app_builtin_parse_bind_target(const KnockPacket *packet,
+int app_builtin_parse_bind_target(const AppConnectionJob *job,
                                   AppBuiltinBindTarget *out_target);
 void app_builtin_format_binding(const char *bind_ip, int port,
                                 char *out, size_t outlen);

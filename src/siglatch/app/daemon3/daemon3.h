@@ -7,6 +7,7 @@
 #define SIGLATCH_SERVER_APP_DAEMON3_H
 
 #include "helper.h"
+#include "auth.h"
 #include "job.h"
 #include "request.h"
 #include "policy.h"
@@ -19,6 +20,7 @@ typedef struct {
   void (*shutdown)(void);
   void (*process)(AppRuntimeListenerState *listener);
   AppDaemon3HelperLib helper;
+  AppDaemon3AuthLib auth;
   AppDaemon3RequestLib request;
   AppDaemon3PolicyLib policy;
   AppDaemon3RunnerLib runner;

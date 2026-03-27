@@ -226,6 +226,7 @@ static void shared_knock_codec_context_free_entry(SharedKnockCodecKeyEntry *entr
   free((void *)entry->hmac_key);
   entry->hmac_key = NULL;
   entry->hmac_key_len = 0u;
+  entry->user_id = 0u;
   entry->flags = 0u;
 }
 
@@ -333,6 +334,7 @@ static int shared_knock_codec_context_copy_entry(const SharedKnockCodecKeyEntry 
   }
 
   dst->hmac_key_len = src->hmac_key_len;
+  dst->user_id = src->user_id;
   dst->flags = src->flags;
   return 1;
 }

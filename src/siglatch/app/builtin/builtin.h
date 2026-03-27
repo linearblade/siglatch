@@ -23,7 +23,7 @@ typedef struct {
   int (*build_context)(
       AppBuiltinContext *out,
       AppRuntimeListenerState *listener,
-      const KnockPacket *packet,
+      const AppConnectionJob *job,
       SiglatchOpenSSLSession *session,
       const siglatch_user *user,
       const siglatch_action *action,

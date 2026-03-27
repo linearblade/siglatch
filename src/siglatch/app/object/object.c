@@ -31,7 +31,7 @@ static int app_object_supports_dynamic(const char *path, const char *name);
 static int app_object_build_context(
     AppObjectContext *out,
     AppRuntimeListenerState *listener,
-    const KnockPacket *packet,
+    const AppConnectionJob *job,
     SiglatchOpenSSLSession *session,
     const siglatch_user *user,
     const siglatch_action *action,
@@ -96,18 +96,18 @@ static int app_object_supports_dynamic(const char *path, const char *name) {
 static int app_object_build_context(
     AppObjectContext *out,
     AppRuntimeListenerState *listener,
-    const KnockPacket *packet,
+    const AppConnectionJob *job,
     SiglatchOpenSSLSession *session,
     const siglatch_user *user,
     const siglatch_action *action,
     const char *ip_addr) {
-  if (!out || !listener || !packet || !session || !user || !action || !ip_addr) {
+  if (!out || !listener || !job || !session || !user || !action || !ip_addr) {
     return 0;
   }
 
   *out = (AppObjectContext){
     .listener = listener,
-    .packet = packet,
+    .job = job,
     .session = session,
     .user = user,
     .action = action,

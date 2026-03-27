@@ -36,7 +36,7 @@ int app_builtin_probe_rebind_handle(const AppBuiltinContext *ctx, AppActionReply
     return 0;
   }
 
-  if (!app_builtin_parse_bind_target(ctx->packet, &parsed)) {
+  if (!app_builtin_parse_bind_target(ctx->job, &parsed)) {
     lib.log.emit(LOG_ERROR, 1,
                  "[builtin:probe_rebind] Invalid payload; expected empty payload, PORT, IP, or [IP]:PORT");
     app_action_reply_set(reply, 0, "INVALID_BIND_TARGET");

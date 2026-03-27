@@ -181,6 +181,7 @@ static int app_runtime_sync_codec_context(const siglatch_config *cfg,
     }
 
     entry.name = user->name;
+    entry.user_id = user->id;
     entry.public_key = user->pubkey;
     entry.private_key = NULL;
     entry.hmac_key = user->hmac_key;

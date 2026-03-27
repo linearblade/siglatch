@@ -8,12 +8,13 @@
 
 #include "../config/config.h"
 #include "../payload/reply.h"
+#include "../daemon3/job.h"
 #include "../runtime/runtime.h"
 #include "../../../stdlib/openssl_session.h"
 
 typedef struct {
   AppRuntimeListenerState *listener;
-  const KnockPacket *packet;
+  const AppConnectionJob *job;
   SiglatchOpenSSLSession *session;
   const siglatch_user *user;
   const siglatch_action *action;
