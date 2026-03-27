@@ -7,8 +7,8 @@
 
 #include <string.h>
 
-#include "v1_codec.h"
-#include "v2_form1.h"
+#include "codec/v1/v1.h"
+#include "codec/v2/v2.h"
 
 static uint32_t shared_knock_detect_read_u32_be(const uint8_t *src) {
   return ((uint32_t)src[0] << 24) |
@@ -25,7 +25,7 @@ void shared_knock_detect_shutdown(void) {
 }
 
 int shared_knock_detect(const uint8_t *buf, size_t buflen, SharedKnockRoutingInfo *out) {
-  KnockPacketV1 pkt_v1 = {0};
+  KnockPacket pkt_v1 = {0};
   uint32_t magic = 0;
   uint32_t version = 0;
   uint8_t form = 0;

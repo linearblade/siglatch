@@ -18,6 +18,8 @@ static int app_runtime_listener_binding_changed(const AppRuntimeListenerState *l
                                                 const siglatch_server *server);
 static int app_runtime_listener_same_port_ip_change(const AppRuntimeListenerState *listener,
                                                     const siglatch_server *server);
+static int app_runtime_sync_codec_context(const siglatch_config *cfg,
+                                          const siglatch_server *server);
 
 static int app_runtime_init(void) {
   return 1;
@@ -109,6 +111,99 @@ static void app_runtime_invalidate_config_borrows(
   session->private_key = NULL;
   memset(session->hmac_key, 0, sizeof(session->hmac_key));
   session->hmac_key_len = 0;
+}
+
+static int app_runtime_sync_codec_context(const siglatch_config *cfg,
+                                          const siglatch_server *server) {
+  const SharedKnockCodecContextLib *codec_context_lib = NULL;
+  AppWorkspace *workspace = NULL;
+  M7MuxContext m7mux_ctx = {0};
+  size_t i = 0;
+
+  if (!cfg || !server) {
+    return 0;
+  }
+
+  workspace = app.workspace.get();
+  if (!workspace) {
+    LOGE("Workspace unavailable during config reload\n");
+    return 0;
+  }
+
+  codec_context_lib = get_shared_knock_codec_context_lib();
+  if (!codec_context_lib || !codec_context_lib->set_server_key ||
+      !codec_context_lib->clear_server_key || !codec_context_lib->add_keychain ||
+      !codec_context_lib->remove_keychain || !codec_context_lib->set_openssl_session ||
+      !codec_context_lib->clear_openssl_session) {
+    LOGE("Codec context builder unavailable during config reload\n");
+    return 0;
+  }
+
+  if (!workspace->codec_context) {
+    if (!codec_context_lib->create(&workspace->codec_context)) {
+      LOGE("Failed to create workspace codec context during config reload\n");
+      return 0;
+    }
+  }
+
+  codec_context_lib->clear_server_key(workspace->codec_context);
+  workspace->codec_context->server_secure = server->secure ? 1 : 0;
+  workspace->codec_context->nonce_window_ms = (uint64_t)NONCE_DEFAULT_TTL_SECONDS * 1000u;
+
+  while (workspace->codec_context->keychain_len > 0u) {
+    const char *name = workspace->codec_context->keychain[0].name;
+
+    if (!name || !codec_context_lib->remove_keychain(workspace->codec_context, name)) {
+      LOGE("Failed to clear codec keychain entry during config reload\n");
+      return 0;
+    }
+  }
+
+  if (server->secure && server->priv_key) {
+    SharedKnockCodecServerKey server_key = {0};
+
+    server_key.name = server->name;
+    server_key.private_key = server->priv_key;
+
+    if (!codec_context_lib->set_server_key(workspace->codec_context, &server_key)) {
+      LOGE("Failed to install codec server key for '%s' during config reload\n",
+           server->name);
+      return 0;
+    }
+  }
+
+  for (i = 0; i < (size_t)cfg->user_count; ++i) {
+    const siglatch_user *user = &cfg->users[i];
+    SharedKnockCodecKeyEntry entry = {0};
+
+    if (!user->enabled) {
+      continue;
+    }
+
+    entry.name = user->name;
+    entry.public_key = user->pubkey;
+    entry.private_key = NULL;
+    entry.hmac_key = user->hmac_key;
+    entry.hmac_key_len = sizeof(user->hmac_key);
+
+    if (!codec_context_lib->add_keychain(workspace->codec_context, &entry)) {
+      LOGE("Failed to add codec keychain entry for user '%s' during config reload\n",
+           user->name);
+      return 0;
+    }
+  }
+
+  m7mux_ctx.socket = &lib.net.socket;
+  m7mux_ctx.udp = &lib.net.udp;
+  m7mux_ctx.time = &lib.time;
+  m7mux_ctx.codec_context = workspace->codec_context;
+
+  if (!lib.m7mux.set_context(&m7mux_ctx)) {
+    LOGE("Failed to install codec context into m7mux during config reload\n");
+    return 0;
+  }
+
+  return 1;
 }
 
 static int app_runtime_reload_config(
@@ -245,6 +340,41 @@ static int app_runtime_reload_config(
     } else {
       app.runtime.invalidate_config_borrows(listener, session);
       LOGE("Failed to restore previous runtime bindings after rebind failure\n");
+    }
+
+    return 0;
+  }
+
+  if (!app_runtime_sync_codec_context(new_cfg, listener->server)) {
+    LOGE("Failed to rebuild codec context after config reload\n");
+
+    app.runtime.invalidate_config_borrows(listener, session);
+
+    new_cfg = app.config.detach();
+    if (old_cfg) {
+      app.config.attach(old_cfg);
+      old_cfg = NULL;
+    }
+
+    if (new_cfg) {
+      app.config.destroy(new_cfg);
+    }
+
+    if (current_name[0] != '\0') {
+      restored_server = app.config.server_by_name(current_name);
+    }
+
+    if (restored_server &&
+        !app_runtime_sync_codec_context(old_cfg, restored_server)) {
+      LOGE("Failed to restore previous codec context after reload failure\n");
+    }
+
+    if (restored_server &&
+        app.inbound.crypto.init_session_for_server(restored_server, session)) {
+      listener->server = restored_server;
+    } else {
+      app.runtime.invalidate_config_borrows(listener, session);
+      LOGE("Failed to restore previous runtime bindings after codec context reload failure\n");
     }
 
     return 0;

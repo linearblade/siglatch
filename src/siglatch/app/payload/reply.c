@@ -15,6 +15,13 @@
 #include "../../lib.h"
 
 static int app_payload_reply_action_prefix(uint8_t action_id, char *out, size_t out_size);
+static int app_payload_reply_build_v1_packet(AppRuntimeListenerState *listener,
+                                             SiglatchOpenSSLSession *session,
+                                             const KnockPacket *request_pkt,
+                                             const AppActionReply *reply,
+                                             uint8_t *out_buf,
+                                             size_t out_size,
+                                             size_t *out_len);
 
 void app_action_reply_reset(AppActionReply *reply) {
   if (!reply) {
@@ -56,12 +63,90 @@ int app_action_reply_set(AppActionReply *reply, int ok, const char *fmt, ...) {
   return 1;
 }
 
+static const AppPayloadReplyLib app_payload_reply_instance = {
+  .reset = app_action_reply_reset,
+  .set = app_action_reply_set
+};
+
+const AppPayloadReplyLib *get_app_payload_reply_lib(void) {
+  return &app_payload_reply_instance;
+}
+
+int app_payload_reply_build_v1(AppRuntimeListenerState *listener,
+                               SiglatchOpenSSLSession *session,
+                               const KnockPacket *request_pkt,
+                               const AppActionReply *reply,
+                               uint8_t *out_buf,
+                               size_t out_size,
+                               size_t *out_len) {
+  return app_payload_reply_build_v1_packet(
+      listener, session, request_pkt, reply, out_buf, out_size, out_len);
+}
+
 int app_payload_reply_send_v1(AppRuntimeListenerState *listener,
                               SiglatchOpenSSLSession *session,
                               const KnockPacket *request_pkt,
                               const char *ip_addr,
                               uint16_t client_port,
                               const AppActionReply *reply) {
+  uint8_t output[512] = {0};
+  size_t output_len = 0;
+
+  if (!listener || !session || !request_pkt || !ip_addr || !reply) {
+    return 0;
+  }
+
+  if (!reply->should_reply) {
+    return 1;
+  }
+
+  if (client_port == 0) {
+    LOGE("[reply] Client source port is unavailable; cannot send response\n");
+    return 0;
+  }
+
+  if (!app_payload_reply_build_v1_packet(listener,
+                                         session,
+                                         request_pkt,
+                                         reply,
+                                         output,
+                                         sizeof(output),
+                                         &output_len)) {
+    return 0;
+  }
+
+  if (!lib.net.udp.send(listener->sock, ip_addr, client_port, output, output_len)) {
+    LOGE("[reply] Failed to send reply to %s:%u\n", ip_addr, (unsigned int)client_port);
+    return 0;
+  }
+
+  return 1;
+}
+
+static int app_payload_reply_action_prefix(uint8_t action_id, char *out, size_t out_size) {
+  const siglatch_action *action = NULL;
+
+  if (!out || out_size == 0 || action_id == 0) {
+    return 0;
+  }
+
+  action = app.config.action_by_id(action_id);
+  if (action && action->label[0] != '\0') {
+    snprintf(out, out_size, "%s", action->label);
+    return 1;
+  }
+
+  snprintf(out, out_size, "%u", (unsigned int)action_id);
+  return 1;
+}
+
+static int app_payload_reply_build_v1_packet(AppRuntimeListenerState *listener,
+                                             SiglatchOpenSSLSession *session,
+                                             const KnockPacket *request_pkt,
+                                             const AppActionReply *reply,
+                                             uint8_t *out_buf,
+                                             size_t out_size,
+                                             size_t *out_len) {
   KnockPacket response_pkt = {0};
   uint8_t digest[32] = {0};
   uint8_t packed[512] = {0};
@@ -75,17 +160,14 @@ int app_payload_reply_send_v1(AppRuntimeListenerState *listener,
   char action_prefix[64] = {0};
   char rendered_message[APP_ACTION_REPLY_MESSAGE_MAX + MAX_ACTION_NAME + 8] = {0};
 
-  if (!listener || !session || !request_pkt || !ip_addr || !reply) {
+  if (!listener || !session || !request_pkt || !reply || !out_buf || !out_len) {
     return 0;
   }
+
+  *out_len = 0;
 
   if (!reply->should_reply) {
     return 1;
-  }
-
-  if (client_port == 0) {
-    LOGE("[reply] Client source port is unavailable; cannot send response\n");
-    return 0;
   }
 
   response_pkt.version = request_pkt->version ? request_pkt->version : 1;
@@ -143,7 +225,7 @@ int app_payload_reply_send_v1(AppRuntimeListenerState *listener,
     return 0;
   }
 
-  packed_len = shared.knock.codec.pack(&response_pkt, packed, sizeof(packed));
+  packed_len = shared.knock.codec.v1.pack(&response_pkt, packed, sizeof(packed));
   if (packed_len <= 0) {
     LOGE("[reply] Failed to pack reply packet\n");
     return 0;
@@ -164,27 +246,12 @@ int app_payload_reply_send_v1(AppRuntimeListenerState *listener,
     output_len = (size_t)packed_len;
   }
 
-  if (!lib.net.udp.send(listener->sock, ip_addr, client_port, output, output_len)) {
-    LOGE("[reply] Failed to send reply to %s:%u\n", ip_addr, (unsigned int)client_port);
+  if (output_len > out_size) {
+    LOGE("[reply] Output buffer too small for reply packet\n");
     return 0;
   }
 
-  return 1;
-}
-
-static int app_payload_reply_action_prefix(uint8_t action_id, char *out, size_t out_size) {
-  const siglatch_action *action = NULL;
-
-  if (!out || out_size == 0 || action_id == 0) {
-    return 0;
-  }
-
-  action = app.config.action_by_id(action_id);
-  if (action && action->label[0] != '\0') {
-    snprintf(out, out_size, "%s", action->label);
-    return 1;
-  }
-
-  snprintf(out, out_size, "%u", (unsigned int)action_id);
+  memcpy(out_buf, output, output_len);
+  *out_len = output_len;
   return 1;
 }

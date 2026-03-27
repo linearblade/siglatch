@@ -7,6 +7,7 @@
 
 #include <arpa/inet.h>
 #include <ctype.h>
+#include <errno.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -221,6 +222,9 @@ static int app_transmit_wait_for_response(int udp_fd,
   }
 
   if (wait_rc < 0) {
+    if (errno == EINTR) {
+      return 0;
+    }
     if (lib.log.emit) {
       lib.log.emit(LOG_ERROR, 1, "Failed while waiting for server response\n");
     }
@@ -259,7 +263,7 @@ static int app_transmit_wait_for_response(int udp_fd,
     reply_len = decrypted_len;
   }
 
-  if (shared.knock.codec.deserialize(reply_buf, reply_len, &reply_pkt) != SL_PAYLOAD_OK) {
+  if (shared.knock.codec.v1.deserialize(reply_buf, reply_len, &reply_pkt) != SL_PAYLOAD_OK) {
     if (lib.log.emit) {
       lib.log.emit(LOG_ERROR, 1, "Failed to deserialize server response packet\n");
     }
@@ -393,7 +397,7 @@ static int app_transmit_single_packet(const Opts *opts) {
     }
 
     uint8_t packed[512] = {0};
-    int packed_len = shared.knock.codec.pack(&pkt, packed, sizeof(packed));
+    int packed_len = shared.knock.codec.v1.pack(&pkt, packed, sizeof(packed));
     if (!structureOrDeadDrop(effective, &pkt, packed, &packed_len)) {
       FAIL_SINGLE_PACKET("Failed to prepare payload (structured or dead-drop)\n");
     }

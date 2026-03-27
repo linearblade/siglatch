@@ -3,12 +3,13 @@
  * License: MTL-10 (see LICENSE.md)
  */
 
-#ifndef SIGLATCH_SHARED_KNOCK_V2_FORM1_CODEC_H
-#define SIGLATCH_SHARED_KNOCK_V2_FORM1_CODEC_H
+#ifndef SIGLATCH_SHARED_KNOCK_CODEC_V2_H
+#define SIGLATCH_SHARED_KNOCK_CODEC_V2_H
 
 #include <stddef.h>
 #include <stdint.h>
 
+#include "../normalized.h"
 #include "v2_form1.h"
 
 typedef struct {
@@ -18,6 +19,12 @@ typedef struct {
   int (*unpack)(const uint8_t *buf, size_t buflen, KnockPacketV2Form1 *pkt);
   int (*validate)(const KnockPacketV2Form1 *pkt);
   int (*deserialize)(const uint8_t *buf, size_t buflen, KnockPacketV2Form1 *pkt);
+  int (*normalize)(const uint8_t *buf,
+                   size_t buflen,
+                   const char *ip,
+                   uint16_t client_port,
+                   int encrypted,
+                   SharedKnockNormalizedUnit *out);
   const char *(*deserialize_strerror)(int code);
 } SharedKnockV2Form1CodecLib;
 
@@ -35,7 +42,13 @@ int shared_knock_v2_form1_codec_pack(const KnockPacketV2Form1 *pkt, uint8_t *out
 int shared_knock_v2_form1_codec_unpack(const uint8_t *buf, size_t buflen, KnockPacketV2Form1 *pkt);
 int shared_knock_v2_form1_codec_validate(const KnockPacketV2Form1 *pkt);
 int shared_knock_v2_form1_codec_deserialize(const uint8_t *buf, size_t buflen, KnockPacketV2Form1 *pkt);
+int shared_knock_v2_form1_codec_normalize(const uint8_t *buf,
+                                          size_t buflen,
+                                          const char *ip,
+                                          uint16_t client_port,
+                                          int encrypted,
+                                          SharedKnockNormalizedUnit *out);
 const char *shared_knock_v2_form1_codec_deserialize_strerror(int code);
 const SharedKnockV2Form1CodecLib *get_shared_knock_v2_form1_codec_lib(void);
 
-#endif /* SIGLATCH_SHARED_KNOCK_V2_FORM1_CODEC_H */
+#endif /* SIGLATCH_SHARED_KNOCK_CODEC_V2_H */

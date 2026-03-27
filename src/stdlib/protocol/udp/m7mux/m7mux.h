@@ -1,125 +1,58 @@
-#ifndef LIB_UDP_M7MUX_H
-#define LIB_UDP_M7MUX_H
-
-#include <stdint.h>
-#include <stddef.h>
-#include "../../net/udp/udp.h"
-#include "../../net/socket/socket.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-  typedef struct M7MuxContext M7MuxContext;
-  typedef struct M7MuxPort    M7MuxPort;
-  typedef struct M7MuxOpen    M7MuxOpen;
-  typedef struct M7MuxSend    M7MuxSend;
-  typedef struct M7MuxRecv    M7MuxRecv;
-  typedef struct M7MuxMessage M7MuxMessage;
-  typedef struct M7MuxInspect M7MuxInspect;
-  
-  typedef enum {
-    M7MUX_RECV_NONE = 0,
-    M7MUX_RECV_PARTIAL,
-    M7MUX_RECV_COMPLETE,
-    M7MUX_RECV_ERROR
-  } M7MuxRecvResult;
-
-  typedef enum {
-    M7MUX_POLL_NONE = 0,
-    M7MUX_POLL_READY,
-    M7MUX_POLL_ERROR
-  } M7MuxPollResult;
-  
-  typedef struct {
-    int             (*init)(const M7MuxContext *ctx);
-    void            (*shutdown)(void);
-    int             (*set_context)(const M7MuxContext *ctx);
-
-    M7MuxPort *     (*open)(const M7MuxOpen *opts);
-    void            (*close)(M7MuxPort *port);
-
-    int             (*send)(M7MuxPort *port,  const M7MuxSend *opts, const void *buf, size_t len);
-    M7MuxRecvResult (*receive)(M7MuxPort *port, const M7MuxRecv *opts);
-
-    M7MuxPollResult (*poll)(M7MuxPort *port);
-    int             (*next)(M7MuxPort *port, M7MuxMessage *msg);
-
-    int             (*inspect)(M7MuxPort *port, M7MuxInspect *inspect);
-  
-  } M7MuxLib;
-
-  typedef struct M7MuxContext {
-    const SocketLib *socket;
-    const UdpLib *udp;
-    void *reserved;
-  } M7MuxContext;
-
-  struct M7MuxOpen {
-    const char *bind_ip;
-    uint16_t    bind_port;
-    int         blocking;
-    int         recv_buf;
-    int         send_buf;
-  };
-
-  struct M7MuxPort {
-    int fd;
-    uint16_t port;
-    void *internal;
-  };
-
-  /*
-   * Send options
-   */
-
-  struct M7MuxSend {
-    const char *ip;
-    uint16_t    port;
-  };
-  
-  /*
-   * Receive options
-   */
-
-  struct M7MuxRecv {
-    int timeout_ms;   /* -1 = block forever, 0 = poll, >0 = wait */
-  };
-
-  /*
-   * Message retrieval
-   */
-
-  struct M7MuxMessage {
-    void   *buf;       /* destination buffer */
-    size_t  buf_len;   /* buffer capacity */
-
-    size_t  bytes;     /* bytes written to buf */
-
-    uint64_t session_id;
-    uint32_t stream_id;
-    uint64_t message_id;
-
-    int complete;      /* 1 if message finished */
-  };
-
-  /*
- * Inspect / monitoring snapshot
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
  */
 
-struct M7MuxInspect {
-  size_t sessions_active;
-  size_t streams_active;
-  size_t messages_partial;
-  size_t messages_ready;
-  size_t queue_depth;
-};
-  
-  
-  const M7MuxLib *get_lib_m7mux(void);
+#ifndef SIGLATCH_STDLIB_PROTOCOL_UDP_M7MUX_H
+#define SIGLATCH_STDLIB_PROTOCOL_UDP_M7MUX_H
 
-#ifdef __cplusplus
-}
-#endif
+#include <stdint.h>
 
-#endif
+#include "../../../time.h"
+#include "../../../net/socket/socket.h"
+#include "../../../net/udp/udp.h"
+#include "../../../../shared/knock/codec2/context.h"
+
+/**
+ * @file m7mux.h
+ * @brief Bootstrap contract for the UDP mux rig.
+ *
+ * This top-level surface intentionally stays small: it carries runtime context
+ * and lifecycle hooks only. Packet interpretation, normalization, streaming,
+ * and egress live in the nested submodules below this layer.
+ */
+
+typedef struct M7MuxContext {
+  const SocketLib *socket;
+  const UdpLib *udp;
+  const TimeLib *time;
+  const SharedKnockCodecContext *codec_context;
+  const struct M7MuxInternalLib *internal;
+  void *reserved;
+} M7MuxContext;
+
+/*
+ * Opaque codec instance handle used by future codec registry work.
+ * The live registry stores it as an implementation detail and never peeks
+ * inside the concrete codec state layout.
+ */
+typedef struct M7MuxCodecState M7MuxCodecState;
+
+#include "connect/connect.h"
+#include "inbox/inbox.h"
+#include "outbox/outbox.h"
+typedef struct M7MuxInternalLib M7MuxInternalLib;
+
+typedef struct {
+  M7MuxConnectLib connect;
+  M7MuxInboxLib inbox;
+  M7MuxOutboxLib outbox;
+  int (*init)(const M7MuxContext *ctx);
+  int (*set_context)(const M7MuxContext *ctx);
+  int (*pump)(M7MuxState *state, uint64_t timeout_ms);
+  void (*shutdown)(void);
+} M7MuxLib;
+
+const M7MuxLib *get_lib_m7mux(void);
+
+#endif /* SIGLATCH_STDLIB_PROTOCOL_UDP_M7MUX_H */

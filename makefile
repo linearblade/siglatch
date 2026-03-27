@@ -4,6 +4,11 @@ $(info ⚠️  It will locate OpenSSL installations and suggest flags.)
 $(info ⚠️  Then open make file and edit accordingly.)
 $(info -----------------------------------------------------------)
 
+# Quick commands:
+#   build test objects : make -j4 build-sample-objects
+#   clean              : make clean
+#   make               : make -j4
+
 .PHONY: all build-knocker build-siglatchd build-sample-objects clean clean-knocker clean-siglatchd
 UNAME_S := $(shell uname -s)
 OUTPUT_MODE ?= unicode
@@ -97,7 +102,14 @@ SRC_SIGLATCHD = \
     src/siglatch/app/builtin/test_blurt.c \
     src/siglatch/app/config/config.c \
     src/siglatch/app/config/debug.c \
-    src/siglatch/app/daemon/daemon.c \
+    src/siglatch/app/daemon3/daemon3.c \
+    src/siglatch/app/daemon3/helper.c \
+    src/siglatch/app/daemon3/job.c \
+    src/siglatch/app/daemon3/request.c \
+    src/siglatch/app/daemon3/policy.c \
+    src/siglatch/app/daemon3/payload.c \
+    src/siglatch/app/daemon3/runner.c \
+    src/siglatch/app/daemon3/tick.c \
     src/siglatch/app/help/help.c \
     src/siglatch/app/inbound/inbound.c \
     src/siglatch/app/inbound/crypto/crypto.c \
@@ -121,17 +133,22 @@ SRC_SIGLATCHD = \
     src/siglatch/app/runtime/runtime.c \
     src/siglatch/app/server/server.c \
     src/siglatch/app/signal/signal.c \
+    src/siglatch/app/workspace/workspace.c \
     src/siglatch/app/startup/startup.c \
     src/siglatch/app/udp/udp.c \
     src/siglatch/lifecycle.c \
     src/siglatch/lib.c \
     src/shared/shared.c \
-    src/shared/knock/codec.c \
+    src/shared/knock/codec/codec.c \
+    src/shared/knock/codec2/codec.c \
+    src/shared/knock/codec2/context.c \
     src/shared/knock/detect.c \
     src/shared/knock/debug.c \
     src/shared/knock/digest.c \
-    src/shared/knock/v1_codec.c \
-    src/shared/knock/v2_form1_codec.c \
+    src/shared/knock/codec/v1/v1.c \
+    src/shared/knock/codec/v2/v2.c \
+    src/shared/knock/codec2/v1/v1.c \
+    src/shared/knock/codec2/v2/v2.c \
     src/stdlib/log.c \
     src/stdlib/hmac_key.c \
     src/stdlib/nonce.c \
@@ -143,6 +160,16 @@ SRC_SIGLATCHD = \
     src/stdlib/net/ip/range/range.c \
     src/stdlib/net/socket/socket.c \
     src/stdlib/net/udp/udp.c \
+    src/stdlib/protocol/udp/m7mux/connect/connect.c \
+    src/stdlib/protocol/udp/m7mux/inbox/inbox.c \
+    src/stdlib/protocol/udp/m7mux/outbox/outbox.c \
+    src/stdlib/protocol/udp/m7mux/ingress/ingress.c \
+    src/stdlib/protocol/udp/m7mux/normalize/adapter/adapter.c \
+    src/stdlib/protocol/udp/m7mux/normalize/normalize.c \
+    src/stdlib/protocol/udp/m7mux/session/session.c \
+    src/stdlib/protocol/udp/m7mux/stream/stream.c \
+    src/stdlib/protocol/udp/m7mux/egress/egress.c \
+    src/stdlib/protocol/udp/m7mux/m7mux.c \
     src/stdlib/process/process.c \
     src/stdlib/process/user/user.c \
     src/stdlib/utils.c \
@@ -172,12 +199,16 @@ SRC_KNOCKER = \
     src/knock/app/transmit/transmit.c \
     src/knock/app/transmit/helper.c \
     src/shared/shared.c \
-    src/shared/knock/codec.c \
+    src/shared/knock/codec/codec.c \
+    src/shared/knock/codec2/codec.c \
+    src/shared/knock/codec2/context.c \
     src/shared/knock/detect.c \
     src/shared/knock/debug.c \
     src/shared/knock/digest.c \
-    src/shared/knock/v1_codec.c \
-    src/shared/knock/v2_form1_codec.c \
+    src/shared/knock/codec/v1/v1.c \
+    src/shared/knock/codec/v2/v2.c \
+    src/shared/knock/codec2/v1/v1.c \
+    src/shared/knock/codec2/v2/v2.c \
     src/stdlib/argv.c \
     src/stdlib/parse/ini.c \
     src/stdlib/parse/parse.c \
@@ -190,6 +221,16 @@ SRC_KNOCKER = \
     src/stdlib/net/ip/range/range.c \
     src/stdlib/net/socket/socket.c \
     src/stdlib/net/udp/udp.c \
+    src/stdlib/protocol/udp/m7mux/connect/connect.c \
+    src/stdlib/protocol/udp/m7mux/inbox/inbox.c \
+    src/stdlib/protocol/udp/m7mux/outbox/outbox.c \
+    src/stdlib/protocol/udp/m7mux/ingress/ingress.c \
+    src/stdlib/protocol/udp/m7mux/normalize/adapter/adapter.c \
+    src/stdlib/protocol/udp/m7mux/normalize/normalize.c \
+    src/stdlib/protocol/udp/m7mux/session/session.c \
+    src/stdlib/protocol/udp/m7mux/stream/stream.c \
+    src/stdlib/protocol/udp/m7mux/egress/egress.c \
+    src/stdlib/protocol/udp/m7mux/m7mux.c \
     src/stdlib/nonce.c \
     src/stdlib/signal.c \
     src/stdlib/time.c \

@@ -9,7 +9,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "../../../../shared/knock/codec.h"
+#include "../../../../shared/knock/codec/codec.h"
 
 typedef struct {
   int (*init)(void);

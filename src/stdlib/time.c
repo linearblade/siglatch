@@ -4,9 +4,9 @@
  */
 
 #include "time.h"
-#include <time.h>
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
+#include <time.h>
 
 #ifndef SIGLATCH_TIME_NOW
 #define SIGLATCH_TIME_NOW _time_now
@@ -27,6 +27,18 @@ static void time_shutdown(void) {
 
 static long time_unix_now(void) {
     return (long)SIGLATCH_TIME_NOW();
+}
+
+static uint64_t time_monotonic_now_ms(void) {
+#if defined(CLOCK_MONOTONIC)
+    struct timespec ts = {0};
+
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+        return ((uint64_t)ts.tv_sec * 1000u) + ((uint64_t)ts.tv_nsec / 1000000u);
+    }
+#endif
+
+    return (uint64_t)SIGLATCH_TIME_NOW() * 1000u;
 }
 
 static const char *time_unix_now_string(void) {
@@ -66,6 +78,7 @@ static const TimeLib time_instance = {
   .shutdown = time_shutdown,
   .now = _time_now,
   .unix_ts = time_unix_now,
+  .monotonic_ms = time_monotonic_now_ms,
   .human = time_human_now,
   .log = time_log_now,
   .unix_string = time_unix_now_string,

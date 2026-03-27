@@ -1,5 +1,5 @@
 # Changelog (Recent Work)
-Date range: 2026-03-06 to 2026-03-18
+Date range: 2026-03-06 to 2026-03-19
 Scope: in-progress workspace changes since tag `1.0` relevant to current stabilization pass.
 
 ## Added
@@ -492,3 +492,69 @@ Scope: in-progress workspace changes since tag `1.0` relevant to current stabili
   - startup honoring `bind_ip`
   - client persisted source-bind defaults can be saved and cleared
   - user-alias display now surfaces saved `send_from_ip`
+
+## Update (2026-03-19): Run-As Execution + Object Handlers + Early V2 Packet Prep
+
+### Added
+- New process identity helper family under `src/stdlib/process/`:
+  - `lib.process`
+  - `lib.process.user`
+- New privilege-drop surface for child execution:
+  - `lookup_by_name(...)`
+  - `drop_to_name(...)`
+  - `drop_to_identity(...)`
+- New action config fields for non-builtin execution models:
+  - `run_as = <local-user>`
+  - `object = <symbol-or-static-name>`
+  - `object_path = <shared-library-path>`
+- New action handler families:
+  - `handler = static`
+  - `handler = dynamic`
+- New object execution barrel under `src/siglatch/app/object/`:
+  - shared object execution context
+  - static object registry/dispatch
+  - dynamic object validation/dispatch
+- New sample object tree under `src/siglatch/objects/`:
+  - `static/sample_blurt`
+  - `dynamic/sample_blurt`
+- New sample-object build target:
+  - `make build-sample-objects`
+
+### Changed
+- Structured shell-backed actions may now run as a configured local user:
+  - child drops privileges after `fork()` and before `execv()`
+  - builtins intentionally do not honor `run_as`
+- Deaddrops now also support `run_as` and use the same child-side privilege drop path as shell actions.
+- Action config validation is now fail-closed for extended handler types:
+  - `shell` requires `constructor`
+  - `builtin` requires `builtin` and rejects `run_as`
+  - `static` requires `object`
+  - `dynamic` requires both `object` and `object_path`
+- Static and dynamic object handlers now execute in a forked child and return a normalized action reply to the parent over a pipe.
+- Parent daemon retains UDP reply ownership for object handlers, keeping request/reply behavior centralized.
+- Default config examples now include sample static/dynamic action shapes for reference.
+
+### Fixed
+- Child-side shell/deaddrop privilege lowering now fails closed instead of silently continuing when `run_as` resolution or downgrade fails.
+- Dynamic object handler validation now happens at config load time so broken `object_path` / symbol combinations fail early instead of surfacing only at dispatch.
+
+### Protocol / V2 Preparation Notes
+- Added preparatory `v2` packet design notes under `__tmp/` for the next protocol generation, including:
+  - protocol roadmap and flexible single-packet notes
+  - v2 baseline / outer-header / form-bridge sketches
+  - prefix and packet-format reference notes
+- Added early code-side `v2` groundwork under `src/shared/knock/` for changelog visibility and future iteration, including:
+  - packet detection scaffolding
+  - `v2_form1` headers/codecs
+- These `v2` items are preparatory only:
+  - no protocol switchover is claimed here
+  - `v1` remains the active runtime transport
+
+### Verification
+- `make build-siglatchd` succeeds after adding `lib.process.user`, action `run_as`, and object handler support.
+- `make build-sample-objects` succeeds and emits the sample dynamic library under `build/objects/`.
+- Manual/local validation confirmed:
+  - shell actions can drop to configured local users
+  - deaddrops can drop to configured local users
+  - static sample objects execute and reply successfully
+  - dynamic sample objects execute and reply successfully

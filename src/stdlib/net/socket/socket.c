@@ -126,9 +126,7 @@ static int wait_readable(int fd, int timeout_ms)
   FD_ZERO(&readfds);
   FD_SET(fd, &readfds);
 
-  do {
-    rc = select(fd + 1, &readfds, NULL, NULL, tv_ptr);
-  } while (rc < 0 && errno == EINTR && timeout_ms >= 0);
+  rc = select(fd + 1, &readfds, NULL, NULL, tv_ptr);
 
   return rc;
 }

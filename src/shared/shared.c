@@ -10,7 +10,9 @@
 Shared shared = {
   .knock = {
     .codec = {0},
+    .codec2 = {0},
     .debug = {0},
+    .detect = {0},
     .digest = {0}
   }
 };
@@ -31,15 +33,40 @@ int init_shared(const SharedContext *ctx) {
   }
 
   shared.knock.codec = *get_shared_knock_codec_lib();
+  shared.knock.codec2 = *get_shared_knock_codec2_lib();
   shared.knock.debug = *get_shared_knock_debug_lib();
+  shared.knock.detect = *get_shared_knock_detect_lib();
   shared.knock.digest = *get_shared_knock_digest_lib();
 
-  if (!shared.knock.codec.init || !shared.knock.codec.shutdown ||
-      !shared.knock.codec.pack || !shared.knock.codec.unpack ||
-      !shared.knock.codec.validate || !shared.knock.codec.deserialize ||
-      !shared.knock.codec.deserialize_strerror ||
+  if (!shared.knock.codec.v1.init || !shared.knock.codec.v1.shutdown ||
+      !shared.knock.codec.v1.pack || !shared.knock.codec.v1.unpack ||
+      !shared.knock.codec.v1.validate || !shared.knock.codec.v1.deserialize ||
+      !shared.knock.codec.v1.normalize ||
+      !shared.knock.codec.v1.deserialize_strerror ||
+      !shared.knock.codec.v2.init || !shared.knock.codec.v2.shutdown ||
+      !shared.knock.codec.v2.pack || !shared.knock.codec.v2.unpack ||
+      !shared.knock.codec.v2.validate || !shared.knock.codec.v2.deserialize ||
+      !shared.knock.codec.v2.normalize ||
+      !shared.knock.codec.v2.deserialize_strerror ||
+      !shared.knock.codec2.encode ||
+      !shared.knock.codec2.v1.init || !shared.knock.codec2.v1.shutdown ||
+      !shared.knock.codec2.v1.create_state || !shared.knock.codec2.v1.destroy_state ||
+      !shared.knock.codec2.v1.detect || !shared.knock.codec2.v1.decode ||
+      !shared.knock.codec2.v1.encode ||
+      !shared.knock.codec2.v2.init || !shared.knock.codec2.v2.shutdown ||
+      !shared.knock.codec2.v2.create_state || !shared.knock.codec2.v2.destroy_state ||
+      !shared.knock.codec2.v2.detect || !shared.knock.codec2.v2.decode ||
+      !shared.knock.codec2.v2.encode ||
+      !shared.knock.codec2.context.init || !shared.knock.codec2.context.shutdown ||
+      !shared.knock.codec2.context.create || !shared.knock.codec2.context.destroy ||
+      !shared.knock.codec2.context.set_server_key || !shared.knock.codec2.context.clear_server_key ||
+      !shared.knock.codec2.context.set_openssl_session || !shared.knock.codec2.context.clear_openssl_session ||
+      !shared.knock.codec2.context.add_keychain || !shared.knock.codec2.context.remove_keychain ||
       !shared.knock.debug.init || !shared.knock.debug.shutdown ||
       !shared.knock.debug.dump_packet_fields ||
+      !shared.knock.detect.init || !shared.knock.detect.shutdown ||
+      !shared.knock.detect.detect_kind || !shared.knock.detect.detect ||
+      !shared.knock.detect.kind_name ||
       !shared.knock.digest.init || !shared.knock.digest.shutdown ||
       !shared.knock.digest.generate || !shared.knock.digest.generate_oneshot ||
       !shared.knock.digest.sign || !shared.knock.digest.validate) {
@@ -48,8 +75,8 @@ int init_shared(const SharedContext *ctx) {
     return 0;
   }
 
-  if (!shared.knock.codec.init()) {
-    fprintf(stderr, "Failed to initialize shared.knock.codec\n");
+  if (!shared.knock.codec.v1.init()) {
+    fprintf(stderr, "Failed to initialize shared.knock.codec.v1\n");
     shared = (Shared){0};
     return 0;
   }
@@ -57,7 +84,15 @@ int init_shared(const SharedContext *ctx) {
   debug_ctx.print = ctx->print;
   if (!shared.knock.debug.init(&debug_ctx)) {
     fprintf(stderr, "Failed to initialize shared.knock.debug\n");
-    shared.knock.codec.shutdown();
+    shared.knock.codec.v1.shutdown();
+    shared = (Shared){0};
+    return 0;
+  }
+
+  if (!shared.knock.detect.init()) {
+    fprintf(stderr, "Failed to initialize shared.knock.detect\n");
+    shared.knock.debug.shutdown();
+    shared.knock.codec.v1.shutdown();
     shared = (Shared){0};
     return 0;
   }
@@ -67,8 +102,9 @@ int init_shared(const SharedContext *ctx) {
 
   if (!shared.knock.digest.init(&digest_ctx)) {
     fprintf(stderr, "Failed to initialize shared.knock.digest\n");
+    shared.knock.detect.shutdown();
     shared.knock.debug.shutdown();
-    shared.knock.codec.shutdown();
+    shared.knock.codec.v1.shutdown();
     shared = (Shared){0};
     return 0;
   }
@@ -83,8 +119,9 @@ void shutdown_shared(void) {
   }
 
   shared.knock.digest.shutdown();
+  shared.knock.detect.shutdown();
   shared.knock.debug.shutdown();
-  shared.knock.codec.shutdown();
+  shared.knock.codec.v1.shutdown();
   shared = (Shared){0};
   g_shared_initialized = 0;
 }

@@ -170,7 +170,7 @@ int structureOrDeadDrop(const Opts *opts, const KnockPacket *pkt,
 
     LOGD("Prepared dead-drop payload (%d bytes)", *packed_len);
   } else {
-    int len = shared.knock.codec.pack(pkt, packed, 512);
+    int len = shared.knock.codec.v1.pack(pkt, packed, 512);
     if (len <= 0) {
       LOGE("Failed to pack structured payload\n");
       return 0;

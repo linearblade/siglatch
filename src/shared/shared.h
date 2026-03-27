@@ -9,8 +9,10 @@
 #include "../stdlib/log.h"
 #include "../stdlib/openssl.h"
 #include "../stdlib/print.h"
-#include "knock/codec.h"
+#include "knock/codec/codec.h"
+#include "knock/codec2/codec.h"
 #include "knock/debug.h"
+#include "knock/detect.h"
 #include "knock/digest.h"
 
 typedef struct {
@@ -21,7 +23,9 @@ typedef struct {
 
 typedef struct {
   SharedKnockCodecLib codec;
+  SharedKnockCodec2Lib codec2;
   SharedKnockDebugLib debug;
+  SharedKnockDetectLib detect;
   SharedKnockDigestLib digest;
 } SharedKnockLib;
 

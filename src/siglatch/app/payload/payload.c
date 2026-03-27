@@ -294,6 +294,10 @@ static const AppPayloadLib app_payload_instance = {
     .sign = app_payload_digest_sign,
     .validate = app_payload_digest_validate
   },
+  .reply = {
+    .reset = app_action_reply_reset,
+    .set = app_action_reply_set
+  },
   .structured = {
     .init = app_payload_structured_init,
     .shutdown = app_payload_structured_shutdown,

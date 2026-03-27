@@ -10,7 +10,7 @@
 App app = {
   .builtin = {0},
   .config = {0},
-  .daemon = {0},
+  .daemon3 = {0},
   .help = {0},
   .inbound = {0},
   .keys = {0},
@@ -22,6 +22,7 @@ App app = {
   .runtime = {0},
   .server = {0},
   .signal = {0},
+  .workspace = {0},
   .startup = {0},
   .udp = {0}
 };
@@ -31,7 +32,11 @@ static int g_app_initialized = 0;
 int init_app(void) {
   int builtin_initialized = 0;
   int config_initialized = 0;
-  int daemon_initialized = 0;
+  int daemon3_initialized = 0;
+  int daemon3_helper_initialized = 0;
+  int daemon3_request_initialized = 0;
+  int daemon3_policy_initialized = 0;
+  int daemon3_payload_initialized = 0;
   int help_initialized = 0;
   int inbound_initialized = 0;
   int keys_initialized = 0;
@@ -43,7 +48,9 @@ int init_app(void) {
   int runtime_initialized = 0;
   int server_initialized = 0;
   int signal_initialized = 0;
+  int workspace_initialized = 0;
   int startup_initialized = 0;
+  int tick_initialized = 0;
   int udp_initialized = 0;
 
   if (g_app_initialized) {
@@ -52,7 +59,7 @@ int init_app(void) {
 
   app.builtin = *get_app_builtin_lib();
   app.config = *get_app_config_lib();
-  app.daemon = *get_app_daemon_lib();
+  app.daemon3 = *get_app_daemon3_lib();
   app.help = *get_app_help_lib();
   app.inbound = *get_app_inbound_lib();
   app.keys = *get_app_keys_lib();
@@ -64,6 +71,7 @@ int init_app(void) {
   app.runtime = *get_app_runtime_lib();
   app.server = *get_app_server_lib();
   app.signal = *get_app_signal_lib();
+  app.workspace = *get_app_workspace_lib();
   app.startup = *get_app_startup_lib();
   app.udp = *get_app_udp_lib();
 
@@ -98,7 +106,27 @@ int init_app(void) {
       !app.config.server_set_port || !app.config.server_set_binding ||
       !app.config.deaddrop_by_name || !app.config.deaddrop_by_name_from ||
       !app.config.username_by_id ||
-      !app.daemon.init || !app.daemon.shutdown || !app.daemon.run ||
+      !app.daemon3.init || !app.daemon3.shutdown || !app.daemon3.process ||
+      !app.daemon3.helper.init || !app.daemon3.helper.shutdown ||
+      !app.daemon3.helper.copy_job_to_knock_packet ||
+      !app.daemon3.helper.copy_mux_ingress_to_job ||
+      !app.daemon3.helper.copy_job_reply_to_mux ||
+      !app.daemon3.helper.time_until_ms ||
+      !app.daemon3.request.init || !app.daemon3.request.shutdown ||
+      !app.daemon3.request.resolve_user_action ||
+      !app.daemon3.request.bind_user_action ||
+      !app.daemon3.policy.init || !app.daemon3.policy.shutdown ||
+      !app.daemon3.policy.enforce ||
+      !app.daemon3.runner.init || !app.daemon3.runner.shutdown || !app.daemon3.runner.run ||
+      !app.daemon3.payload.init || !app.daemon3.payload.shutdown ||
+      !app.daemon3.payload.consume ||
+      !app.daemon3.job.init || !app.daemon3.job.shutdown ||
+      !app.daemon3.job.state_init || !app.daemon3.job.state_reset ||
+      !app.daemon3.job.enqueue || !app.daemon3.job.drain ||
+      !app.daemon3.job.consume || !app.daemon3.job.dispose ||
+      !app.daemon3.job.flush_buffer ||
+      !app.daemon3.tick.init || !app.daemon3.tick.shutdown ||
+      !app.daemon3.tick.next_at || !app.daemon3.tick.run ||
       !app.help.init || !app.help.shutdown || !app.help.show ||
       !app.inbound.init || !app.inbound.shutdown ||
       !app.keys.init || !app.keys.shutdown ||
@@ -118,12 +146,14 @@ int init_app(void) {
       !app.payload.digest.init || !app.payload.digest.shutdown ||
       !app.payload.digest.generate || !app.payload.digest.generate_oneshot ||
       !app.payload.digest.sign || !app.payload.digest.validate ||
+      !app.payload.reply.reset || !app.payload.reply.set ||
       !app.payload.structured.init || !app.payload.structured.shutdown || !app.payload.structured.handle ||
       !app.payload.unstructured.init || !app.payload.unstructured.shutdown || !app.payload.unstructured.handle ||
       !app.runtime.init || !app.runtime.shutdown ||
       !app.runtime.invalidate_config_borrows || !app.runtime.reload_config ||
       !app.server.init || !app.server.shutdown ||
       !app.signal.init || !app.signal.shutdown || !app.signal.install || !app.signal.should_exit || !app.signal.request_exit ||
+      !app.workspace.init || !app.workspace.shutdown || !app.workspace.get ||
       !app.startup.init || !app.startup.shutdown ||
       !app.udp.init || !app.udp.shutdown ||
       !app.udp.start_listener || !app.udp.probe_bind || !app.udp.rebind_listener) {
@@ -146,11 +176,35 @@ int init_app(void) {
   }
   config_initialized = 1;
 
-  if (!app.daemon.init()) {
-    fprintf(stderr, "Failed to initialize app.daemon\n");
+  if (!app.daemon3.init()) {
+    fprintf(stderr, "Failed to initialize app.daemon3\n");
     goto fail;
   }
-  daemon_initialized = 1;
+  daemon3_initialized = 1;
+
+  if (!app.daemon3.helper.init()) {
+    fprintf(stderr, "Failed to initialize app.daemon3.helper\n");
+    goto fail;
+  }
+  daemon3_helper_initialized = 1;
+
+  if (!app.daemon3.request.init()) {
+    fprintf(stderr, "Failed to initialize app.daemon3.request\n");
+    goto fail;
+  }
+  daemon3_request_initialized = 1;
+
+  if (!app.daemon3.policy.init()) {
+    fprintf(stderr, "Failed to initialize app.daemon3.policy\n");
+    goto fail;
+  }
+  daemon3_policy_initialized = 1;
+
+  if (!app.daemon3.payload.init()) {
+    fprintf(stderr, "Failed to initialize app.daemon3.payload\n");
+    goto fail;
+  }
+  daemon3_payload_initialized = 1;
 
   if (!app.help.init()) {
     fprintf(stderr, "Failed to initialize app.help\n");
@@ -218,11 +272,23 @@ int init_app(void) {
   }
   signal_initialized = 1;
 
+  if (!app.workspace.init()) {
+    fprintf(stderr, "Failed to initialize app.workspace\n");
+    goto fail;
+  }
+  workspace_initialized = 1;
+
   if (!app.startup.init()) {
     fprintf(stderr, "Failed to initialize app.startup\n");
     goto fail;
   }
   startup_initialized = 1;
+
+  if (!app.daemon3.tick.init()) {
+    fprintf(stderr, "Failed to initialize app.daemon3.tick\n");
+    goto fail;
+  }
+  tick_initialized = 1;
 
   if (!app.udp.init()) {
     fprintf(stderr, "Failed to initialize app.udp\n");
@@ -237,6 +303,9 @@ fail:
   if (udp_initialized) {
     app.udp.shutdown();
   }
+  if (tick_initialized) {
+    app.daemon3.tick.shutdown();
+  }
   if (startup_initialized) {
     app.startup.shutdown();
   }
@@ -245,6 +314,9 @@ fail:
   }
   if (signal_initialized) {
     app.signal.shutdown();
+  }
+  if (workspace_initialized) {
+    app.workspace.shutdown();
   }
   if (policy_initialized) {
     app.policy.shutdown();
@@ -270,8 +342,20 @@ fail:
   if (inbound_initialized) {
     app.inbound.shutdown();
   }
-  if (daemon_initialized) {
-    app.daemon.shutdown();
+  if (daemon3_initialized) {
+    if (daemon3_helper_initialized) {
+      app.daemon3.helper.shutdown();
+    }
+    if (daemon3_request_initialized) {
+      app.daemon3.request.shutdown();
+    }
+    if (daemon3_policy_initialized) {
+      app.daemon3.policy.shutdown();
+    }
+    if (daemon3_payload_initialized) {
+      app.daemon3.payload.shutdown();
+    }
+    app.daemon3.shutdown();
   }
   if (help_initialized) {
     app.help.shutdown();
@@ -284,7 +368,7 @@ fail:
   }
   app.builtin = (AppBuiltinLib){0};
   app.config = (ConfigLib){0};
-  app.daemon = (AppDaemonLib){0};
+  app.daemon3 = (AppDaemon3){0};
   app.help = (AppHelpLib){0};
   app.inbound = (AppInboundLib){0};
   app.keys = (AppKeysLib){0};
@@ -296,6 +380,7 @@ fail:
   app.runtime = (AppRuntimeLib){0};
   app.server = (AppServerLib){0};
   app.signal = (AppSignalLib){0};
+  app.workspace = (AppWorkspaceLib){0};
   app.startup = (AppStartupLib){0};
   app.udp = (AppUdpLib){0};
   g_app_initialized = 0;
@@ -308,10 +393,16 @@ void shutdown_app(void) {
   }
 
   app.builtin.shutdown();
+  app.daemon3.helper.shutdown();
+  app.daemon3.request.shutdown();
+  app.daemon3.payload.shutdown();
+  app.daemon3.shutdown();
   app.udp.shutdown();
+  app.daemon3.tick.shutdown();
   app.startup.shutdown();
   app.server.shutdown();
   app.signal.shutdown();
+  app.workspace.shutdown();
   app.runtime.shutdown();
   app.payload.shutdown();
   app.policy.shutdown();
@@ -320,12 +411,11 @@ void shutdown_app(void) {
   app.keys.shutdown();
   app.object.shutdown();
   app.inbound.shutdown();
-  app.daemon.shutdown();
   app.help.shutdown();
   app.config.shutdown();
   app.builtin = (AppBuiltinLib){0};
   app.config = (ConfigLib){0};
-  app.daemon = (AppDaemonLib){0};
+  app.daemon3 = (AppDaemon3){0};
   app.help = (AppHelpLib){0};
   app.inbound = (AppInboundLib){0};
   app.keys = (AppKeysLib){0};
@@ -337,6 +427,7 @@ void shutdown_app(void) {
   app.runtime = (AppRuntimeLib){0};
   app.server = (AppServerLib){0};
   app.signal = (AppSignalLib){0};
+  app.workspace = (AppWorkspaceLib){0};
   app.startup = (AppStartupLib){0};
   app.udp = (AppUdpLib){0};
   g_app_initialized = 0;

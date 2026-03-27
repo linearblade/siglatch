@@ -1,254 +1,206 @@
 /*
- * lib.udp.m7mux.c
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
  */
-//user space transportation protocol.
-#include "m7mux.h"
 
-#include <errno.h>
-#include <netinet/in.h>
-#include <stdlib.h>
+#include "m7mux.h"
+#include "internal.h"
+
 #include <string.h>
 
+static M7MuxContext g_ctx = {0};
+static M7MuxInternalLib g_internal = {0};
+static const M7MuxConnectLib *g_connect = NULL;
+static const M7MuxInboxLib *g_inbox = NULL;
+static const M7MuxOutboxLib *g_outbox = NULL;
+static const M7MuxIngressLib *g_ingress = NULL;
+static const M7MuxNormalizeLib *g_normalize = NULL;
+static const M7MuxSessionLib *g_session = NULL;
+static const M7MuxStreamLib *g_stream = NULL;
+static const M7MuxEgressLib *g_egress = NULL;
+static M7MuxLib g_lib = {0};
 
-#define M7MUX_MAX_DATAGRAM_SIZE 65535
+#define M7MUX_FLUSH_OUTBOX_OR_RETURN(_state, _now_ms, _did_work, _inbox_timeout) \
+  do { \
+    int _m7mux_flush_rc = 0; \
+    if (g_ctx.internal->outbox->has_pending((_state))) { \
+      _m7mux_flush_rc = g_ctx.internal->outbox->flush( \
+          (_state), (_state)->connect.socket_fd, (_now_ms)); \
+      if (_m7mux_flush_rc < 0) { \
+        return _m7mux_flush_rc; \
+      } \
+      if (_m7mux_flush_rc > 0) { \
+        (_did_work) = 1; \
+        (_inbox_timeout) = 0u; \
+      } \
+    } \
+  } while (0)
 
-typedef struct {
-  int message_ready;
-  size_t recv_len;
-  uint64_t session_id;
-  uint64_t next_message_id;
-  uint32_t stream_id;
-  struct sockaddr_in last_peer;
-  unsigned char recv_buf[M7MUX_MAX_DATAGRAM_SIZE];
-} M7MuxInternal;
-
-static M7MuxContext g_ctx;
-
-static void m7mux_apply_context(const M7MuxContext *ctx)
-{
+static void m7mux_reset_context(void) {
   memset(&g_ctx, 0, sizeof(g_ctx));
-
-  if (ctx)
-    g_ctx = *ctx;
+  g_ctx.internal = &g_internal;
 }
 
-
-/*
- * Library lifecycle
- */
-
-static int m7mux_init(const M7MuxContext *ctx)
-{
-  m7mux_apply_context(ctx);
-  return 1;
-}
-
-static void m7mux_shutdown(void)
-{
-  m7mux_apply_context(NULL);
-}
-
-static int m7mux_set_context(const M7MuxContext *ctx)
-{
-  m7mux_apply_context(ctx);
-  return 1;
-}
-
-/*
- * Port lifecycle
- */
-
-static M7MuxPort *m7mux_open(const M7MuxOpen *opts)
-{
-  M7MuxPort *port = NULL;
-  M7MuxInternal *internal = NULL;
-  int fd = -1;
-
-  port = (M7MuxPort *)calloc(1, sizeof(*port));
-  if (!port)
-    return NULL;
-
-  internal = (M7MuxInternal *)calloc(1, sizeof(*internal));
-  if (!internal)
-    goto fail;
-
-  fd = g_ctx.udp.open();
-  if (fd < 0)
-    goto fail;
-
-  if (!g_ctx.socket.set_buffers(fd,
-                                opts ? opts->recv_buf : 0,
-                                opts ? opts->send_buf : 0))
-    goto fail;
-
-  if (!g_ctx.socket.bind(fd,
-                         opts ? opts->bind_ip : NULL,
-                         opts ? opts->bind_port : 0,
-                         &port->port))
-    goto fail;
-
-  internal->session_id = 1;
-  internal->next_message_id = 1;
-  internal->stream_id = 1;
-
-  port->fd = fd;
-  port->internal = internal;
-
-  return port;
-
-fail:
-  g_ctx.socket.close(fd);
-  free(internal);
-  free(port);
-  return NULL;
-}
-
-static void m7mux_close(M7MuxPort *port)
-{
-  if (!port)
-    return;
-
-  g_ctx.socket.close(port->fd);
-  free(port->internal);
-  free(port);
-}
-
-static int m7mux_send(M7MuxPort *port, const M7MuxSend *opts, const void *buf, size_t len)
-{
-  if (!port || port->fd < 0 || !opts || !opts->ip || !buf)
+static int m7mux_apply_context(const M7MuxContext *ctx) {
+  if (!ctx) {
     return 0;
-
-  return g_ctx.udp.send_ipv4(port->fd, opts->ip, opts->port, buf, len);
-}
-
-
-static M7MuxRecvResult m7mux_receive(M7MuxPort *port, const M7MuxRecv *opts)
-{
-  M7MuxInternal *internal = NULL;
-  int wait_rc = 0;
-  int timeout_ms = -1;
-  size_t received_len = 0;
-
-  if (!port || port->fd < 0 || !port->internal)
-    return M7MUX_RECV_ERROR;
-
-  internal = (M7MuxInternal *)port->internal;
-  if (internal->message_ready)
-    return M7MUX_RECV_COMPLETE;
-
-  if (opts)
-    timeout_ms = opts->timeout_ms;
-
-  if (timeout_ms >= 0) {
-    wait_rc = g_ctx.socket.wait_readable(port->fd, timeout_ms);
-    if (wait_rc == 0)
-      return M7MUX_RECV_NONE;
-    if (wait_rc < 0)
-      return (errno == EINTR) ? M7MUX_RECV_NONE : M7MUX_RECV_ERROR;
   }
 
-  if (!g_ctx.udp.recv_ipv4(port->fd,
-                           internal->recv_buf,
-                           sizeof(internal->recv_buf),
-                           &internal->last_peer,
-                           &received_len)) {
-    if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-      return M7MUX_RECV_NONE;
-    return M7MUX_RECV_ERROR;
-  }
-
-  internal->recv_len = received_len;
-  internal->message_ready = 1;
-
-  return M7MUX_RECV_COMPLETE;
+  g_ctx = *ctx;
+  g_ctx.internal = &g_internal;
+  return 1;
 }
 
-static M7MuxPollResult m7mux_poll(M7MuxPort *port)
-{
-  M7MuxInternal *internal = NULL;
-
-  if (!port || port->fd < 0 || !port->internal)
-    return M7MUX_POLL_ERROR;
-
-  internal = (M7MuxInternal *)port->internal;
-  if (internal->message_ready)
-    return M7MUX_POLL_READY;
-
-  return M7MUX_POLL_NONE;
-}
-//has a potential truncation issue
-static int m7mux_next(M7MuxPort *port, M7MuxMessage *msg)
-{
-  M7MuxInternal *internal = NULL;
-  size_t copy_len = 0;
-
-  if (!port || !port->internal || !msg)
-    return 0;
-
-  internal = (M7MuxInternal *)port->internal;
-  if (!internal->message_ready)
-    return 0;
-
-  copy_len = internal->recv_len;
-  if (msg->buf_len < copy_len)
-    copy_len = msg->buf_len;
-
-  msg->bytes = 0;
-  if (msg->buf && copy_len > 0) {
-    memcpy(msg->buf, internal->recv_buf, copy_len);
-    msg->bytes = copy_len;
+static void m7mux_shutdown_bundle(void) {
+  if (g_connect && g_connect->shutdown) {
+    g_connect->shutdown();
+  }
+  if (g_inbox && g_inbox->shutdown) {
+    g_inbox->shutdown();
+  }
+  if (g_outbox && g_outbox->shutdown) {
+    g_outbox->shutdown();
+  }
+  if (g_egress && g_egress->shutdown) {
+    g_egress->shutdown();
+  }
+  if (g_session && g_session->shutdown) {
+    g_session->shutdown();
+  }
+  if (g_stream && g_stream->shutdown) {
+    g_stream->shutdown();
+  }
+  if (g_normalize && g_normalize->shutdown) {
+    g_normalize->shutdown();
+  }
+  if (g_ingress && g_ingress->shutdown) {
+    g_ingress->shutdown();
   }
 
-  msg->session_id = internal->session_id;
-  msg->stream_id = internal->stream_id;
-  msg->message_id = internal->next_message_id++;
-  msg->complete = 1;
+  g_connect = NULL;
+  g_inbox = NULL;
+  g_outbox = NULL;
+  g_ingress = NULL;
+  g_normalize = NULL;
+  g_session = NULL;
+  g_stream = NULL;
+  g_egress = NULL;
+  memset(&g_internal, 0, sizeof(g_internal));
+  m7mux_reset_context();
+}
 
-  internal->recv_len = 0;
-  internal->message_ready = 0;
+static int m7mux_init(const M7MuxContext *ctx) {
+  g_connect = get_protocol_udp_m7mux_connect_lib();
+  g_inbox = get_protocol_udp_m7mux_inbox_lib();
+  g_outbox = get_protocol_udp_m7mux_outbox_lib();
+  g_ingress = get_protocol_udp_m7mux_ingress_lib();
+  g_normalize = get_protocol_udp_m7mux_normalize_lib();
+  g_session = get_protocol_udp_m7mux_session_lib();
+  g_stream = get_protocol_udp_m7mux_stream_lib();
+  g_egress = get_protocol_udp_m7mux_egress_lib();
+
+  g_internal.connect = g_connect;
+  g_internal.inbox = g_inbox;
+  g_internal.outbox = g_outbox;
+  g_internal.ingress = g_ingress;
+  g_internal.normalize = g_normalize;
+  g_internal.session = g_session;
+  g_internal.stream = g_stream;
+  g_internal.egress = g_egress;
+
+  if (!m7mux_apply_context(ctx)) {
+    return 0;
+  }
+
+  if (!g_connect->init(&g_ctx) ||
+      !g_inbox->init(&g_ctx) ||
+      !g_outbox->init(&g_ctx) ||
+      !g_ingress->init(&g_ctx) ||
+      !g_normalize->init(&g_ctx) ||
+      !g_session->init() ||
+      !g_stream->init() ||
+      !g_egress->init() ||
+      !g_connect->set_context(&g_ctx) ||
+      !g_inbox->set_context(&g_ctx) ||
+      !g_outbox->set_context(&g_ctx) ||
+      !g_ingress->set_context(&g_ctx) ||
+      !g_normalize->set_context(&g_ctx) ||
+      !g_egress->set_context(&g_ctx)) {
+    m7mux_shutdown_bundle();
+    return 0;
+  }
+
+  g_lib.connect = *g_connect;
+  g_lib.inbox = *g_inbox;
+  g_lib.outbox = *g_outbox;
+  return 1;
+}
+
+static int m7mux_set_context(const M7MuxContext *ctx) {
+  if (!m7mux_apply_context(ctx)) {
+    return 0;
+  }
+
+  if (!g_connect->set_context(&g_ctx) ||
+      !g_inbox->set_context(&g_ctx) ||
+      !g_outbox->set_context(&g_ctx) ||
+      !g_ingress->set_context(&g_ctx) ||
+      !g_normalize->set_context(&g_ctx) ||
+      !g_egress->set_context(&g_ctx)) {
+    return 0;
+  }
 
   return 1;
 }
 
-static int m7mux_inspect(M7MuxPort *port, M7MuxInspect *inspect)
-{
-  M7MuxInternal *internal = NULL;
+static int m7mux_pump(M7MuxState *state, uint64_t timeout_ms) {
+  uint64_t now_ms = 0u;
+  uint64_t inbox_timeout = timeout_ms;
+  int rc = 0;
+  int did_work = 0;
 
-  if (!port || !port->internal || !inspect)
+  if (!state) {
     return 0;
+  }
 
-  internal = (M7MuxInternal *)port->internal;
-  memset(inspect, 0, sizeof(*inspect));
-  inspect->sessions_active = (port->fd >= 0) ? 1 : 0;
-  inspect->streams_active = 1;
-  inspect->messages_partial = 0;
-  inspect->messages_ready = internal->message_ready ? 1 : 0;
-  inspect->queue_depth = internal->message_ready ? 1 : 0;
+  if (!state->connect.connected || state->connect.socket_fd < 0) {
+    return 0;
+  }
 
-  return 1;
+  now_ms = g_ctx.time->monotonic_ms();
+
+  M7MUX_FLUSH_OUTBOX_OR_RETURN(state, now_ms, did_work, inbox_timeout);
+
+  rc = g_ctx.internal->inbox->pump(state, inbox_timeout);
+  if (rc < 0) {
+    return rc;
+  }
+
+  if (rc > 0) {
+    did_work = 1;
+  }
+
+  now_ms = g_ctx.time->monotonic_ms();
+
+  M7MUX_FLUSH_OUTBOX_OR_RETURN(state, now_ms, did_work, inbox_timeout);
+
+  return did_work;
 }
 
-/*
- * Installed library instance
- */
+static void m7mux_shutdown(void) {
+  m7mux_shutdown_bundle();
+}
 
-static const M7MuxLib m7mux_instance = {
-  .init        = m7mux_init,
-  .shutdown    = m7mux_shutdown,
-  .set_context = m7mux_set_context,
-  .open        = m7mux_open,
-  .close       = m7mux_close,
+const M7MuxLib *get_lib_m7mux(void) {
+  if (!g_lib.init) {
+    g_lib.init = m7mux_init;
+    g_lib.set_context = m7mux_set_context;
+    g_lib.pump = m7mux_pump;
+    g_lib.shutdown = m7mux_shutdown;
+    g_lib.connect = *get_protocol_udp_m7mux_connect_lib();
+    g_lib.inbox = *get_protocol_udp_m7mux_inbox_lib();
+    g_lib.outbox = *get_protocol_udp_m7mux_outbox_lib();
+  }
 
-  .send        = m7mux_send,
-  .receive     = m7mux_receive,
-
-  .poll        = m7mux_poll,
-  .next        = m7mux_next,
-
-  .inspect     = m7mux_inspect
-};
-
-const M7MuxLib *get_lib_m7mux(void)
-{
-  return &m7mux_instance;
+  return &g_lib;
 }

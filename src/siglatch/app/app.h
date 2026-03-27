@@ -8,7 +8,7 @@
 
 #include "builtin/builtin.h"
 #include "config/config.h"
-#include "daemon/daemon.h"
+#include "daemon3/daemon3.h"
 #include "help/help.h"
 #include "inbound/inbound.h"
 #include "keys/keys.h"
@@ -20,13 +20,14 @@
 #include "runtime/runtime.h"
 #include "server/server.h"
 #include "signal/signal.h"
+#include "workspace/workspace.h"
 #include "startup/startup.h"
 #include "udp/udp.h"
 
 typedef struct {
   AppBuiltinLib builtin;
   ConfigLib config;
-  AppDaemonLib daemon;
+  AppDaemon3 daemon3;
   AppHelpLib help;
   AppInboundLib inbound;
   AppKeysLib keys;
@@ -38,6 +39,7 @@ typedef struct {
   AppRuntimeLib runtime;
   AppServerLib server;
   AppSignalLib signal;
+  AppWorkspaceLib workspace;
   AppStartupLib startup;
   AppUdpLib udp;
 } App;

@@ -7,6 +7,7 @@
 #define SIGLATCH_TIME_H
 
 #include <stddef.h>
+#include <stdint.h>
 #include <time.h>
 
 /**
@@ -29,6 +30,7 @@ typedef struct {
   void (*shutdown)(void);                     ///< Optional teardown logic
   time_t (*now)(void);                        ///< time_t
   long (*unix_ts)(void);                         ///< Unix timestamp as integer
+  uint64_t (*monotonic_ms)(void);             ///< monotonic milliseconds for scheduling
   const char *(*human)(int cache);            ///< ctime-style human string
   const char *(*log)(void);                   ///< ISO 8601 formatted time
   const char *(*unix_string)(void);           ///< Unix timestamp as string

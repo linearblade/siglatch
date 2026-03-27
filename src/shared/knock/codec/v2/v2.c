@@ -3,7 +3,7 @@
  * License: MTL-10 (see LICENSE.md)
  */
 
-#include "v2_form1_codec.h"
+#include "v2.h"
 
 #include <string.h>
 #include <time.h>
@@ -160,6 +160,69 @@ int shared_knock_v2_form1_codec_deserialize(const uint8_t *buf,
   return SL_PAYLOAD_OK;
 }
 
+int shared_knock_v2_form1_codec_normalize(const uint8_t *buf,
+                                          size_t buflen,
+                                          const char *ip,
+                                          uint16_t client_port,
+                                          int encrypted,
+                                          SharedKnockNormalizedUnit *out) {
+  KnockPacketV2Form1 pkt = {0};
+  int deserialize_rc = 0;
+  size_t ip_len = 0;
+  size_t copy_len = 0;
+  int overflow = 0;
+
+  if (!out) {
+    return SL_PAYLOAD_ERR_NULL_PTR;
+  }
+
+  deserialize_rc = shared_knock_v2_form1_codec_deserialize(buf, buflen, &pkt);
+  if (deserialize_rc != SL_PAYLOAD_OK) {
+    return deserialize_rc;
+  }
+
+  overflow = (pkt.inner.payload_len > sizeof(out->payload));
+
+  memset(out, 0, sizeof(*out));
+
+  out->complete = 1;
+  out->wire_version = pkt.outer.version;
+  out->wire_form = pkt.outer.form;
+  out->session_id = 0;
+  out->message_id = 0;
+  out->stream_id = 0;
+  out->fragment_index = 0;
+  out->fragment_count = 1;
+  out->timestamp = pkt.inner.timestamp;
+  out->user_id = pkt.inner.user_id;
+  out->action_id = pkt.inner.action_id;
+  out->challenge = pkt.inner.challenge;
+  memcpy(out->hmac, pkt.inner.hmac, sizeof(out->hmac));
+
+  if (ip) {
+    ip_len = strlen(ip);
+    if (ip_len >= sizeof(out->ip)) {
+      ip_len = sizeof(out->ip) - 1u;
+    }
+    memcpy(out->ip, ip, ip_len);
+    out->ip[ip_len] = '\0';
+  }
+
+  out->client_port = client_port;
+  out->encrypted = encrypted ? 1 : 0;
+  copy_len = pkt.inner.payload_len;
+  if (copy_len > sizeof(out->payload)) {
+    copy_len = sizeof(out->payload);
+  }
+
+  out->payload_len = copy_len;
+  if (copy_len > 0) {
+    memcpy(out->payload, pkt.payload, copy_len);
+  }
+
+  return overflow ? SL_PAYLOAD_ERR_OVERFLOW : SL_PAYLOAD_OK;
+}
+
 const char *shared_knock_v2_form1_codec_deserialize_strerror(int code) {
   switch (code) {
   case SL_PAYLOAD_OK:
@@ -184,6 +247,7 @@ static const SharedKnockV2Form1CodecLib shared_knock_v2_form1_codec = {
   .unpack = shared_knock_v2_form1_codec_unpack,
   .validate = shared_knock_v2_form1_codec_validate,
   .deserialize = shared_knock_v2_form1_codec_deserialize,
+  .normalize = shared_knock_v2_form1_codec_normalize,
   .deserialize_strerror = shared_knock_v2_form1_codec_deserialize_strerror
 };
 

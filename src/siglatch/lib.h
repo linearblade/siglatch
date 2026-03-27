@@ -15,6 +15,8 @@
 #include "../stdlib/signal.h"
 #include "../stdlib/openssl.h"
 #include "../stdlib/net.h"
+#include "../shared/knock/codec2/context.h"
+#include "../stdlib/protocol/udp/m7mux/m7mux.h"
 #include "../stdlib/process/process.h"
 #include "../stdlib/str.h"
 #include "../stdlib/argv.h"
@@ -48,6 +50,7 @@ typedef struct {
   SignalLib signal;
   SiglatchOpenSSL_Lib openssl;
   NetLib net;
+  M7MuxLib m7mux;
   ProcessLib process;
   StrLib str;
   ArgvLib argv;
