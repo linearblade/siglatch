@@ -5,11 +5,12 @@
 
 #include "job.h"
 
-#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #include "../app.h"
+#include "../../../stdlib/protocol/udp/m7mux/normalize/normalize.h"
+
 #define APP_JOB_READY_QUEUE_CAPACITY 64u
 
 static int app_job_init(void) {
@@ -17,6 +18,186 @@ static int app_job_init(void) {
 }
 
 static void app_job_shutdown(void) {
+}
+
+static void app_job_release_owned_buffer(uint8_t **buffer,
+                                         size_t *len,
+                                         size_t *cap) {
+  if (!buffer) {
+    return;
+  }
+
+  free(*buffer);
+  *buffer = NULL;
+
+  if (len) {
+    *len = 0u;
+  }
+
+  if (cap) {
+    *cap = 0u;
+  }
+}
+
+static void app_job_release_payload(AppConnectionJob *job) {
+  if (!job) {
+    return;
+  }
+
+  app_job_release_owned_buffer(&job->payload_buffer, &job->payload_len, &job->payload_cap);
+}
+
+static void app_job_release_response(AppConnectionJob *job) {
+  if (!job) {
+    return;
+  }
+
+  app_job_release_owned_buffer(&job->response_buffer, &job->response_len, &job->response_cap);
+}
+
+static void app_job_release_job(AppConnectionJob *job) {
+  if (!job) {
+    return;
+  }
+
+  app_job_release_payload(job);
+  app_job_release_response(job);
+}
+
+static size_t app_job_next_buffer_cap(size_t current_cap, size_t min_cap, size_t block_size) {
+  size_t next_cap = current_cap;
+
+  if (next_cap < block_size) {
+    next_cap = block_size;
+  }
+
+  if (next_cap == 0u) {
+    next_cap = block_size;
+  }
+
+  while (next_cap < min_cap) {
+    if (next_cap > SIZE_MAX / 2u) {
+      return 0u;
+    }
+
+    next_cap *= 2u;
+  }
+
+  return next_cap;
+}
+
+static int app_job_reserve_buffer(uint8_t **buffer,
+                                  size_t *cap,
+                                  size_t min_cap,
+                                  size_t block_size) {
+  uint8_t *next_buffer = NULL;
+  size_t next_cap = 0u;
+
+  if (!buffer || !cap) {
+    return 0;
+  }
+
+  if (min_cap == 0u) {
+    return 1;
+  }
+
+  if (*buffer && *cap >= min_cap) {
+    return 1;
+  }
+
+  next_cap = app_job_next_buffer_cap(*cap, min_cap, block_size);
+  if (next_cap == 0u) {
+    return 0;
+  }
+
+  next_buffer = realloc(*buffer, next_cap);
+  if (!next_buffer) {
+    return 0;
+  }
+
+  *buffer = next_buffer;
+  *cap = next_cap;
+  return 1;
+}
+
+static int app_job_copy_payload(AppConnectionJob *job,
+                                const uint8_t *payload,
+                                size_t payload_len) {
+  if (!job) {
+    return 0;
+  }
+
+  if (payload_len > 0u && !payload) {
+    return 0;
+  }
+
+  if (payload_len == 0u) {
+    job->payload_len = 0u;
+    return 1;
+  }
+
+  if (!app_job_reserve_buffer(&job->payload_buffer,
+                              &job->payload_cap,
+                              payload_len,
+                              APP_JOB_PAYLOAD_BLOCK_SIZE)) {
+    return 0;
+  }
+
+  memcpy(job->payload_buffer, payload, payload_len);
+  job->payload_len = payload_len;
+  return 1;
+}
+
+static int app_job_reserve_response(AppConnectionJob *job, size_t min_cap) {
+  if (!job) {
+    return 0;
+  }
+
+  return app_job_reserve_buffer(&job->response_buffer,
+                                &job->response_cap,
+                                min_cap,
+                                APP_JOB_RESPONSE_BLOCK_SIZE);
+}
+
+static int app_job_load_from_normal(AppConnectionJob *job,
+                                    const struct M7MuxNormalizedPacket *normal) {
+  if (!job || !normal) {
+    return 0;
+  }
+
+  app_job_release_job(job);
+  memset(job, 0, sizeof(*job));
+
+  job->complete = normal->complete;
+  job->should_reply = normal->should_reply;
+  job->synthetic_session = normal->synthetic_session;
+  job->wire_version = normal->wire_version;
+  job->wire_form = normal->wire_form;
+  job->session_id = normal->session_id;
+  job->message_id = normal->message_id;
+  job->stream_id = normal->stream_id;
+  job->fragment_index = normal->fragment_index;
+  job->fragment_count = normal->fragment_count;
+  job->timestamp = normal->timestamp;
+  job->user_id = normal->user_id;
+  job->action_id = normal->action_id;
+  job->challenge = normal->challenge;
+  memcpy(job->hmac, normal->hmac, sizeof(job->hmac));
+  memcpy(job->ip, normal->ip, sizeof(job->ip));
+  job->ip[sizeof(job->ip) - 1] = '\0';
+  job->client_port = normal->client_port;
+  job->encrypted = normal->encrypted;
+  job->authorized = normal->authorized;
+
+  if (normal->payload_len > 0u) {
+    if (!app_job_copy_payload(job, normal->payload_buffer, normal->payload_len)) {
+      app_job_release_job(job);
+      memset(job, 0, sizeof(*job));
+      return 0;
+    }
+  }
+
+  return 1;
 }
 
 static int app_job_state_init(AppJobState *state) {
@@ -29,73 +210,32 @@ static int app_job_state_init(AppJobState *state) {
 }
 
 static void app_job_state_reset(AppJobState *state) {
+  size_t i = 0;
+
   if (!state) {
     return;
+  }
+
+  for (i = 0; i < APP_JOB_READY_QUEUE_CAPACITY; ++i) {
+    app_job_release_job(&state->ready_queue[i]);
   }
 
   memset(state, 0, sizeof(*state));
 }
 
-static AppConnectionJob *app_job_tail_slot(AppJobState *state) {
-  if (!state || state->ready_count == 0) {
-    return NULL;
-  }
-
-  return &state->ready_queue[(state->ready_tail + APP_JOB_READY_QUEUE_CAPACITY - 1u) %
-                             APP_JOB_READY_QUEUE_CAPACITY];
-}
-
 /*
  * Job storage is a simple ordered queue of complete app units.
  *
- * The runner hands this module normalized units that already carry transport
- * identity and ordered payload bytes. job.enqueue() keeps that order intact
- * so later app code can drain work without redoing transport reassembly.
+ * The runner hands this module normalized packets that already carry transport
+ * identity and ordered payload bytes. job.enqueue() materializes one owned job
+ * from each normalized packet so later app code can drain work without
+ * redoing transport reassembly.
  */
-static int app_job_enqueue(AppJobState *state, AppConnectionJob *job) {
+static int app_job_enqueue(AppJobState *state, const struct M7MuxNormalizedPacket *normal) {
   AppConnectionJob *slot = NULL;
-  AppConnectionJob *tail = NULL;
 
-  if (!state || !job) {
+  if (!state || !normal) {
     return 0;
-  }
-
-  if (job->payload_len > sizeof(job->payload_buffer) ||
-      job->response_len > sizeof(job->response_buffer)) {
-    return 0;
-  }
-
-  tail = app_job_tail_slot(state);
-  if (tail) {
-    if (tail->payload_len + job->payload_len > sizeof(tail->payload_buffer)) {
-      return 0;
-    }
-
-    memcpy(tail->payload_buffer + tail->payload_len, job->payload_buffer, job->payload_len);
-    tail->payload_len += job->payload_len;
-    tail->complete |= job->complete;
-    tail->should_reply |= job->should_reply;
-    tail->synthetic_session = job->synthetic_session;
-    tail->wire_version = job->wire_version;
-    tail->wire_form = job->wire_form;
-    tail->session_id = job->session_id;
-    tail->message_id = job->message_id;
-    tail->stream_id = job->stream_id;
-    tail->fragment_index = job->fragment_index;
-    tail->fragment_count = job->fragment_count;
-    tail->timestamp = job->timestamp;
-    tail->user_id = job->user_id;
-    tail->action_id = job->action_id;
-    tail->challenge = job->challenge;
-    memcpy(tail->hmac, job->hmac, sizeof(tail->hmac));
-    memcpy(tail->ip, job->ip, sizeof(tail->ip));
-    tail->ip[sizeof(tail->ip) - 1] = '\0';
-    tail->client_port = job->client_port;
-    tail->encrypted = job->encrypted;
-    tail->authorized &= job->authorized;
-    memset(tail->response_buffer, 0, sizeof(tail->response_buffer));
-    tail->response_len = 0;
-    return 1;
   }
 
   if (state->ready_count >= APP_JOB_READY_QUEUE_CAPACITY) {
@@ -103,9 +243,12 @@ static int app_job_enqueue(AppJobState *state, AppConnectionJob *job) {
   }
 
   slot = &state->ready_queue[state->ready_tail];
+  app_job_release_job(slot);
   memset(slot, 0, sizeof(*slot));
-  memcpy(slot, job, sizeof(*slot));
-  slot->ip[sizeof(slot->ip) - 1] = '\0';
+
+  if (!app_job_load_from_normal(slot, normal)) {
+    return 0;
+  }
 
   state->ready_tail = (state->ready_tail + 1u) % APP_JOB_READY_QUEUE_CAPACITY;
   state->ready_count++;
@@ -121,11 +264,13 @@ static int app_job_drain(AppJobState *state, AppConnectionJob *out_job) {
   }
 
   if (state->ready_count == 0) {
+    app_job_release_job(out_job);
     memset(out_job, 0, sizeof(*out_job));
     return 0;
   }
 
   slot = &state->ready_queue[state->ready_head];
+  app_job_release_job(out_job);
   memset(out_job, 0, sizeof(*out_job));
   memcpy(out_job, slot, sizeof(*out_job));
   memset(slot, 0, sizeof(*slot));
@@ -148,7 +293,13 @@ static int app_job_consume(AppRuntimeListenerState *listener,
 
 static void app_job_dispose(AppJobState *state, AppConnectionJob *job) {
   (void)state;
-  (void)job;
+
+  if (!job) {
+    return;
+  }
+
+  app_job_release_job(job);
+  memset(job, 0, sizeof(*job));
 }
 
 static int app_job_flush_buffer(AppConnectionJob *job) {
@@ -156,16 +307,8 @@ static int app_job_flush_buffer(AppConnectionJob *job) {
     return 0;
   }
 
-  memset(job->payload_buffer, 0, sizeof(job->payload_buffer));
-  memset(job->response_buffer, 0, sizeof(job->response_buffer));
-  job->payload_len = 0;
-  job->response_len = 0;
-  job->complete = 0;
-  job->should_reply = 0;
-  job->synthetic_session = 0;
-  job->authorized = 0;
-  job->fragment_index = 0;
-  job->fragment_count = 0;
+  app_job_release_job(job);
+  memset(job, 0, sizeof(*job));
   return 1;
 }
 
@@ -177,6 +320,7 @@ static const AppJobLib app_job_instance = {
   .enqueue = app_job_enqueue,
   .drain = app_job_drain,
   .consume = app_job_consume,
+  .reserve_response = app_job_reserve_response,
   .dispose = app_job_dispose,
   .flush_buffer = app_job_flush_buffer
 };

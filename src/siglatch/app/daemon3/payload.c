@@ -6,11 +6,14 @@
 #include "payload.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 #include "../app.h"
 #include "../../lib.h"
 #include "../../../shared/knock/response.h"
+#include "../../../shared/knock/codec/v1/v1_packet.h"
 #include "../../../stdlib/base64.h"
 
 static int app_daemon3_payload_reply_action_prefix(uint8_t action_id,
@@ -27,6 +30,7 @@ static int app_daemon3_payload_stage_reply(
     SiglatchOpenSSLSession *session,
     AppConnectionJob *job,
     const AppActionReply *reply);
+static int app_daemon3_payload_base64_size(size_t input_len, size_t *out_size);
 static int app_daemon3_payload_dispatch_action(
     AppRuntimeListenerState *listener,
     const AppConnectionJob *job,
@@ -40,6 +44,26 @@ static int app_daemon3_payload_init(void) {
 }
 
 static void app_daemon3_payload_shutdown(void) {
+}
+
+static int app_daemon3_payload_base64_size(size_t input_len, size_t *out_size) {
+  size_t groups = 0;
+
+  if (!out_size) {
+    return 0;
+  }
+
+  if (input_len > SIZE_MAX - 2u) {
+    return 0;
+  }
+
+  groups = (input_len + 2u) / 3u;
+  if (groups > (SIZE_MAX - 1u) / 4u) {
+    return 0;
+  }
+
+  *out_size = groups * 4u + 1u;
+  return 1;
 }
 
 static int app_daemon3_payload_reply_action_prefix(uint8_t action_id,
@@ -106,8 +130,8 @@ static int app_daemon3_payload_build_semantic_reply(
 
   rendered_len = strnlen(rendered_message, sizeof(rendered_message));
   max_text_len = out_size - SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE;
-  if (max_text_len > (sizeof(((KnockPacket *)0)->payload) - SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE)) {
-    max_text_len = sizeof(((KnockPacket *)0)->payload) - SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE;
+  if (max_text_len > (SHARED_KNOCK_V1_PAYLOAD_MAX - SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE)) {
+    max_text_len = SHARED_KNOCK_V1_PAYLOAD_MAX - SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE;
   }
   message_len = rendered_len;
   if (message_len > max_text_len) {
@@ -155,6 +179,13 @@ static int app_daemon3_payload_consume(AppRuntimeListenerState *listener,
     return 0;
   }
 
+  if (job->payload_len > 0u && !job->payload_buffer) {
+    LOGE("[daemon3.payload] Missing payload buffer for non-empty job (user_id=%u action_id=%u)\n",
+         job->user_id,
+         job->action_id);
+    return 0;
+  }
+
   if (job->wire_version == 0u) {
     LOGD("[daemon3.payload] Routing raw unstructured payload to fallback handler\n");
     app.payload.unstructured.handle(listener,
@@ -181,30 +212,39 @@ static int app_daemon3_payload_stage_reply(
     AppConnectionJob *job,
     const AppActionReply *reply) {
   size_t response_len = 0;
+  int should_reply = 0;
 
   if (!listener || !session || !job || !reply) {
     return 0;
   }
 
-  job->should_reply = reply->should_reply ? 1 : 0;
+  should_reply = reply->should_reply ? 1 : 0;
   job->response_len = 0;
-  memset(job->response_buffer, 0, sizeof(job->response_buffer));
 
-  if (!reply->should_reply) {
+  if (!should_reply) {
+    job->should_reply = 0;
     return 1;
   }
 
   (void)listener;
   (void)session;
 
-  if (!app_daemon3_payload_build_semantic_reply(job,
-                                                reply,
-                                                job->response_buffer,
-                                                sizeof(job->response_buffer),
-                                                &response_len)) {
+  if (!app.daemon3.job.reserve_response(job, APP_JOB_RESPONSE_BLOCK_SIZE)) {
+    job->should_reply = 0;
     return 0;
   }
 
+  memset(job->response_buffer, 0, job->response_cap);
+  if (!app_daemon3_payload_build_semantic_reply(job,
+                                                reply,
+                                                job->response_buffer,
+                                                job->response_cap,
+                                                &response_len)) {
+    job->should_reply = 0;
+    return 0;
+  }
+
+  job->should_reply = should_reply;
   job->response_len = response_len;
   return 1;
 }
@@ -222,13 +262,16 @@ static int app_daemon3_payload_dispatch_action(
   AppObjectContext object_ctx = {0};
   AppActionReply object_reply = {0};
   AppActionReply shell_reply = {0};
-  char payload_b64[512] = {0};
+  char empty_payload_b64[1] = {0};
+  char *payload_b64 = empty_payload_b64;
   char user_id_str[16];
   char action_id_str[16];
   char encrypted_str[8];
   char *argv[8] = {0};
   int shell_exit_code = 127;
   int ok = 0;
+  size_t payload_b64_size = 0;
+  int payload_b64_allocated = 0;
 
   LOGD("[daemon3.payload] Routing normalized unit to action handlers\n");
 
@@ -321,9 +364,45 @@ static int app_daemon3_payload_dispatch_action(
     return 0;
   }
 
-  // $fixup: this scratch buffer is still capped at 512 bytes; widen it when
-  // shell payload handling is revisited.
-  base64_encode(job->payload_buffer, job->payload_len, payload_b64, sizeof(payload_b64));
+  /*
+   * The shell path sizes its temporary base64 buffer from the actual payload
+   * length so it can handle heap-backed requests without truncation.
+   */
+  if (job->payload_len > 0u) {
+    if (!app_daemon3_payload_base64_size(job->payload_len, &payload_b64_size)) {
+      LOGE("[daemon3.payload] Shell payload too large for base64 buffer (payload_len=%zu)\n",
+           job->payload_len);
+      app.payload.reply.set(&shell_reply, 0, "ERROR %s payload_too_large", action->name);
+      if (!app_daemon3_payload_stage_reply(listener, session, out_job, &shell_reply)) {
+        LOGE("[daemon3.payload] Shell overflow reply stage failed for action (%s)\n", action->name);
+      }
+      return 0;
+    }
+
+    payload_b64 = (char *)malloc(payload_b64_size);
+    if (!payload_b64) {
+      LOGE("[daemon3.payload] Failed to allocate base64 buffer for shell payload (payload_len=%zu)\n",
+           job->payload_len);
+      app.payload.reply.set(&shell_reply, 0, "ERROR %s payload_alloc_failed", action->name);
+      if (!app_daemon3_payload_stage_reply(listener, session, out_job, &shell_reply)) {
+        LOGE("[daemon3.payload] Shell alloc-failure reply stage failed for action (%s)\n",
+             action->name);
+      }
+      return 0;
+    }
+    payload_b64_allocated = 1;
+
+    if (base64_encode(job->payload_buffer, job->payload_len, payload_b64, payload_b64_size) < 0) {
+      LOGE("[daemon3.payload] Shell payload too large for base64 buffer (payload_len=%zu)\n",
+           job->payload_len);
+      app.payload.reply.set(&shell_reply, 0, "ERROR %s payload_too_large", action->name);
+      if (!app_daemon3_payload_stage_reply(listener, session, out_job, &shell_reply)) {
+        LOGE("[daemon3.payload] Shell overflow reply stage failed for action (%s)\n", action->name);
+      }
+      free(payload_b64);
+      return 0;
+    }
+  }
 
   snprintf(user_id_str, sizeof(user_id_str), "%u", job->user_id);
   snprintf(action_id_str, sizeof(action_id_str), "%u", job->action_id);
@@ -356,6 +435,9 @@ static int app_daemon3_payload_dispatch_action(
     if (!app_daemon3_payload_stage_reply(listener, session, out_job, &shell_reply)) {
       LOGE("[daemon3.payload] Shell error reply stage failed for action (%s)\n", action->name);
     }
+    if (payload_b64_allocated) {
+      free(payload_b64);
+    }
     return 0;
   }
 
@@ -369,7 +451,14 @@ static int app_daemon3_payload_dispatch_action(
 
   if (!app_daemon3_payload_stage_reply(listener, session, out_job, &shell_reply)) {
     LOGE("[daemon3.payload] Shell reply stage failed for action (%s)\n", action->name);
+    if (payload_b64_allocated) {
+      free(payload_b64);
+    }
     return 0;
+  }
+
+  if (payload_b64_allocated) {
+    free(payload_b64);
   }
 
   return shell_exit_code == 0;

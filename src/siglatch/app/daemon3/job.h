@@ -10,6 +10,11 @@
 #include "../runtime/runtime.h"
 #include "../../../stdlib/openssl_session.h"
 
+#define APP_JOB_PAYLOAD_BLOCK_SIZE 1280u
+#define APP_JOB_RESPONSE_BLOCK_SIZE 1280u
+
+struct M7MuxNormalizedPacket;
+
 typedef struct AppJobState {
   AppConnectionJob ready_queue[64];
   size_t ready_head;
@@ -22,11 +27,12 @@ typedef struct {
   void (*shutdown)(void);
   int (*state_init)(AppJobState *state);
   void (*state_reset)(AppJobState *state);
-  int (*enqueue)(AppJobState *state, AppConnectionJob *job);
+  int (*enqueue)(AppJobState *state, const struct M7MuxNormalizedPacket *normal);
   int (*drain)(AppJobState *state, AppConnectionJob *out_job);
   int (*consume)(AppRuntimeListenerState *listener,
                  AppConnectionJob *job,
                  SiglatchOpenSSLSession *session);
+  int (*reserve_response)(AppConnectionJob *job, size_t min_cap);
   void (*dispose)(AppJobState *state, AppConnectionJob *job);
   int (*flush_buffer)(AppConnectionJob *job);
 } AppJobLib;

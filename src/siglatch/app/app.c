@@ -107,7 +107,6 @@ int init_app(void) {
       !app.daemon3.init || !app.daemon3.shutdown || !app.daemon3.process ||
       !app.daemon3.helper.init || !app.daemon3.helper.shutdown ||
       !app.daemon3.helper.copy_job_to_knock_packet ||
-      !app.daemon3.helper.copy_mux_ingress_to_job ||
       !app.daemon3.helper.copy_job_reply_to_mux ||
       !app.daemon3.helper.time_until_ms ||
       !app.daemon3.auth.init || !app.daemon3.auth.shutdown ||
@@ -123,7 +122,9 @@ int init_app(void) {
       !app.daemon3.job.init || !app.daemon3.job.shutdown ||
       !app.daemon3.job.state_init || !app.daemon3.job.state_reset ||
       !app.daemon3.job.enqueue || !app.daemon3.job.drain ||
-      !app.daemon3.job.consume || !app.daemon3.job.dispose ||
+      !app.daemon3.job.consume ||
+      !app.daemon3.job.reserve_response ||
+      !app.daemon3.job.dispose ||
       !app.daemon3.job.flush_buffer ||
       !app.daemon3.tick.init || !app.daemon3.tick.shutdown ||
       !app.daemon3.tick.next_at || !app.daemon3.tick.run ||

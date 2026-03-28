@@ -44,6 +44,12 @@ int app_object_test_static_handle(const AppObjectContext *ctx, AppActionReply *r
     return 1;
   }
 
+  if (!ctx->job->payload_buffer) {
+    LOGE("[object:test_static] payload buffer missing for non-empty job\n");
+    app_action_reply_set(reply, 0, "INVALID_PAYLOAD");
+    return 0;
+  }
+
   if (!app_object_test_static_payload_is_ascii(ctx->job->payload_buffer, payload_len)) {
     app_action_reply_set(reply, 1, "TEST_STATIC payload skipped");
     return 1;

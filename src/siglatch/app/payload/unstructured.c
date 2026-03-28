@@ -6,7 +6,9 @@
 #include "unstructured.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 #include "../app.h"
 #include "../../lib.h"
@@ -18,6 +20,7 @@ static void app_payload_unstructured_print_hex(const unsigned char *input, size_
 static void app_payload_unstructured_handle_invalid(
     const unsigned char *buf,
     size_t buflen);
+static int app_payload_unstructured_base64_size(size_t input_len, size_t *out_size);
 
 int app_payload_unstructured_init(void) {
   return 1;
@@ -35,13 +38,22 @@ void app_payload_unstructured_handle(
   char match[512] = {0};
   size_t match_len = 0;
   char encrypted_str[8];
-  char payload_b64[512] = {0};
+  char empty_payload_b64[1] = {0};
+  char *payload_b64 = empty_payload_b64;
   char *argv[5] = {0};
+  size_t payload_b64_size = 0;
+  size_t payload_tail_len = 0;
+  int payload_b64_allocated = 0;
 
   LOGD("[payload] [unstructured] processing unstructured data.\n");
 
   if (!listener || !listener->server) {
     LOGE("[payload] [unstructured] current server context is NULL; dropping packet.\n");
+    return;
+  }
+
+  if (payload_len > 0u && !payload) {
+    LOGE("[payload] [unstructured] payload buffer is NULL for non-empty input\n");
     return;
   }
 
@@ -61,7 +73,32 @@ void app_payload_unstructured_handle(
   }
 
   snprintf(encrypted_str, sizeof(encrypted_str), "%d", listener->server->secure ? 1 : 0);
-  base64_encode(payload + match_len, payload_len - match_len, payload_b64, sizeof(payload_b64));
+  payload_tail_len = payload_len - match_len;
+  if (payload_tail_len > 0u) {
+    if (!app_payload_unstructured_base64_size(payload_tail_len, &payload_b64_size)) {
+      LOGE("[payload] [unstructured] payload too large for base64 buffer (%zu bytes)\n",
+           payload_tail_len);
+      return;
+    }
+
+    payload_b64 = (char *)malloc(payload_b64_size);
+    if (!payload_b64) {
+      LOGE("[payload] [unstructured] failed to allocate base64 buffer for %zu bytes\n",
+           payload_tail_len);
+      return;
+    }
+    payload_b64_allocated = 1;
+
+    if (base64_encode(payload + match_len,
+                      payload_tail_len,
+                      payload_b64,
+                      payload_b64_size) < 0) {
+      LOGE("[payload] [unstructured] payload too large for base64 buffer (%zu bytes)\n",
+           payload_tail_len);
+      free(payload_b64);
+      return;
+    }
+  }
 
   argv[0] = (char *)ip_addr;
   argv[1] = (char *)deaddrop->name;
@@ -82,6 +119,10 @@ void app_payload_unstructured_handle(
       argv,
       deaddrop->exec_split,
       deaddrop->run_as[0] ? deaddrop->run_as : NULL);
+
+  if (payload_b64_allocated) {
+    free(payload_b64);
+  }
 }
 
 static void app_payload_unstructured_handle_invalid(
@@ -94,6 +135,26 @@ static void app_payload_unstructured_handle_invalid(
     LOGW("[payload] Unmatched deaddrop  payload is binary/non-ASCII and invalid structure.\n");
     app_payload_unstructured_print_hex(buf, buflen);
   }
+}
+
+static int app_payload_unstructured_base64_size(size_t input_len, size_t *out_size) {
+  size_t groups = 0;
+
+  if (!out_size) {
+    return 0;
+  }
+
+  if (input_len > SIZE_MAX - 2u) {
+    return 0;
+  }
+
+  groups = (input_len + 2u) / 3u;
+  if (groups > (SIZE_MAX - 1u) / 4u) {
+    return 0;
+  }
+
+  *out_size = groups * 4u + 1u;
+  return 1;
 }
 
 static int app_payload_unstructured_is_ascii(const unsigned char *buf, size_t len) {

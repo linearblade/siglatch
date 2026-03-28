@@ -28,6 +28,11 @@ int sample_blurt_dynamic_handle(const AppObjectContext *ctx, AppActionReply *rep
     return 1;
   }
 
+  if (!ctx->job->payload_buffer) {
+    sample_blurt_dynamic_reply_set(reply, 0, "INVALID_PAYLOAD");
+    return 0;
+  }
+
   if (!sample_blurt_dynamic_payload_is_ascii(ctx->job->payload_buffer, payload_len)) {
     sample_blurt_dynamic_reply_set(reply, 1, "SAMPLE_DYNAMIC_BLURT payload skipped");
     return 1;

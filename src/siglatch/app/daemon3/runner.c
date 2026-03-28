@@ -15,6 +15,7 @@
 #include "../../lib.h"
 #include "../../../shared/knock/response.h"
 #include "../../../shared/shared.h"
+#include "../../../stdlib/protocol/udp/m7mux/normalize/normalize.h"
 
 static int app_daemon3_stage_outbox_reply(M7MuxState *mux_state,
                                           AppRuntimeListenerState *listener,
@@ -58,14 +59,17 @@ static int app_daemon3_drain_jobs_and_flush(AppRuntimeListenerState *listener,
     (void)app.daemon3.payload.consume(listener, &job, session);
     if (job.should_reply || job.response_len > 0u) {
       memset(&normal, 0, sizeof(normal));
-      app.daemon3.helper.copy_job_reply_to_mux(&job, &normal);
+      if (!app.daemon3.helper.copy_job_reply_to_mux(&job, &normal)) {
+        app.daemon3.job.dispose(job_state, &job);
+        return -1;
+      }
       rc = app_daemon3_stage_outbox_reply(mux_state, listener, &normal);
       if (rc <= 0) {
+        app.daemon3.job.dispose(job_state, &job);
         return rc < 0 ? rc : -1;
       }
     }
     app.daemon3.job.dispose(job_state, &job);
-    memset(&job, 0, sizeof(job));
   }
 
   now_ms = lib.time.monotonic_ms();
@@ -91,7 +95,6 @@ static void app_daemon3_run(AppRuntimeListenerState *listener) {
   AppWorkspace *workspace = NULL;
   M7MuxState *mux_state = NULL;
   AppJobState job_state = {0};
-  AppConnectionJob ingress_job = {0};
   M7MuxNormalizedPacket normal = {0};
   uint64_t now_ms = 0;
   uint64_t next_tick_at = 0;
@@ -165,13 +168,9 @@ static void app_daemon3_run(AppRuntimeListenerState *listener) {
         break;
       }
 
-      app.daemon3.helper.copy_mux_ingress_to_job(&normal, &ingress_job);
-      if (!app.daemon3.job.enqueue(&job_state, &ingress_job)) {
-        memset(&ingress_job, 0, sizeof(ingress_job));
+      if (!app.daemon3.job.enqueue(&job_state, &normal)) {
         continue;
       }
-
-      memset(&ingress_job, 0, sizeof(ingress_job));
     }
 
     if (now_ms >= next_tick_at) {

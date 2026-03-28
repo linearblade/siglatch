@@ -34,6 +34,10 @@ int app_builtin_parse_bind_target(const AppConnectionJob *job,
     return 1;
   }
 
+  if (!job->payload_buffer) {
+    return 0;
+  }
+
   if (job->payload_len >= sizeof(payload)) {
     return 0;
   }

@@ -46,6 +46,12 @@ int app_builtin_test_blurt_handle(const AppBuiltinContext *ctx, AppActionReply *
     return 1;
   }
 
+  if (!ctx->job->payload_buffer) {
+    lib.log.emit(LOG_ERROR, 1, "[builtin:test_blurt] payload buffer missing for non-empty job");
+    app_action_reply_set(reply, 0, "INVALID_PAYLOAD");
+    return 0;
+  }
+
   if (!app_builtin_test_blurt_payload_is_ascii(
           ctx->job->payload_buffer,
           ctx->job->payload_len)) {

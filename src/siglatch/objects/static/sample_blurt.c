@@ -44,6 +44,12 @@ int siglatch_object_sample_blurt_static_handle(const AppObjectContext *ctx, AppA
     return 1;
   }
 
+  if (!ctx->job->payload_buffer) {
+    LOGE("[object:sample_blurt_static] payload buffer missing for non-empty job\n");
+    app_action_reply_set(reply, 0, "INVALID_PAYLOAD");
+    return 0;
+  }
+
   if (!siglatch_object_sample_blurt_payload_is_ascii(ctx->job->payload_buffer, payload_len)) {
     app_action_reply_set(reply, 1, "SAMPLE_STATIC_BLURT payload skipped");
     return 1;

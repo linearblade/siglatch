@@ -8,7 +8,9 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "../app.h"
 #include "../../../shared/knock/response.h"
+#include "../../../stdlib/protocol/udp/m7mux/normalize/normalize.h"
 
 static int app_daemon3_helper_init(void) {
   return 1;
@@ -23,7 +25,8 @@ static int app_daemon3_copy_job_to_knock_packet(const AppConnectionJob *job,
     return 0;
   }
 
-  if (job->payload_len > sizeof(out_pkt->payload)) {
+  if ((job->payload_len > 0u && !job->payload_buffer) ||
+      job->payload_len > sizeof(out_pkt->payload)) {
     return 0;
   }
 
@@ -53,43 +56,15 @@ static int app_daemon3_copy_job_to_knock_packet(const AppConnectionJob *job,
   return 1;
 }
 
-static void app_daemon3_copy_mux_ingress_to_job(const M7MuxNormalizedPacket *normal,
-                                                AppConnectionJob *out_job) {
-  if (!normal || !out_job) {
-    return;
-  }
-
-  memset(out_job, 0, sizeof(*out_job));
-  out_job->complete = normal->complete;
-  out_job->should_reply = normal->should_reply;
-  out_job->synthetic_session = normal->synthetic_session;
-  out_job->wire_version = normal->wire_version;
-  out_job->wire_form = normal->wire_form;
-  out_job->session_id = normal->session_id;
-  out_job->message_id = normal->message_id;
-  out_job->stream_id = normal->stream_id;
-  out_job->fragment_index = normal->fragment_index;
-  out_job->fragment_count = normal->fragment_count;
-  out_job->timestamp = normal->timestamp;
-  out_job->user_id = normal->user_id;
-  out_job->action_id = normal->action_id;
-  out_job->challenge = normal->challenge;
-  memcpy(out_job->hmac, normal->hmac, sizeof(out_job->hmac));
-  memcpy(out_job->ip, normal->ip, sizeof(out_job->ip));
-  out_job->ip[sizeof(out_job->ip) - 1] = '\0';
-  out_job->client_port = normal->client_port;
-  out_job->encrypted = normal->encrypted;
-  out_job->authorized = normal->authorized;
-  out_job->payload_len = normal->payload_len;
-  if (normal->payload_len > 0u) {
-    memcpy(out_job->payload_buffer, normal->payload_buffer, normal->payload_len);
-  }
-}
-
-static void app_daemon3_copy_job_reply_to_mux(const AppConnectionJob *job,
-                                              M7MuxNormalizedPacket *out_normal) {
+static int app_daemon3_copy_job_reply_to_mux(const AppConnectionJob *job,
+                                             struct M7MuxNormalizedPacket *out_normal) {
   if (!job || !out_normal) {
-    return;
+    return 0;
+  }
+
+  if ((job->response_len > 0u && !job->response_buffer) ||
+      job->response_len > sizeof(out_normal->payload_buffer)) {
+    return 0;
   }
 
   memset(out_normal, 0, sizeof(*out_normal));
@@ -120,6 +95,7 @@ static void app_daemon3_copy_job_reply_to_mux(const AppConnectionJob *job,
   }
   out_normal->response_len = 0u;
   memset(out_normal->response_buffer, 0, sizeof(out_normal->response_buffer));
+  return 1;
 }
 
 static uint64_t app_daemon3_time_until_ms(uint64_t next_tick_at, uint64_t now_ms) {
@@ -134,7 +110,6 @@ static const AppDaemon3HelperLib app_daemon3_helper_instance = {
   .init = app_daemon3_helper_init,
   .shutdown = app_daemon3_helper_shutdown,
   .copy_job_to_knock_packet = app_daemon3_copy_job_to_knock_packet,
-  .copy_mux_ingress_to_job = app_daemon3_copy_mux_ingress_to_job,
   .copy_job_reply_to_mux = app_daemon3_copy_job_reply_to_mux,
   .time_until_ms = app_daemon3_time_until_ms
 };
