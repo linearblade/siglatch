@@ -10,7 +10,7 @@
 Shared shared = {
   .knock = {
     .codec = {0},
-    .codec2 = {0},
+    .codec3 = {0},
     .debug = {0},
     .detect = {0},
     .digest = {0}
@@ -33,7 +33,7 @@ int init_shared(const SharedContext *ctx) {
   }
 
   shared.knock.codec = *get_shared_knock_codec_lib();
-  shared.knock.codec2 = *get_shared_knock_codec2_lib();
+  shared.knock.codec3 = *get_shared_knock_codec3_lib();
   shared.knock.debug = *get_shared_knock_debug_lib();
   shared.knock.detect = *get_shared_knock_detect_lib();
   shared.knock.digest = *get_shared_knock_digest_lib();
@@ -48,20 +48,20 @@ int init_shared(const SharedContext *ctx) {
       !shared.knock.codec.v2.validate || !shared.knock.codec.v2.deserialize ||
       !shared.knock.codec.v2.normalize ||
       !shared.knock.codec.v2.deserialize_strerror ||
-      !shared.knock.codec2.encode ||
-      !shared.knock.codec2.v1.init || !shared.knock.codec2.v1.shutdown ||
-      !shared.knock.codec2.v1.create_state || !shared.knock.codec2.v1.destroy_state ||
-      !shared.knock.codec2.v1.detect || !shared.knock.codec2.v1.decode ||
-      !shared.knock.codec2.v1.encode ||
-      !shared.knock.codec2.v2.init || !shared.knock.codec2.v2.shutdown ||
-      !shared.knock.codec2.v2.create_state || !shared.knock.codec2.v2.destroy_state ||
-      !shared.knock.codec2.v2.detect || !shared.knock.codec2.v2.decode ||
-      !shared.knock.codec2.v2.encode ||
-      !shared.knock.codec2.context.init || !shared.knock.codec2.context.shutdown ||
-      !shared.knock.codec2.context.create || !shared.knock.codec2.context.destroy ||
-      !shared.knock.codec2.context.set_server_key || !shared.knock.codec2.context.clear_server_key ||
-      !shared.knock.codec2.context.set_openssl_session || !shared.knock.codec2.context.clear_openssl_session ||
-      !shared.knock.codec2.context.add_keychain || !shared.knock.codec2.context.remove_keychain ||
+      !shared.knock.codec3.encode ||
+      !shared.knock.codec3.v1.init || !shared.knock.codec3.v1.shutdown ||
+      !shared.knock.codec3.v1.create_state || !shared.knock.codec3.v1.destroy_state ||
+      !shared.knock.codec3.v1.detect || !shared.knock.codec3.v1.decode ||
+      !shared.knock.codec3.v1.encode ||
+      !shared.knock.codec3.v2.init || !shared.knock.codec3.v2.shutdown ||
+      !shared.knock.codec3.v2.create_state || !shared.knock.codec3.v2.destroy_state ||
+      !shared.knock.codec3.v2.detect || !shared.knock.codec3.v2.decode ||
+      !shared.knock.codec3.v2.encode ||
+      !shared.knock.codec3.context.init || !shared.knock.codec3.context.shutdown ||
+      !shared.knock.codec3.context.create || !shared.knock.codec3.context.destroy ||
+      !shared.knock.codec3.context.set_server_key || !shared.knock.codec3.context.clear_server_key ||
+      !shared.knock.codec3.context.set_openssl_session || !shared.knock.codec3.context.clear_openssl_session ||
+      !shared.knock.codec3.context.add_keychain || !shared.knock.codec3.context.remove_keychain ||
       !shared.knock.debug.init || !shared.knock.debug.shutdown ||
       !shared.knock.debug.dump_packet_fields ||
       !shared.knock.detect.init || !shared.knock.detect.shutdown ||

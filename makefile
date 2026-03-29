@@ -102,15 +102,15 @@ SRC_SIGLATCHD = \
     src/siglatch/app/builtin/test_blurt.c \
     src/siglatch/app/config/config.c \
     src/siglatch/app/config/debug.c \
-    src/siglatch/app/daemon3/daemon3.c \
-    src/siglatch/app/daemon3/helper.c \
-    src/siglatch/app/daemon3/auth.c \
-    src/siglatch/app/daemon3/job.c \
-    src/siglatch/app/daemon3/request.c \
-    src/siglatch/app/daemon3/policy.c \
-    src/siglatch/app/daemon3/payload.c \
-    src/siglatch/app/daemon3/runner.c \
-    src/siglatch/app/daemon3/tick.c \
+    src/siglatch/app/daemon4/daemon4.c \
+    src/siglatch/app/daemon4/helper.c \
+    src/siglatch/app/daemon4/auth.c \
+    src/siglatch/app/daemon4/job.c \
+    src/siglatch/app/daemon4/request.c \
+    src/siglatch/app/daemon4/policy.c \
+    src/siglatch/app/daemon4/payload.c \
+    src/siglatch/app/daemon4/runner.c \
+    src/siglatch/app/daemon4/tick.c \
     src/siglatch/app/help/help.c \
     src/siglatch/app/inbound/inbound.c \
     src/siglatch/app/inbound/crypto/crypto.c \
@@ -139,15 +139,15 @@ SRC_SIGLATCHD = \
     src/siglatch/lib.c \
     src/shared/shared.c \
     src/shared/knock/codec/codec.c \
-    src/shared/knock/codec2/codec.c \
-    src/shared/knock/codec2/context.c \
+    src/shared/knock/codec3/codec.c \
+    src/shared/knock/codec3/context.c \
     src/shared/knock/detect.c \
     src/shared/knock/debug.c \
     src/shared/knock/digest.c \
     src/shared/knock/codec/v1/v1.c \
     src/shared/knock/codec/v2/v2.c \
-    src/shared/knock/codec2/v1/v1.c \
-    src/shared/knock/codec2/v2/v2.c \
+    src/shared/knock/codec3/v1/v1.c \
+    src/shared/knock/codec3/v2/v2.c \
     src/stdlib/log.c \
     src/stdlib/hmac_key.c \
     src/stdlib/nonce.c \
@@ -159,16 +159,16 @@ SRC_SIGLATCHD = \
     src/stdlib/net/ip/range/range.c \
     src/stdlib/net/socket/socket.c \
     src/stdlib/net/udp/udp.c \
-    src/stdlib/protocol/udp/m7mux/connect/connect.c \
-    src/stdlib/protocol/udp/m7mux/inbox/inbox.c \
-    src/stdlib/protocol/udp/m7mux/outbox/outbox.c \
-    src/stdlib/protocol/udp/m7mux/ingress/ingress.c \
-    src/stdlib/protocol/udp/m7mux/normalize/adapter/adapter.c \
-    src/stdlib/protocol/udp/m7mux/normalize/normalize.c \
-    src/stdlib/protocol/udp/m7mux/session/session.c \
-    src/stdlib/protocol/udp/m7mux/stream/stream.c \
-    src/stdlib/protocol/udp/m7mux/egress/egress.c \
-    src/stdlib/protocol/udp/m7mux/m7mux.c \
+    src/stdlib/protocol/udp/m7mux2/connect/connect.c \
+    src/stdlib/protocol/udp/m7mux2/inbox/inbox.c \
+    src/stdlib/protocol/udp/m7mux2/outbox/outbox.c \
+    src/stdlib/protocol/udp/m7mux2/ingress/ingress.c \
+    src/stdlib/protocol/udp/m7mux2/normalize/adapter/adapter.c \
+    src/stdlib/protocol/udp/m7mux2/normalize/normalize.c \
+    src/stdlib/protocol/udp/m7mux2/session/session.c \
+    src/stdlib/protocol/udp/m7mux2/stream/stream.c \
+    src/stdlib/protocol/udp/m7mux2/egress/egress.c \
+    src/stdlib/protocol/udp/m7mux2/m7mux2.c \
     src/stdlib/process/process.c \
     src/stdlib/process/user/user.c \
     src/stdlib/utils.c \
@@ -199,15 +199,15 @@ SRC_KNOCKER = \
     src/knock/app/transmit/helper.c \
     src/shared/shared.c \
     src/shared/knock/codec/codec.c \
-    src/shared/knock/codec2/codec.c \
-    src/shared/knock/codec2/context.c \
+    src/shared/knock/codec3/codec.c \
+    src/shared/knock/codec3/context.c \
     src/shared/knock/detect.c \
     src/shared/knock/debug.c \
     src/shared/knock/digest.c \
     src/shared/knock/codec/v1/v1.c \
     src/shared/knock/codec/v2/v2.c \
-    src/shared/knock/codec2/v1/v1.c \
-    src/shared/knock/codec2/v2/v2.c \
+    src/shared/knock/codec3/v1/v1.c \
+    src/shared/knock/codec3/v2/v2.c \
     src/stdlib/argv.c \
     src/stdlib/parse/ini.c \
     src/stdlib/parse/parse.c \
@@ -220,16 +220,16 @@ SRC_KNOCKER = \
     src/stdlib/net/ip/range/range.c \
     src/stdlib/net/socket/socket.c \
     src/stdlib/net/udp/udp.c \
-    src/stdlib/protocol/udp/m7mux/connect/connect.c \
-    src/stdlib/protocol/udp/m7mux/inbox/inbox.c \
-    src/stdlib/protocol/udp/m7mux/outbox/outbox.c \
-    src/stdlib/protocol/udp/m7mux/ingress/ingress.c \
-    src/stdlib/protocol/udp/m7mux/normalize/adapter/adapter.c \
-    src/stdlib/protocol/udp/m7mux/normalize/normalize.c \
-    src/stdlib/protocol/udp/m7mux/session/session.c \
-    src/stdlib/protocol/udp/m7mux/stream/stream.c \
-    src/stdlib/protocol/udp/m7mux/egress/egress.c \
-    src/stdlib/protocol/udp/m7mux/m7mux.c \
+    src/stdlib/protocol/udp/m7mux2/connect/connect.c \
+    src/stdlib/protocol/udp/m7mux2/inbox/inbox.c \
+    src/stdlib/protocol/udp/m7mux2/outbox/outbox.c \
+    src/stdlib/protocol/udp/m7mux2/ingress/ingress.c \
+    src/stdlib/protocol/udp/m7mux2/normalize/adapter/adapter.c \
+    src/stdlib/protocol/udp/m7mux2/normalize/normalize.c \
+    src/stdlib/protocol/udp/m7mux2/session/session.c \
+    src/stdlib/protocol/udp/m7mux2/stream/stream.c \
+    src/stdlib/protocol/udp/m7mux2/egress/egress.c \
+    src/stdlib/protocol/udp/m7mux2/m7mux2.c \
     src/stdlib/nonce.c \
     src/stdlib/signal.c \
     src/stdlib/time.c \

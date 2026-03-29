@@ -28,7 +28,8 @@ typedef struct {
   char ip[64];
   uint16_t client_port;
   int encrypted;
-  int authorized;
+  int wire_decode;
+  int wire_auth;
   uint8_t payload[SHARED_KNOCK_NORMALIZED_PAYLOAD_MAX];
   size_t payload_len;
 } SharedKnockNormalizedUnit;

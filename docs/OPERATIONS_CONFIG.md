@@ -47,6 +47,8 @@ port = 50000
 bind_ip = 127.0.0.1
 allowed_ips = 127.0.0.1,192.168.1.0/24
 secure = yes
+enforce_wire_decode = no
+enforce_wire_auth = no
 output_mode = unicode
 payload_overflow = inherit
 priv_key_path = /etc/siglatch/server_priv.pem
@@ -66,6 +68,8 @@ log_file = /custom/log/here
     * `127.0.0.1,192.168.1.0/24`
   * This is enforced at runtime before user/action dispatch.
 * **secure**: Enforces encrypted key validation.
+* **enforce_wire_decode**: When `yes`, drop packets that fail wire decode or only fall back to unstructured handling. Default: `no`. This is consumed by the mux layer before job dispatch.
+* **enforce_wire_auth**: When `yes`, drop structured packets that fail mux-level wire auth instead of passing them onward. Default: `no`. This is consumed by the mux layer before job dispatch.
 * **priv\_key\_path**: Path to the server's private RSA key.
 * **deaddrops**: Comma-separated list of `deaddrop` modules this server responds to.
 * **actions**: Comma-separated list of `action` modules available.
@@ -84,6 +88,8 @@ label = Insecure Server
 port = 50001
 deaddrops = pubkey
 secure = no
+enforce_wire_decode = no
+enforce_wire_auth = no
 ```
 
 * Same options as above, but without key validation. Disabled by default.
@@ -122,6 +128,7 @@ id = 1
 enabled = yes
 constructor = /usr/bin/perl /etc/siglatch/scripts/ipAuth/grant.pl
 exec_split = yes
+enforce_wire_auth = no
 payload_overflow = inherit
 allowed_ips = 127.0.0.1,10.0.0.0/8
 ```
@@ -130,6 +137,7 @@ allowed_ips = 127.0.0.1,10.0.0.0/8
 * **enabled**: Enables or disables this action.
 * **constructor**: Executable path and optional command prefix.
 * **exec\_split**: Whether constructor should be split into command + args before exec.
+* **enforce_wire_auth**: When `yes`, require trusted wire auth before daemon-side job handling. Default: `no`. This is app/job policy metadata; the transport layer does not consume it directly.
 * **payload\_overflow**: Per-action override for malformed structured payload length handling. Values: `reject`, `clamp`, `inherit`.
 * **allowed\_ips**: Optional comma-separated list of IPv4 literals and/or IPv4 CIDR ranges allowed to invoke this action.
   * Examples:
@@ -168,6 +176,9 @@ allowed_ips = 127.0.0.1/32
 * Overflow enforcement applies to structured packet deserialization only.
 * With `reject`, malformed structured packets are dropped and never dispatched to action scripts.
 * With `clamp`, malformed structured packets are length-clamped and continue through normal structured checks (including signature validation) before dispatch.
+* Secure servers reject plaintext receive traffic in the codec / mux path; only encrypted packets are accepted on the structured path.
+* Wire enforcement policy is intentionally split from job authorization: server-scoped `enforce_wire_decode` and `enforce_wire_auth` govern mux-level packet handling, while action-scoped `enforce_wire_auth` is enforced in daemon4 policy after the job has been decoded.
+* The `change_setting` builtin currently accepts server-scoped wire policy updates via payload lines such as `server.enforce_wire_decode = yes` and `server.enforce_wire_auth = no`. Action-scoped wire policy is not part of that live-setting path yet.
 * All paths should be absolute.
 * Scripts will run without the environment. be aware of this when writing scripts.
 * User keys should be created via `install.sh` or copied securely.
@@ -178,4 +189,5 @@ allowed_ips = 127.0.0.1/32
 * `reload_config` can automatically rebind when the new listener tuple can be staged safely ahead of commit.
 * Same-port `bind_ip` changes are intentionally not hot-swapped during `reload_config`; use `rebind_listener` or restart for that case.
 * Config parsing is strict. Comments must begin with `#`.
+* Wire reject policy keys are parsed from config now; runtime setting propagation and hot-reload handling remain to be wired into the settings flow later.
 * Be sure to reload or restart `siglatchd` after making config changes.

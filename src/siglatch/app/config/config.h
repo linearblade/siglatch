@@ -73,6 +73,7 @@ typedef struct {
   int enabled;
   int require_ascii;
   int exec_split;
+  int enforce_wire_auth;                           ///< App/job-layer only; mux does not consume this
   siglatch_payload_overflow_policy payload_overflow;
   char allowed_ips[MAX_IP_RANGES][MAX_IP_RANGE_LEN];
   int allowed_ip_count;
@@ -131,6 +132,8 @@ typedef struct {
   int allowed_ip_count;
   int port;                                    ///< UDP port
   int secure;                                  ///< 1 = encrypted, 0 = plaintext
+  int enforce_wire_decode;                     ///< Mux-layer policy
+  int enforce_wire_auth;                       ///< Mux-layer policy
   int output_mode;                             ///< 0=unset, else SL_OUTPUT_MODE_*
   siglatch_payload_overflow_policy payload_overflow;
 
@@ -195,6 +198,8 @@ typedef struct {
   const siglatch_server *(*server_by_name_from)(const siglatch_config *cfg, const char *name);
   int (*server_set_port)(const char *name, int port);
   int (*server_set_binding)(const char *name, const char *bind_ip, int port);
+  int (*server_set_enforce_wire_decode)(const char *name, int enabled);
+  int (*server_set_enforce_wire_auth)(const char *name, int enabled);
   const siglatch_deaddrop *(*deaddrop_by_name)(const char *name);
   const siglatch_deaddrop *(*deaddrop_by_name_from)(const siglatch_config *cfg, const char *name);
   const char *(*username_by_id)(uint32_t id);

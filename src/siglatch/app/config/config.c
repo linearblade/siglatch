@@ -48,6 +48,8 @@ static const siglatch_server *config_server_by_name_from_ptr(const siglatch_conf
 static const siglatch_deaddrop *config_deaddrop_by_name_from_ptr(const siglatch_config *cfg, const char *name);
 static int config_server_set_port(const char *name, int port);
 static int config_server_set_binding(const char *name, const char *bind_ip, int port);
+static int config_server_set_enforce_wire_decode(const char *name, int enabled);
+static int config_server_set_enforce_wire_auth(const char *name, int enabled);
 static int validate_ip_spec_list(const char specs[][MAX_IP_RANGE_LEN],
                                  int count,
                                  const char *scope_label);
@@ -647,6 +649,38 @@ static int config_server_set_binding(const char *name,
   return 1;
 }
 
+static int config_server_set_enforce_wire_decode(const char *name, int enabled) {
+  siglatch_server *server = NULL;
+
+  if (!_config || !name || name[0] == '\0') {
+    return 0;
+  }
+
+  server = (siglatch_server *)config_server_by_name_from_ptr(_config, name);
+  if (!server) {
+    return 0;
+  }
+
+  server->enforce_wire_decode = enabled ? 1 : 0;
+  return 1;
+}
+
+static int config_server_set_enforce_wire_auth(const char *name, int enabled) {
+  siglatch_server *server = NULL;
+
+  if (!_config || !name || name[0] == '\0') {
+    return 0;
+  }
+
+  server = (siglatch_server *)config_server_by_name_from_ptr(_config, name);
+  if (!server) {
+    return 0;
+  }
+
+  server->enforce_wire_auth = enabled ? 1 : 0;
+  return 1;
+}
+
 
 static const siglatch_deaddrop *config_deaddrop_starts_with_buffer(const uint8_t *payload, size_t payload_len) {
   if (!_config || !payload || payload_len == 0)
@@ -712,6 +746,7 @@ static siglatch_action *config_append_action(siglatch_config *config, const char
   action->exec_split = 1;
   action->enabled = 1;
   action->require_ascii = 0;
+  action->enforce_wire_auth = 0;
   action->payload_overflow = SL_PAYLOAD_OVERFLOW_INHERIT;
   return action;
 }
@@ -731,6 +766,8 @@ static siglatch_server *config_append_server(siglatch_config *config, const char
   server = &config->servers[config->server_count++];
   lib.str.lcpy(server->name, name, sizeof(server->name));
   lib.str.lcpy(server->label, server->name, sizeof(server->label));
+  server->enforce_wire_decode = 0;
+  server->enforce_wire_auth = 0;
   server->payload_overflow = SL_PAYLOAD_OVERFLOW_INHERIT;
   return server;
 }
@@ -824,6 +861,10 @@ static void config_consume_action_entry(siglatch_action *action, const IniEntry 
   } else if (strcmp(key, "payload_overflow") == 0) {
     action->payload_overflow = parse_payload_overflow_key(
         val, action->name, 1, action->payload_overflow);
+  } else if (strcmp(key, "enforce_wire_auth") == 0 ||
+             strcmp(key, "reject_wire_auth_error") == 0) {
+    action->enforce_wire_auth = 0;
+    lib.str.to_bool(val, &action->enforce_wire_auth);
   } else if (strcmp(key, "allowed_ips") == 0) {
     lib.str.parse_csv_fixed(
         (char *)action->allowed_ips,
@@ -905,6 +946,14 @@ static void config_consume_server_entry(siglatch_server *server, const IniEntry 
   } else if (strcmp(key, "secure") == 0) {
     server->secure = 0;
     lib.str.to_bool(val, &server->secure);
+  } else if (strcmp(key, "enforce_wire_decode") == 0 ||
+             strcmp(key, "reject_wire_decode_error") == 0) {
+    server->enforce_wire_decode = 0;
+    lib.str.to_bool(val, &server->enforce_wire_decode);
+  } else if (strcmp(key, "enforce_wire_auth") == 0 ||
+             strcmp(key, "reject_wire_auth_error") == 0) {
+    server->enforce_wire_auth = 0;
+    lib.str.to_bool(val, &server->enforce_wire_auth);
   } else if (strcmp(key, "logging") == 0) {
     server->logging = 0;
     lib.str.to_bool(val, &server->logging);
@@ -1142,6 +1191,8 @@ static const ConfigLib config_instance = {
   .server_by_name_from = config_server_by_name_from,
   .server_set_port = config_server_set_port,
   .server_set_binding = config_server_set_binding,
+  .server_set_enforce_wire_decode = config_server_set_enforce_wire_decode,
+  .server_set_enforce_wire_auth = config_server_set_enforce_wire_auth,
   .deaddrop_by_name = config_deaddrop_by_name,
   .deaddrop_by_name_from = config_deaddrop_by_name_from,
   .username_by_id = config_username_by_id,

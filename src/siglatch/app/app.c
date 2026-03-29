@@ -10,7 +10,7 @@
 App app = {
   .builtin = {0},
   .config = {0},
-  .daemon3 = {0},
+  .daemon4 = {0},
   .help = {0},
   .inbound = {0},
   .keys = {0},
@@ -31,12 +31,12 @@ static int g_app_initialized = 0;
 int init_app(void) {
   int builtin_initialized = 0;
   int config_initialized = 0;
-  int daemon3_initialized = 0;
-  int daemon3_helper_initialized = 0;
-  int daemon3_auth_initialized = 0;
-  int daemon3_request_initialized = 0;
-  int daemon3_policy_initialized = 0;
-  int daemon3_payload_initialized = 0;
+  int daemon4_initialized = 0;
+  int daemon4_helper_initialized = 0;
+  int daemon4_auth_initialized = 0;
+  int daemon4_request_initialized = 0;
+  int daemon4_policy_initialized = 0;
+  int daemon4_payload_initialized = 0;
   int help_initialized = 0;
   int inbound_initialized = 0;
   int keys_initialized = 0;
@@ -58,7 +58,7 @@ int init_app(void) {
 
   app.builtin = *get_app_builtin_lib();
   app.config = *get_app_config_lib();
-  app.daemon3 = *get_app_daemon3_lib();
+  app.daemon4 = *get_app_daemon4_lib();
   app.help = *get_app_help_lib();
   app.inbound = *get_app_inbound_lib();
   app.keys = *get_app_keys_lib();
@@ -104,30 +104,30 @@ int init_app(void) {
       !app.config.server_set_port || !app.config.server_set_binding ||
       !app.config.deaddrop_by_name || !app.config.deaddrop_by_name_from ||
       !app.config.username_by_id ||
-      !app.daemon3.init || !app.daemon3.shutdown || !app.daemon3.process ||
-      !app.daemon3.helper.init || !app.daemon3.helper.shutdown ||
-      !app.daemon3.helper.copy_job_to_knock_packet ||
-      !app.daemon3.helper.copy_job_reply_to_mux ||
-      !app.daemon3.helper.time_until_ms ||
-      !app.daemon3.auth.init || !app.daemon3.auth.shutdown ||
-      !app.daemon3.auth.authorize ||
-      !app.daemon3.request.init || !app.daemon3.request.shutdown ||
-      !app.daemon3.request.resolve_user_action ||
-      !app.daemon3.request.bind_user_action ||
-      !app.daemon3.policy.init || !app.daemon3.policy.shutdown ||
-      !app.daemon3.policy.enforce ||
-      !app.daemon3.runner.init || !app.daemon3.runner.shutdown || !app.daemon3.runner.run ||
-      !app.daemon3.payload.init || !app.daemon3.payload.shutdown ||
-      !app.daemon3.payload.consume ||
-      !app.daemon3.job.init || !app.daemon3.job.shutdown ||
-      !app.daemon3.job.state_init || !app.daemon3.job.state_reset ||
-      !app.daemon3.job.enqueue || !app.daemon3.job.drain ||
-      !app.daemon3.job.consume ||
-      !app.daemon3.job.reserve_response ||
-      !app.daemon3.job.dispose ||
-      !app.daemon3.job.flush_buffer ||
-      !app.daemon3.tick.init || !app.daemon3.tick.shutdown ||
-      !app.daemon3.tick.next_at || !app.daemon3.tick.run ||
+      !app.daemon4.init || !app.daemon4.shutdown || !app.daemon4.process ||
+      !app.daemon4.helper.init || !app.daemon4.helper.shutdown ||
+      !app.daemon4.helper.copy_job_to_knock_packet ||
+      !app.daemon4.helper.copy_job_reply_to_send ||
+      !app.daemon4.helper.time_until_ms ||
+      !app.daemon4.auth.init || !app.daemon4.auth.shutdown ||
+      !app.daemon4.auth.authorize ||
+      !app.daemon4.request.init || !app.daemon4.request.shutdown ||
+      !app.daemon4.request.resolve_user_action ||
+      !app.daemon4.request.bind_user_action ||
+      !app.daemon4.policy.init || !app.daemon4.policy.shutdown ||
+      !app.daemon4.policy.enforce ||
+      !app.daemon4.runner.init || !app.daemon4.runner.shutdown || !app.daemon4.runner.run ||
+      !app.daemon4.payload.init || !app.daemon4.payload.shutdown ||
+      !app.daemon4.payload.consume ||
+      !app.daemon4.job.init || !app.daemon4.job.shutdown ||
+      !app.daemon4.job.state_init || !app.daemon4.job.state_reset ||
+      !app.daemon4.job.enqueue || !app.daemon4.job.drain ||
+      !app.daemon4.job.consume ||
+      !app.daemon4.job.reserve_response ||
+      !app.daemon4.job.dispose ||
+      !app.daemon4.job.flush_buffer ||
+      !app.daemon4.tick.init || !app.daemon4.tick.shutdown ||
+      !app.daemon4.tick.next_at || !app.daemon4.tick.run ||
       !app.help.init || !app.help.shutdown || !app.help.show ||
       !app.inbound.init || !app.inbound.shutdown ||
       !app.keys.init || !app.keys.shutdown ||
@@ -175,41 +175,41 @@ int init_app(void) {
   }
   config_initialized = 1;
 
-  if (!app.daemon3.init()) {
-    fprintf(stderr, "Failed to initialize app.daemon3\n");
+  if (!app.daemon4.init()) {
+    fprintf(stderr, "Failed to initialize app.daemon4\n");
     goto fail;
   }
-  daemon3_initialized = 1;
+  daemon4_initialized = 1;
 
-  if (!app.daemon3.helper.init()) {
-    fprintf(stderr, "Failed to initialize app.daemon3.helper\n");
+  if (!app.daemon4.helper.init()) {
+    fprintf(stderr, "Failed to initialize app.daemon4.helper\n");
     goto fail;
   }
-  daemon3_helper_initialized = 1;
+  daemon4_helper_initialized = 1;
 
-  if (!app.daemon3.auth.init()) {
-    fprintf(stderr, "Failed to initialize app.daemon3.auth\n");
+  if (!app.daemon4.auth.init()) {
+    fprintf(stderr, "Failed to initialize app.daemon4.auth\n");
     goto fail;
   }
-  daemon3_auth_initialized = 1;
+  daemon4_auth_initialized = 1;
 
-  if (!app.daemon3.request.init()) {
-    fprintf(stderr, "Failed to initialize app.daemon3.request\n");
+  if (!app.daemon4.request.init()) {
+    fprintf(stderr, "Failed to initialize app.daemon4.request\n");
     goto fail;
   }
-  daemon3_request_initialized = 1;
+  daemon4_request_initialized = 1;
 
-  if (!app.daemon3.policy.init()) {
-    fprintf(stderr, "Failed to initialize app.daemon3.policy\n");
+  if (!app.daemon4.policy.init()) {
+    fprintf(stderr, "Failed to initialize app.daemon4.policy\n");
     goto fail;
   }
-  daemon3_policy_initialized = 1;
+  daemon4_policy_initialized = 1;
 
-  if (!app.daemon3.payload.init()) {
-    fprintf(stderr, "Failed to initialize app.daemon3.payload\n");
+  if (!app.daemon4.payload.init()) {
+    fprintf(stderr, "Failed to initialize app.daemon4.payload\n");
     goto fail;
   }
-  daemon3_payload_initialized = 1;
+  daemon4_payload_initialized = 1;
 
   if (!app.help.init()) {
     fprintf(stderr, "Failed to initialize app.help\n");
@@ -283,8 +283,8 @@ int init_app(void) {
   }
   startup_initialized = 1;
 
-  if (!app.daemon3.tick.init()) {
-    fprintf(stderr, "Failed to initialize app.daemon3.tick\n");
+  if (!app.daemon4.tick.init()) {
+    fprintf(stderr, "Failed to initialize app.daemon4.tick\n");
     goto fail;
   }
   tick_initialized = 1;
@@ -303,7 +303,7 @@ fail:
     app.udp.shutdown();
   }
   if (tick_initialized) {
-    app.daemon3.tick.shutdown();
+    app.daemon4.tick.shutdown();
   }
   if (startup_initialized) {
     app.startup.shutdown();
@@ -338,23 +338,23 @@ fail:
   if (inbound_initialized) {
     app.inbound.shutdown();
   }
-  if (daemon3_initialized) {
-    if (daemon3_helper_initialized) {
-      app.daemon3.helper.shutdown();
+  if (daemon4_initialized) {
+    if (daemon4_helper_initialized) {
+      app.daemon4.helper.shutdown();
     }
-    if (daemon3_auth_initialized) {
-      app.daemon3.auth.shutdown();
+    if (daemon4_auth_initialized) {
+      app.daemon4.auth.shutdown();
     }
-    if (daemon3_request_initialized) {
-      app.daemon3.request.shutdown();
+    if (daemon4_request_initialized) {
+      app.daemon4.request.shutdown();
     }
-    if (daemon3_policy_initialized) {
-      app.daemon3.policy.shutdown();
+    if (daemon4_policy_initialized) {
+      app.daemon4.policy.shutdown();
     }
-    if (daemon3_payload_initialized) {
-      app.daemon3.payload.shutdown();
+    if (daemon4_payload_initialized) {
+      app.daemon4.payload.shutdown();
     }
-    app.daemon3.shutdown();
+    app.daemon4.shutdown();
   }
   if (help_initialized) {
     app.help.shutdown();
@@ -367,7 +367,7 @@ fail:
   }
   app.builtin = (AppBuiltinLib){0};
   app.config = (ConfigLib){0};
-  app.daemon3 = (AppDaemon3){0};
+  app.daemon4 = (AppDaemon4){0};
   app.help = (AppHelpLib){0};
   app.inbound = (AppInboundLib){0};
   app.keys = (AppKeysLib){0};
@@ -391,13 +391,13 @@ void shutdown_app(void) {
   }
 
   app.builtin.shutdown();
-  app.daemon3.helper.shutdown();
-  app.daemon3.auth.shutdown();
-  app.daemon3.request.shutdown();
-  app.daemon3.payload.shutdown();
-  app.daemon3.shutdown();
+  app.daemon4.helper.shutdown();
+  app.daemon4.auth.shutdown();
+  app.daemon4.request.shutdown();
+  app.daemon4.payload.shutdown();
+  app.daemon4.shutdown();
   app.udp.shutdown();
-  app.daemon3.tick.shutdown();
+  app.daemon4.tick.shutdown();
   app.startup.shutdown();
   app.server.shutdown();
   app.signal.shutdown();
@@ -413,7 +413,7 @@ void shutdown_app(void) {
   app.config.shutdown();
   app.builtin = (AppBuiltinLib){0};
   app.config = (ConfigLib){0};
-  app.daemon3 = (AppDaemon3){0};
+  app.daemon4 = (AppDaemon4){0};
   app.help = (AppHelpLib){0};
   app.inbound = (AppInboundLib){0};
   app.keys = (AppKeysLib){0};

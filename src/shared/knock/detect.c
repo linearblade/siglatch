@@ -5,16 +5,68 @@
 
 #include "detect.h"
 
+#include <time.h>
 #include <string.h>
 
-#include "codec/v1/v1.h"
-#include "codec/v2/v2.h"
+#include "codec3/v1/v1_packet.h"
+#include "codec3/v2/v2_form1.h"
+
+#define SHARED_KNOCK_DETECT_V1_TIMESTAMP_FUZZ 300
 
 static uint32_t shared_knock_detect_read_u32_be(const uint8_t *src) {
   return ((uint32_t)src[0] << 24) |
          ((uint32_t)src[1] << 16) |
          ((uint32_t)src[2] << 8) |
          (uint32_t)src[3];
+}
+
+static int shared_knock_detect_v1_unpack(const uint8_t *buf,
+                                         size_t buflen,
+                                         SharedKnockCodec3V1Packet *pkt) {
+  if (!buf || !pkt) {
+    return 0;
+  }
+
+  if (buflen < SHARED_KNOCK_CODEC3_V1_PACKET_SIZE) {
+    return 0;
+  }
+
+  memcpy(pkt, buf, sizeof(*pkt));
+  return 1;
+}
+
+static int shared_knock_detect_v1_validate(const SharedKnockCodec3V1Packet *pkt) {
+  time_t now = 0;
+
+  if (!pkt) {
+    return 0;
+  }
+
+  if (pkt->version != SHARED_KNOCK_CODEC3_V1_VERSION) {
+    return 0;
+  }
+
+  if (pkt->payload_len > sizeof(pkt->payload)) {
+    return 0;
+  }
+
+  now = time(NULL);
+  if (pkt->timestamp > now + SHARED_KNOCK_DETECT_V1_TIMESTAMP_FUZZ ||
+      pkt->timestamp < now - SHARED_KNOCK_DETECT_V1_TIMESTAMP_FUZZ) {
+    return 0;
+  }
+
+  return 1;
+}
+
+static int shared_knock_detect_v1_deserialize(const uint8_t *buf,
+                                              size_t buflen,
+                                              SharedKnockCodec3V1Packet *pkt) {
+  if (!shared_knock_detect_v1_unpack(buf, buflen, pkt)) {
+    return 0;
+  }
+
+  return shared_knock_detect_v1_validate(pkt);
 }
 
 int shared_knock_detect_init(void) {
@@ -25,7 +77,7 @@ void shared_knock_detect_shutdown(void) {
 }
 
 int shared_knock_detect(const uint8_t *buf, size_t buflen, SharedKnockRoutingInfo *out) {
-  KnockPacket pkt_v1 = {0};
+  SharedKnockCodec3V1Packet pkt_v1 = {0};
   uint32_t magic = 0;
   uint32_t version = 0;
   uint8_t form = 0;
@@ -36,30 +88,30 @@ int shared_knock_detect(const uint8_t *buf, size_t buflen, SharedKnockRoutingInf
 
   memset(out, 0, sizeof(*out));
 
-  if (buflen >= SHARED_KNOCK_V2_FORM1_OUTER_SIZE) {
+  if (buflen >= SHARED_KNOCK_CODEC3_V2_FORM1_OUTER_SIZE) {
     magic = shared_knock_detect_read_u32_be(buf + 0);
     version = shared_knock_detect_read_u32_be(buf + 4);
     form = buf[8];
 
-    if (magic == SHARED_KNOCK_FAMILY_MAGIC &&
-        version == SHARED_KNOCK_V2_WIRE_VERSION &&
-        form == SHARED_KNOCK_FORM1_ID) {
+    if (magic == SHARED_KNOCK_CODEC3_FAMILY_MAGIC &&
+        version == SHARED_KNOCK_CODEC3_V2_WIRE_VERSION &&
+        form == SHARED_KNOCK_CODEC3_FORM1_ID) {
       out->kind = SHARED_KNOCK_ROUTE_V2_FORM1;
       out->version = version;
       out->form = form;
-      out->expected_packet_size = SHARED_KNOCK_V2_FORM1_PACKET_SIZE;
+      out->expected_packet_size = SHARED_KNOCK_CODEC3_V2_FORM1_PACKET_SIZE;
       out->exact_size_required = 1;
       out->identified_by_prefix = 1;
       return 1;
     }
   }
 
-  if (buflen == SHARED_KNOCK_V1_PACKET_SIZE &&
-      shared_knock_v1_codec_deserialize(buf, buflen, &pkt_v1) == SL_PAYLOAD_OK) {
+  if (buflen == SHARED_KNOCK_CODEC3_V1_PACKET_SIZE &&
+      shared_knock_detect_v1_deserialize(buf, buflen, &pkt_v1)) {
     out->kind = SHARED_KNOCK_ROUTE_V1_LEGACY;
     out->version = pkt_v1.version;
     out->form = 0;
-    out->expected_packet_size = SHARED_KNOCK_V1_PACKET_SIZE;
+    out->expected_packet_size = SHARED_KNOCK_CODEC3_V1_PACKET_SIZE;
     out->exact_size_required = 1;
     out->identified_by_prefix = 0;
     return 1;

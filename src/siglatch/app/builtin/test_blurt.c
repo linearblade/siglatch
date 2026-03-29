@@ -35,38 +35,38 @@ int app_builtin_test_blurt_handle(const AppBuiltinContext *ctx, AppActionReply *
                ctx->action->name,
                ctx->user->name,
                ctx->ip_addr,
-               (unsigned int)ctx->job->payload_len,
+               (unsigned int)ctx->job->request.payload_len,
                (ctx->listener->server && ctx->listener->server->name[0] != '\0')
                    ? ctx->listener->server->name
                    : "(none)");
 
-  if (ctx->job->payload_len == 0) {
+  if (ctx->job->request.payload_len == 0) {
     lib.log.emit(LOG_INFO, 1, "[builtin:test_blurt] payload=(empty)");
     app_action_reply_set(reply, 1, "TEST_BLURT (empty)");
     return 1;
   }
 
-  if (!ctx->job->payload_buffer) {
+  if (!ctx->job->request.payload_buffer) {
     lib.log.emit(LOG_ERROR, 1, "[builtin:test_blurt] payload buffer missing for non-empty job");
     app_action_reply_set(reply, 0, "INVALID_PAYLOAD");
     return 0;
   }
 
   if (!app_builtin_test_blurt_payload_is_ascii(
-          ctx->job->payload_buffer,
-          ctx->job->payload_len)) {
+          ctx->job->request.payload_buffer,
+          ctx->job->request.payload_len)) {
     lib.log.emit(LOG_INFO, 1,
                  "[builtin:test_blurt] payload is not printable ASCII; skipping text dump");
     app_action_reply_set(reply, 1, "TEST_BLURT payload skipped");
     return 1;
   }
 
-  copy_len = ctx->job->payload_len;
+  copy_len = ctx->job->request.payload_len;
   if (copy_len >= sizeof(payload_text)) {
     copy_len = sizeof(payload_text) - 1;
   }
 
-  memcpy(payload_text, ctx->job->payload_buffer, copy_len);
+  memcpy(payload_text, ctx->job->request.payload_buffer, copy_len);
   payload_text[copy_len] = '\0';
 
   lib.log.emit(LOG_INFO, 1, "[builtin:test_blurt] payload=%s", payload_text);

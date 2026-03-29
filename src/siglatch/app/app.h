@@ -8,7 +8,7 @@
 
 #include "builtin/builtin.h"
 #include "config/config.h"
-#include "daemon3/daemon3.h"
+#include "daemon4/daemon4.h"
 #include "help/help.h"
 #include "inbound/inbound.h"
 #include "keys/keys.h"
@@ -26,7 +26,7 @@
 typedef struct {
   AppBuiltinLib builtin;
   ConfigLib config;
-  AppDaemon3 daemon3;
+  AppDaemon4 daemon4;
   AppHelpLib help;
   AppInboundLib inbound;
   AppKeysLib keys;

@@ -21,19 +21,19 @@ int sample_blurt_dynamic_handle(const AppObjectContext *ctx, AppActionReply *rep
     return 0;
   }
 
-  payload_len = ctx->job->payload_len;
+  payload_len = ctx->job->request.payload_len;
 
   if (payload_len == 0) {
     sample_blurt_dynamic_reply_set(reply, 1, "SAMPLE_DYNAMIC_BLURT (empty)");
     return 1;
   }
 
-  if (!ctx->job->payload_buffer) {
+  if (!ctx->job->request.payload_buffer) {
     sample_blurt_dynamic_reply_set(reply, 0, "INVALID_PAYLOAD");
     return 0;
   }
 
-  if (!sample_blurt_dynamic_payload_is_ascii(ctx->job->payload_buffer, payload_len)) {
+  if (!sample_blurt_dynamic_payload_is_ascii(ctx->job->request.payload_buffer, payload_len)) {
     sample_blurt_dynamic_reply_set(reply, 1, "SAMPLE_DYNAMIC_BLURT payload skipped");
     return 1;
   }
@@ -42,7 +42,7 @@ int sample_blurt_dynamic_handle(const AppObjectContext *ctx, AppActionReply *rep
     payload_len = sizeof(payload_text) - 1;
   }
 
-  memcpy(payload_text, ctx->job->payload_buffer, payload_len);
+  memcpy(payload_text, ctx->job->request.payload_buffer, payload_len);
   payload_text[payload_len] = '\0';
   sample_blurt_dynamic_reply_set(reply, 1, "%s", payload_text);
   return 1;

@@ -11,7 +11,7 @@
 #include "../app.h"
 #include "../../lifecycle.h"
 #include "../../lib.h"
-#include "../../../shared/knock/codec2/codec.h"
+#include "../../../shared/knock/codec3/codec.h"
 
 #ifndef SL_CONFIG_PATH_DEFAULT
 #define SL_CONFIG_PATH_DEFAULT "/etc/siglatch/server.conf"
@@ -22,18 +22,18 @@ static int app_startup_init(void) {
 }
 
 static void app_startup_shutdown(void) {
-  const SharedKnockCodec2Lib *codec2 = NULL;
+  const SharedKnockCodec3Lib *codec3 = NULL;
 
-  codec2 = get_shared_knock_codec2_lib();
-  if (!codec2) {
+  codec3 = get_shared_knock_codec3_lib();
+  if (!codec3) {
     return;
   }
 
-  if (codec2->v2.shutdown) {
-    codec2->v2.shutdown();
+  if (codec3->v2.shutdown) {
+    codec3->v2.shutdown();
   }
-  if (codec2->v1.shutdown) {
-    codec2->v1.shutdown();
+  if (codec3->v1.shutdown) {
+    codec3->v1.shutdown();
   }
 }
 
@@ -154,28 +154,28 @@ static void app_startup_apply_logging(const AppStartupState *state) {
 }
 
 static int app_startup_register_codec_modules(const AppWorkspace *workspace) {
-  const SharedKnockCodec2Lib *codec2 = NULL;
+  const SharedKnockCodec3Lib *codec3 = NULL;
 
   if (!workspace || !workspace->codec_context) {
-    LOGE("Codec context unavailable for codec2 module registration\n");
+    LOGE("Codec context unavailable for codec3 module registration\n");
     return 0;
   }
 
-  codec2 = get_shared_knock_codec2_lib();
-  if (!codec2 || !codec2->v1.init || !codec2->v1.shutdown ||
-      !codec2->v2.init || !codec2->v2.shutdown) {
+  codec3 = get_shared_knock_codec3_lib();
+  if (!codec3 || !codec3->v1.init || !codec3->v1.shutdown ||
+      !codec3->v2.init || !codec3->v2.shutdown) {
     LOGE("Codec2 module registry unavailable\n");
     return 0;
   }
 
-  if (!codec2->v1.init(workspace->codec_context)) {
-    LOGE("Failed to initialize codec2.v1\n");
+  if (!codec3->v1.init(workspace->codec_context)) {
+    LOGE("Failed to initialize codec3.v1\n");
     return 0;
   }
 
-  if (!codec2->v2.init(workspace->codec_context)) {
-    LOGE("Failed to initialize codec2.v2\n");
-    codec2->v1.shutdown();
+  if (!codec3->v2.init(workspace->codec_context)) {
+    LOGE("Failed to initialize codec3.v2\n");
+    codec3->v1.shutdown();
     return 0;
   }
 
@@ -183,9 +183,9 @@ static int app_startup_register_codec_modules(const AppWorkspace *workspace) {
 }
 
 static int app_startup_sync_codec_context(const AppStartupState *state) {
-  const SharedKnockCodecContextLib *codec_context_lib = NULL;
+  const SharedKnockCodec3ContextLib *codec_context_lib = NULL;
   AppWorkspace *workspace = NULL;
-  M7MuxContext m7mux_ctx = {0};
+  M7Mux2Context m7mux2_ctx = {0};
   size_t i = 0;
 
   if (!state || !state->cfg || !state->listener.server) {
@@ -198,7 +198,7 @@ static int app_startup_sync_codec_context(const AppStartupState *state) {
     return 0;
   }
 
-  codec_context_lib = get_shared_knock_codec_context_lib();
+  codec_context_lib = get_shared_knock_codec3_context_lib();
   if (!codec_context_lib || !codec_context_lib->set_server_key ||
       !codec_context_lib->clear_server_key || !codec_context_lib->add_keychain ||
       !codec_context_lib->remove_keychain || !codec_context_lib->set_openssl_session ||
@@ -228,7 +228,7 @@ static int app_startup_sync_codec_context(const AppStartupState *state) {
   }
 
   if (state->listener.server->secure && state->listener.server->priv_key) {
-    SharedKnockCodecServerKey server_key = {0};
+    SharedKnockCodec3ServerKey server_key = {0};
 
     server_key.name = state->listener.server->name;
     server_key.private_key = state->listener.server->priv_key;
@@ -242,7 +242,7 @@ static int app_startup_sync_codec_context(const AppStartupState *state) {
 
   for (i = 0; i < (size_t)state->cfg->user_count; ++i) {
     const siglatch_user *user = &state->cfg->users[i];
-    SharedKnockCodecKeyEntry entry = {0};
+    SharedKnockCodec3KeyEntry entry = {0};
 
     if (!user->enabled) {
       continue;
@@ -265,13 +265,15 @@ static int app_startup_sync_codec_context(const AppStartupState *state) {
     return 0;
   }
 
-  m7mux_ctx.socket = &lib.net.socket;
-  m7mux_ctx.udp = &lib.net.udp;
-  m7mux_ctx.time = &lib.time;
-  m7mux_ctx.codec_context = workspace->codec_context;
+  m7mux2_ctx.socket = &lib.net.socket;
+  m7mux2_ctx.udp = &lib.net.udp;
+  m7mux2_ctx.time = &lib.time;
+  m7mux2_ctx.codec_context = workspace->codec_context;
+  m7mux2_ctx.enforce_wire_decode = state->listener.server->enforce_wire_decode;
+  m7mux2_ctx.enforce_wire_auth = state->listener.server->enforce_wire_auth;
 
-  if (!lib.m7mux.set_context(&m7mux_ctx)) {
-    LOGE("Failed to install codec context into m7mux\n");
+  if (!lib.m7mux2.set_context(&m7mux2_ctx)) {
+    LOGE("Failed to install codec context into m7mux2\n");
     return 0;
   }
 

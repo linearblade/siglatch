@@ -84,6 +84,8 @@ void config_debug_dump_ptr(const siglatch_config *cfg) {
     lib.log.console("      Enabled  : %s\n", a->enabled ? "yes" : "no");
     lib.log.console("      Require Ascii Message  : %s\n", a->require_ascii ? "yes" : "no");
     lib.log.console("      exec_split  : %s\n", a->exec_split ? "yes" : "no");
+    lib.log.console("      Enforce Wire Auth  : %s\n",
+                    a->enforce_wire_auth ? "yes" : "no");
     lib.log.console("      Payload overflow policy : %s\n",
                     payload_overflow_policy_name(a->payload_overflow));
     lib.log.console("      Allowed IPs:\n");
@@ -152,6 +154,10 @@ void config_debug_dump_ptr(const siglatch_config *cfg) {
     lib.log.console("      Enabled  : %s\n", s->enabled ? "yes" : "no");
     lib.log.console("      Logging  : %s\n", s->logging ? "yes" : "no");
     lib.log.console("      Secure   : %s\n", s->secure ? "yes" : "no");
+    lib.log.console("      Enforce Wire Decode : %s\n",
+                    s->enforce_wire_decode ? "yes" : "no");
+    lib.log.console("      Enforce Wire Auth   : %s\n",
+                    s->enforce_wire_auth ? "yes" : "no");
     lib.log.console("      Bind IP  : %s\n", s->bind_ip[0] ? s->bind_ip : "(any)");
     lib.log.console("      Port     : %d\n", s->port);
     lib.log.console("      Log file : %s\n", s->log_file[0] ? s->log_file : "(none)");

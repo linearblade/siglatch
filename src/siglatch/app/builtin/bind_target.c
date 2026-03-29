@@ -30,20 +30,20 @@ int app_builtin_parse_bind_target(const AppConnectionJob *job,
 
   memset(out_target, 0, sizeof(*out_target));
 
-  if (!job || job->payload_len == 0) {
+  if (!job || job->request.payload_len == 0) {
     return 1;
   }
 
-  if (!job->payload_buffer) {
+  if (!job->request.payload_buffer) {
     return 0;
   }
 
-  if (job->payload_len >= sizeof(payload)) {
+  if (job->request.payload_len >= sizeof(payload)) {
     return 0;
   }
 
-  copy_len = job->payload_len;
-  memcpy(payload, job->payload_buffer, copy_len);
+  copy_len = job->request.payload_len;
+  memcpy(payload, job->request.payload_buffer, copy_len);
   payload[copy_len] = '\0';
 
   while (*text && isspace((unsigned char)*text)) {

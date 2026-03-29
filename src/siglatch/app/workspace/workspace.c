@@ -16,7 +16,7 @@ static int workspace_init(void) {
 
 static void workspace_shutdown(void) {
   if (workspace.codec_context) {
-    shared_knock_codec_context_destroy(workspace.codec_context);
+    shared_knock_codec3_context_destroy(workspace.codec_context);
     workspace.codec_context = NULL;
   }
   memset(&workspace, 0, sizeof(workspace));
