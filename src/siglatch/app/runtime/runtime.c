@@ -115,9 +115,9 @@ static void app_runtime_invalidate_config_borrows(
 
 static int app_runtime_sync_codec_context(const siglatch_config *cfg,
                                           const siglatch_server *server) {
-  const SharedKnockCodec3ContextLib *codec_context_lib = NULL;
+  const SharedKnockCodecContextLib *codec_context_lib = NULL;
   AppWorkspace *workspace = NULL;
-  M7Mux2Context m7mux2_ctx = {0};
+  M7MuxContext m7mux_ctx = {0};
   size_t i = 0;
 
   if (!cfg || !server) {
@@ -130,7 +130,7 @@ static int app_runtime_sync_codec_context(const siglatch_config *cfg,
     return 0;
   }
 
-  codec_context_lib = get_shared_knock_codec3_context_lib();
+  codec_context_lib = get_shared_knock_codec_context_lib();
   if (!codec_context_lib || !codec_context_lib->set_server_key ||
       !codec_context_lib->clear_server_key || !codec_context_lib->add_keychain ||
       !codec_context_lib->remove_keychain || !codec_context_lib->set_openssl_session ||
@@ -160,7 +160,7 @@ static int app_runtime_sync_codec_context(const siglatch_config *cfg,
   }
 
   if (server->secure && server->priv_key) {
-    SharedKnockCodec3ServerKey server_key = {0};
+    SharedKnockCodecServerKey server_key = {0};
 
     server_key.name = server->name;
     server_key.private_key = server->priv_key;
@@ -174,7 +174,7 @@ static int app_runtime_sync_codec_context(const siglatch_config *cfg,
 
   for (i = 0; i < (size_t)cfg->user_count; ++i) {
     const siglatch_user *user = &cfg->users[i];
-    SharedKnockCodec3KeyEntry entry = {0};
+    SharedKnockCodecKeyEntry entry = {0};
 
     if (!user->enabled) {
       continue;
@@ -194,15 +194,15 @@ static int app_runtime_sync_codec_context(const siglatch_config *cfg,
     }
   }
 
-  m7mux2_ctx.socket = &lib.net.socket;
-  m7mux2_ctx.udp = &lib.net.udp;
-  m7mux2_ctx.time = &lib.time;
-  m7mux2_ctx.codec_context = workspace->codec_context;
-  m7mux2_ctx.enforce_wire_decode = server->enforce_wire_decode;
-  m7mux2_ctx.enforce_wire_auth = server->enforce_wire_auth;
+  m7mux_ctx.socket = &lib.net.socket;
+  m7mux_ctx.udp = &lib.net.udp;
+  m7mux_ctx.time = &lib.time;
+  m7mux_ctx.codec_context = workspace->codec_context;
+  m7mux_ctx.enforce_wire_decode = server->enforce_wire_decode;
+  m7mux_ctx.enforce_wire_auth = server->enforce_wire_auth;
 
-  if (!lib.m7mux2.set_context(&m7mux2_ctx)) {
-    LOGE("Failed to install codec context into m7mux2 during config reload\n");
+  if (!lib.m7mux.set_context(&m7mux_ctx)) {
+    LOGE("Failed to install codec context into m7mux during config reload\n");
     return 0;
   }
 

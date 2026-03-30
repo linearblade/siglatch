@@ -71,7 +71,19 @@ static int app_builtin_init(void) {
     return 0;
   }
 
+  if (!app_builtin_version_init()) {
+    app_builtin_list_users_shutdown();
+    app_builtin_load_config_shutdown();
+    app_builtin_save_config_shutdown();
+    app_builtin_change_setting_shutdown();
+    app_builtin_reload_config_shutdown();
+    app_builtin_rebind_listener_shutdown();
+    app_builtin_probe_rebind_shutdown();
+    return 0;
+  }
+
   if (!app_builtin_test_blurt_init()) {
+    app_builtin_version_shutdown();
     app_builtin_list_users_shutdown();
     app_builtin_load_config_shutdown();
     app_builtin_save_config_shutdown();
@@ -87,6 +99,7 @@ static int app_builtin_init(void) {
 
 static void app_builtin_shutdown(void) {
   app_builtin_test_blurt_shutdown();
+  app_builtin_version_shutdown();
   app_builtin_list_users_shutdown();
   app_builtin_load_config_shutdown();
   app_builtin_save_config_shutdown();
@@ -108,6 +121,7 @@ static int app_builtin_supports(const char *name) {
          strcmp(name, "save_config") == 0 ||
          strcmp(name, "load_config") == 0 ||
          strcmp(name, "list_users") == 0 ||
+         strcmp(name, "version") == 0 ||
          strcmp(name, "test_blurt") == 0;
 }
 
@@ -177,6 +191,10 @@ static int app_builtin_handle(const AppBuiltinContext *ctx, AppActionReply *repl
     return app_builtin_list_users_handle(ctx, reply);
   }
 
+  if (strcmp(ctx->action->builtin, "version") == 0) {
+    return app_builtin_version_handle(ctx, reply);
+  }
+
   if (strcmp(ctx->action->builtin, "test_blurt") == 0) {
     return app_builtin_test_blurt_handle(ctx, reply);
   }
@@ -226,6 +244,11 @@ static const AppBuiltinLib app_builtin_instance = {
     .init = app_builtin_list_users_init,
     .shutdown = app_builtin_list_users_shutdown,
     .handle = app_builtin_list_users_handle
+  },
+  .version = {
+    .init = app_builtin_version_init,
+    .shutdown = app_builtin_version_shutdown,
+    .handle = app_builtin_version_handle
   },
   .test_blurt = {
     .init = app_builtin_test_blurt_init,

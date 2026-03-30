@@ -37,7 +37,7 @@ int main(int argc, char *argv[]) {
     goto cleanup;
   }
 
-  app.daemon4.runner.run(&startup.listener);
+  app.daemon.runner.run(&startup.listener);
   should_log_shutdown = 1;
   status = 0;
 

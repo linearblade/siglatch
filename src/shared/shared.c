@@ -10,7 +10,6 @@
 Shared shared = {
   .knock = {
     .codec = {0},
-    .codec3 = {0},
     .debug = {0},
     .detect = {0},
     .digest = {0}
@@ -33,35 +32,36 @@ int init_shared(const SharedContext *ctx) {
   }
 
   shared.knock.codec = *get_shared_knock_codec_lib();
-  shared.knock.codec3 = *get_shared_knock_codec3_lib();
   shared.knock.debug = *get_shared_knock_debug_lib();
   shared.knock.detect = *get_shared_knock_detect_lib();
   shared.knock.digest = *get_shared_knock_digest_lib();
 
-  if (!shared.knock.codec.v1.init || !shared.knock.codec.v1.shutdown ||
+  if (!shared.knock.codec.context.init || !shared.knock.codec.context.shutdown ||
+      !shared.knock.codec.context.create || !shared.knock.codec.context.destroy ||
+      !shared.knock.codec.context.set_server_key || !shared.knock.codec.context.clear_server_key ||
+      !shared.knock.codec.context.set_openssl_session || !shared.knock.codec.context.clear_openssl_session ||
+      !shared.knock.codec.context.add_keychain || !shared.knock.codec.context.remove_keychain ||
+      !shared.knock.codec.v1.init || !shared.knock.codec.v1.shutdown ||
+      !shared.knock.codec.v1.create_state || !shared.knock.codec.v1.destroy_state ||
+      !shared.knock.codec.v1.detect || !shared.knock.codec.v1.decode ||
+      !shared.knock.codec.v1.wire_auth || !shared.knock.codec.v1.encode ||
       !shared.knock.codec.v1.pack || !shared.knock.codec.v1.unpack ||
       !shared.knock.codec.v1.validate || !shared.knock.codec.v1.deserialize ||
-      !shared.knock.codec.v1.normalize ||
       !shared.knock.codec.v1.deserialize_strerror ||
       !shared.knock.codec.v2.init || !shared.knock.codec.v2.shutdown ||
+      !shared.knock.codec.v2.create_state || !shared.knock.codec.v2.destroy_state ||
+      !shared.knock.codec.v2.detect || !shared.knock.codec.v2.decode ||
+      !shared.knock.codec.v2.wire_auth || !shared.knock.codec.v2.encode ||
       !shared.knock.codec.v2.pack || !shared.knock.codec.v2.unpack ||
       !shared.knock.codec.v2.validate || !shared.knock.codec.v2.deserialize ||
-      !shared.knock.codec.v2.normalize ||
       !shared.knock.codec.v2.deserialize_strerror ||
-      !shared.knock.codec3.encode ||
-      !shared.knock.codec3.v1.init || !shared.knock.codec3.v1.shutdown ||
-      !shared.knock.codec3.v1.create_state || !shared.knock.codec3.v1.destroy_state ||
-      !shared.knock.codec3.v1.detect || !shared.knock.codec3.v1.decode ||
-      !shared.knock.codec3.v1.encode ||
-      !shared.knock.codec3.v2.init || !shared.knock.codec3.v2.shutdown ||
-      !shared.knock.codec3.v2.create_state || !shared.knock.codec3.v2.destroy_state ||
-      !shared.knock.codec3.v2.detect || !shared.knock.codec3.v2.decode ||
-      !shared.knock.codec3.v2.encode ||
-      !shared.knock.codec3.context.init || !shared.knock.codec3.context.shutdown ||
-      !shared.knock.codec3.context.create || !shared.knock.codec3.context.destroy ||
-      !shared.knock.codec3.context.set_server_key || !shared.knock.codec3.context.clear_server_key ||
-      !shared.knock.codec3.context.set_openssl_session || !shared.knock.codec3.context.clear_openssl_session ||
-      !shared.knock.codec3.context.add_keychain || !shared.knock.codec3.context.remove_keychain ||
+      !shared.knock.codec.v3.init || !shared.knock.codec.v3.shutdown ||
+      !shared.knock.codec.v3.create_state || !shared.knock.codec.v3.destroy_state ||
+      !shared.knock.codec.v3.detect || !shared.knock.codec.v3.decode ||
+      !shared.knock.codec.v3.wire_auth || !shared.knock.codec.v3.encode ||
+      !shared.knock.codec.v3.pack || !shared.knock.codec.v3.unpack ||
+      !shared.knock.codec.v3.validate || !shared.knock.codec.v3.deserialize ||
+      !shared.knock.codec.v3.deserialize_strerror ||
       !shared.knock.debug.init || !shared.knock.debug.shutdown ||
       !shared.knock.debug.dump_packet_fields ||
       !shared.knock.detect.init || !shared.knock.detect.shutdown ||
@@ -75,16 +75,9 @@ int init_shared(const SharedContext *ctx) {
     return 0;
   }
 
-  if (!shared.knock.codec.v1.init()) {
-    fprintf(stderr, "Failed to initialize shared.knock.codec.v1\n");
-    shared = (Shared){0};
-    return 0;
-  }
-
   debug_ctx.print = ctx->print;
   if (!shared.knock.debug.init(&debug_ctx)) {
     fprintf(stderr, "Failed to initialize shared.knock.debug\n");
-    shared.knock.codec.v1.shutdown();
     shared = (Shared){0};
     return 0;
   }
@@ -92,7 +85,6 @@ int init_shared(const SharedContext *ctx) {
   if (!shared.knock.detect.init()) {
     fprintf(stderr, "Failed to initialize shared.knock.detect\n");
     shared.knock.debug.shutdown();
-    shared.knock.codec.v1.shutdown();
     shared = (Shared){0};
     return 0;
   }
@@ -104,7 +96,6 @@ int init_shared(const SharedContext *ctx) {
     fprintf(stderr, "Failed to initialize shared.knock.digest\n");
     shared.knock.detect.shutdown();
     shared.knock.debug.shutdown();
-    shared.knock.codec.v1.shutdown();
     shared = (Shared){0};
     return 0;
   }
@@ -121,7 +112,6 @@ void shutdown_shared(void) {
   shared.knock.digest.shutdown();
   shared.knock.detect.shutdown();
   shared.knock.debug.shutdown();
-  shared.knock.codec.v1.shutdown();
   shared = (Shared){0};
   g_shared_initialized = 0;
 }

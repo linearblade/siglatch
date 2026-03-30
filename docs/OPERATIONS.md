@@ -149,7 +149,8 @@ To send a request from the client side:
 
 ### Client Behavior
 - **One packet only**: The client presently sends exactly **one packet** per request.
-- **Payload size**: Limited to **199 bytes** total. Plan your payloads wisely!
+- **Payload size**: Legacy `v1`/`v2` sends remain compact, while `v3` bootstrap packets can carry much larger payloads (up to the configured client buffer).
+- **Protocol selector**: Structured sends can use `--protocol v1|v2|v3` (default `v1`) to pick the wire family.
 
 ### Planned Client Enhancements
 - Interactive configuration mode to select targets, users, and actions more easily.

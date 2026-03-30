@@ -13,7 +13,7 @@
 #include "../stdlib/parse/parse.h"
 #include "../stdlib/process/process.h"
 #include "../stdlib/print.h"
-#include "../stdlib/protocol/udp/m7mux2/m7mux2.h"
+#include "../stdlib/protocol/udp/m7mux/m7mux.h"
 #include "../stdlib/unicode.h"
 #include "../stdlib/utils.h"
 
@@ -26,7 +26,7 @@ Lib lib = {
     .nonce = {0},
     .signal = {0},
     .net = {0},
-    .m7mux2 = {0},
+    .m7mux = {0},
     .process = {0},
     .str = {0},
     .parse = {0},
@@ -51,7 +51,7 @@ Lib lib = {
 // ───────────────────────────────────────────────
 int init_lib(void) {
   const UtilsLib *utils = NULL;
-  const SharedKnockCodec3ContextLib *codec_context_lib = NULL;
+  const SharedKnockCodecContextLib *codec_context_lib = NULL;
   int time_initialized = 0;
   int net_initialized = 0;
   int codec_context_initialized = 0;
@@ -68,7 +68,7 @@ int init_lib(void) {
   int signal_initialized = 0;
   int file_initialized = 0;
   int openssl_initialized = 0;
-    int m7mux2_initialized = 0;
+    int m7mux_initialized = 0;
 
   // constructors first so init order and failure handling stay centralized
   lib.time = *get_lib_time();
@@ -85,9 +85,9 @@ int init_lib(void) {
   lib.nonce = *get_lib_nonce();
   lib.signal = *get_lib_signal();
   lib.openssl = *get_siglatch_openssl();
-  lib.m7mux2 = *get_lib_m7mux2();
+  lib.m7mux = *get_lib_m7mux();
   utils = get_lib_utils();
-  codec_context_lib = get_shared_knock_codec3_context_lib();
+  codec_context_lib = get_shared_knock_codec_context_lib();
 
   if (!utils) {
     fprintf(stderr, "Failed to initialize siglatchd lib runtime: utils provider unavailable\n");
@@ -105,11 +105,11 @@ int init_lib(void) {
   if (!lib.time.init || !lib.time.shutdown ||
       !lib.time.monotonic_ms ||
       !lib.net.init || !lib.net.shutdown ||
-      !lib.m7mux2.connect.init || !lib.m7mux2.connect.set_context || !lib.m7mux2.connect.shutdown ||
-      !lib.m7mux2.connect.state_init || !lib.m7mux2.connect.state_reset ||
-      !lib.m7mux2.connect.connect_ip || !lib.m7mux2.connect.connect_socket ||
-      !lib.m7mux2.connect.disconnect ||
-      !lib.m7mux2.init || !lib.m7mux2.shutdown || !lib.m7mux2.set_context ||
+      !lib.m7mux.connect.init || !lib.m7mux.connect.set_context || !lib.m7mux.connect.shutdown ||
+      !lib.m7mux.connect.state_init || !lib.m7mux.connect.state_reset ||
+      !lib.m7mux.connect.connect_ip || !lib.m7mux.connect.connect_socket ||
+      !lib.m7mux.connect.disconnect ||
+      !lib.m7mux.init || !lib.m7mux.shutdown || !lib.m7mux.set_context ||
       !lib.process.init || !lib.process.shutdown ||
       !lib.str.init || !lib.str.shutdown ||
       !lib.argv.init || !lib.argv.shutdown ||
@@ -146,7 +146,7 @@ int init_lib(void) {
   codec_context_initialized = 1;
 
   {
-    M7Mux2Context m7mux2_ctx = {
+    M7MuxContext m7mux_ctx = {
       .socket = &lib.net.socket,
       .udp = &lib.net.udp,
       .time = &lib.time,
@@ -154,12 +154,12 @@ int init_lib(void) {
       .reserved = NULL
     };
 
-    if (!lib.m7mux2.init(&m7mux2_ctx)) {
-      fprintf(stderr, "Failed to initialize siglatchd lib.m7mux2\n");
+    if (!lib.m7mux.init(&m7mux_ctx)) {
+      fprintf(stderr, "Failed to initialize siglatchd lib.m7mux\n");
       goto fail;
     }
   }
-  m7mux2_initialized = 1;
+  m7mux_initialized = 1;
 
   if (!lib.process.init()) {
     fprintf(stderr, "Failed to initialize siglatchd lib.process\n");
@@ -300,8 +300,8 @@ fail:
     lib.process.shutdown();
   }
   if (net_initialized) {
-    if (m7mux2_initialized) {
-      lib.m7mux2.shutdown();
+    if (m7mux_initialized) {
+      lib.m7mux.shutdown();
     }
     if (codec_context_initialized) {
       codec_context_lib->shutdown();
@@ -348,8 +348,8 @@ void shutdown_lib(void) {
   lib.print.shutdown();
   lib.unicode.shutdown();
   lib.time.shutdown();
-  lib.m7mux2.shutdown();
-  shared_knock_codec3_context_shutdown();
+  lib.m7mux.shutdown();
+  shared_knock_codec_context_shutdown();
   lib.net.shutdown();
   lib.str.shutdown();
 }

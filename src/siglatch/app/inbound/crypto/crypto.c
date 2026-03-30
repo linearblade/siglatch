@@ -6,6 +6,7 @@
 #include "crypto.h"
 
 #include <string.h>
+#include <openssl/sha.h>
 
 #include "../../app.h"
 #include "../../../lib.h"
@@ -21,6 +22,8 @@ void app_inbound_crypto_shutdown(void) {
 int app_inbound_crypto_init_session_for_server(
     const siglatch_server *server,
     SiglatchOpenSSLSession *session) {
+  char fingerprint[(SHA256_DIGEST_LENGTH * 2u) + 1u] = {0};
+
   if (!server || !session) {
     lib.log.console("NULL session pointer passed to server OpenSSL initializer\n");
     return 0;
@@ -37,6 +40,12 @@ int app_inbound_crypto_init_session_for_server(
       return 0;
     }
     session->private_key = server->priv_key;
+    if (siglatch_openssl_key_fingerprint(session->private_key, fingerprint, sizeof(fingerprint))) {
+      lib.log.emit(LOG_DEBUG, 1,
+                   "Server private key fingerprint for %s: %s\n",
+                   server->name[0] ? server->name : "(unnamed)",
+                   fingerprint);
+    }
   } else {
     session->private_key = NULL;
   }

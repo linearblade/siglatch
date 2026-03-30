@@ -114,6 +114,106 @@ int shared_knock_digest_generate_oneshot(const KnockPacket *pkt, uint8_t *out_di
   return result;
 }
 
+int shared_knock_digest_generate_v2_form1(const SharedKnockCodecV2Form1Packet *pkt,
+                                          uint8_t *out_digest) {
+  EVP_MD_CTX *ctx = NULL;
+  unsigned int digest_len = 0;
+  int result = 0;
+
+  if (!pkt || !out_digest) {
+    return 0;
+  }
+
+  if (pkt->inner.payload_len > sizeof(pkt->payload)) {
+    return 0;
+  }
+
+  ctx = EVP_MD_CTX_new();
+  if (!ctx) {
+    return 0;
+  }
+
+  do {
+    if (EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) != 1) {
+      break;
+    }
+    if (EVP_DigestUpdate(ctx, &pkt->outer.version, sizeof(pkt->outer.version)) != 1) {
+      break;
+    }
+    if (EVP_DigestUpdate(ctx, &pkt->inner.timestamp, sizeof(pkt->inner.timestamp)) != 1) {
+      break;
+    }
+    if (EVP_DigestUpdate(ctx, &pkt->inner.user_id, sizeof(pkt->inner.user_id)) != 1) {
+      break;
+    }
+    if (EVP_DigestUpdate(ctx, &pkt->inner.action_id, sizeof(pkt->inner.action_id)) != 1) {
+      break;
+    }
+    if (EVP_DigestUpdate(ctx, &pkt->inner.challenge, sizeof(pkt->inner.challenge)) != 1) {
+      break;
+    }
+    if (EVP_DigestUpdate(ctx, &pkt->inner.payload_len, sizeof(pkt->inner.payload_len)) != 1) {
+      break;
+    }
+    if (EVP_DigestUpdate(ctx, pkt->payload, pkt->inner.payload_len) != 1) {
+      break;
+    }
+    if (EVP_DigestFinal_ex(ctx, out_digest, &digest_len) != 1) {
+      break;
+    }
+    if (digest_len != 32) {
+      break;
+    }
+    result = 1;
+  } while (0);
+
+  EVP_MD_CTX_free(ctx);
+  return result;
+}
+
+int shared_knock_digest_generate_v3_form1(const SharedKnockNormalizedUnit *normal,
+                                          uint8_t *out_digest) {
+  DigestItem items[] = {
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0}
+  };
+  size_t item_count = 0;
+
+  if (!normal || !out_digest || !g_shared_knock_digest_ctx.openssl) {
+    return 0;
+  }
+
+  if (normal->wire_version != SHARED_KNOCK_CODEC_V3_WIRE_VERSION) {
+    return 0;
+  }
+
+  if (normal->wire_form != SHARED_KNOCK_CODEC_FORM1_ID) {
+    return 0;
+  }
+
+  if (normal->payload_len > sizeof(normal->payload)) {
+    return 0;
+  }
+
+  items[0] = (DigestItem){&normal->wire_version, sizeof(normal->wire_version)};
+  items[1] = (DigestItem){&normal->wire_form, sizeof(normal->wire_form)};
+  items[2] = (DigestItem){&normal->timestamp, sizeof(normal->timestamp)};
+  items[3] = (DigestItem){&normal->user_id, sizeof(normal->user_id)};
+  items[4] = (DigestItem){&normal->action_id, sizeof(normal->action_id)};
+  items[5] = (DigestItem){&normal->challenge, sizeof(normal->challenge)};
+  items[6] = (DigestItem){&normal->payload_len, sizeof(normal->payload_len)};
+  items[7] = (DigestItem){normal->payload, normal->payload_len};
+  item_count = sizeof(items) / sizeof(items[0]);
+
+  return g_shared_knock_digest_ctx.openssl->digest_array(items, item_count, out_digest);
+}
+
 int shared_knock_digest_sign(
     const uint8_t *hmac_key,
     const uint8_t *digest,

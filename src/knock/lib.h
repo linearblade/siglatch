@@ -20,7 +20,7 @@
 #include "../stdlib/parse/parse.h"
 #include "../stdlib/str.h"
 #include "../stdlib/net.h"
-#include "../stdlib/protocol/udp/m7mux2/m7mux2.h"
+#include "../stdlib/protocol/udp/m7mux/m7mux.h"
 #include "../stdlib/print.h"
 #include "../stdlib/stdin.h"
 #include "../stdlib/unicode.h"
@@ -50,7 +50,7 @@ typedef struct {
   StdinLib stdin;
   UnicodeLib unicode;
   NetLib net;
-  M7Mux2Lib m7mux2;
+  M7MuxLib m7mux;
 } Lib;
 
 extern Lib lib;

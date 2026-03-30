@@ -5,7 +5,9 @@
 
 #include "udp.h"
 
+#include <errno.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -208,6 +210,11 @@ static int udp_send_ipv4(int fd, const char *ip, uint16_t port, const void *buf,
                 (struct sockaddr *)&remote,
                 sizeof(remote));
 
+  if (sent != (ssize_t)len) {
+    fprintf(stderr, "[udp.send_ipv4] sendto(%s:%u, %zu bytes) failed: errno=%d (%s)\n",
+            ip, (unsigned int)port, len, errno, strerror(errno));
+  }
+
   return sent == (ssize_t)len;
 }
 
@@ -232,6 +239,11 @@ static int udp_send_ipv6(int fd, const char *ip, uint16_t port, const void *buf,
                 0,
                 (struct sockaddr *)&remote,
                 sizeof(remote));
+
+  if (sent != (ssize_t)len) {
+    fprintf(stderr, "[udp.send_ipv6] sendto(%s:%u, %zu bytes) failed: errno=%d (%s)\n",
+            ip, (unsigned int)port, len, errno, strerror(errno));
+  }
 
   return sent == (ssize_t)len;
 }

@@ -99,18 +99,19 @@ SRC_SIGLATCHD = \
     src/siglatch/app/builtin/save_config.c \
     src/siglatch/app/builtin/load_config.c \
     src/siglatch/app/builtin/list_users.c \
+    src/siglatch/app/builtin/version.c \
     src/siglatch/app/builtin/test_blurt.c \
     src/siglatch/app/config/config.c \
     src/siglatch/app/config/debug.c \
-    src/siglatch/app/daemon4/daemon4.c \
-    src/siglatch/app/daemon4/helper.c \
-    src/siglatch/app/daemon4/auth.c \
-    src/siglatch/app/daemon4/job.c \
-    src/siglatch/app/daemon4/request.c \
-    src/siglatch/app/daemon4/policy.c \
-    src/siglatch/app/daemon4/payload.c \
-    src/siglatch/app/daemon4/runner.c \
-    src/siglatch/app/daemon4/tick.c \
+    src/siglatch/app/daemon/daemon.c \
+    src/siglatch/app/daemon/helper.c \
+    src/siglatch/app/daemon/auth.c \
+    src/siglatch/app/daemon/job.c \
+    src/siglatch/app/daemon/request.c \
+    src/siglatch/app/daemon/policy.c \
+    src/siglatch/app/daemon/payload.c \
+    src/siglatch/app/daemon/runner.c \
+    src/siglatch/app/daemon/tick.c \
     src/siglatch/app/help/help.c \
     src/siglatch/app/inbound/inbound.c \
     src/siglatch/app/inbound/crypto/crypto.c \
@@ -139,15 +140,17 @@ SRC_SIGLATCHD = \
     src/siglatch/lib.c \
     src/shared/shared.c \
     src/shared/knock/codec/codec.c \
-    src/shared/knock/codec3/codec.c \
-    src/shared/knock/codec3/context.c \
+    src/shared/knock/codec/codec.c \
+    src/shared/knock/codec/context.c \
     src/shared/knock/detect.c \
     src/shared/knock/debug.c \
     src/shared/knock/digest.c \
     src/shared/knock/codec/v1/v1.c \
     src/shared/knock/codec/v2/v2.c \
-    src/shared/knock/codec3/v1/v1.c \
-    src/shared/knock/codec3/v2/v2.c \
+    src/shared/knock/codec/v3/v3.c \
+    src/shared/knock/codec/v1/v1.c \
+    src/shared/knock/codec/v2/v2.c \
+    src/shared/knock/codec/v3/v3.c \
     src/stdlib/log.c \
     src/stdlib/hmac_key.c \
     src/stdlib/nonce.c \
@@ -159,20 +162,26 @@ SRC_SIGLATCHD = \
     src/stdlib/net/ip/range/range.c \
     src/stdlib/net/socket/socket.c \
     src/stdlib/net/udp/udp.c \
-    src/stdlib/protocol/udp/m7mux2/connect/connect.c \
-    src/stdlib/protocol/udp/m7mux2/inbox/inbox.c \
-    src/stdlib/protocol/udp/m7mux2/outbox/outbox.c \
-    src/stdlib/protocol/udp/m7mux2/ingress/ingress.c \
-    src/stdlib/protocol/udp/m7mux2/normalize/adapter/adapter.c \
-    src/stdlib/protocol/udp/m7mux2/normalize/normalize.c \
-    src/stdlib/protocol/udp/m7mux2/session/session.c \
-    src/stdlib/protocol/udp/m7mux2/stream/stream.c \
-    src/stdlib/protocol/udp/m7mux2/egress/egress.c \
-    src/stdlib/protocol/udp/m7mux2/m7mux2.c \
+    src/stdlib/protocol/udp/m7mux/connect/connect.c \
+    src/stdlib/protocol/udp/m7mux/inbox/inbox.c \
+    src/stdlib/protocol/udp/m7mux/outbox/outbox.c \
+    src/stdlib/protocol/udp/m7mux/ingress/ingress.c \
+    src/stdlib/protocol/udp/m7mux/normalize/adapter/adapter.c \
+    src/stdlib/protocol/udp/m7mux/normalize/normalize.c \
+    src/stdlib/protocol/udp/m7mux/session/session.c \
+    src/stdlib/protocol/udp/m7mux/stream/stream.c \
+    src/stdlib/protocol/udp/m7mux/egress/egress.c \
+    src/stdlib/protocol/udp/m7mux/m7mux.c \
     src/stdlib/process/process.c \
     src/stdlib/process/user/user.c \
     src/stdlib/utils.c \
-    src/stdlib/openssl.c \
+    src/stdlib/openssl/digest/digest.c \
+    src/stdlib/openssl/context/context.c \
+    src/stdlib/openssl/aesgcm/aesgcm.c \
+    src/stdlib/openssl/hmac/hmac.c \
+    src/stdlib/openssl/rsa/rsa.c \
+    src/stdlib/openssl/session/session.c \
+    src/stdlib/openssl/openssl.c \
     src/stdlib/print.c \
     src/stdlib/unicode.c \
     src/stdlib/file.c \
@@ -199,15 +208,17 @@ SRC_KNOCKER = \
     src/knock/app/transmit/helper.c \
     src/shared/shared.c \
     src/shared/knock/codec/codec.c \
-    src/shared/knock/codec3/codec.c \
-    src/shared/knock/codec3/context.c \
+    src/shared/knock/codec/codec.c \
+    src/shared/knock/codec/context.c \
     src/shared/knock/detect.c \
     src/shared/knock/debug.c \
     src/shared/knock/digest.c \
     src/shared/knock/codec/v1/v1.c \
     src/shared/knock/codec/v2/v2.c \
-    src/shared/knock/codec3/v1/v1.c \
-    src/shared/knock/codec3/v2/v2.c \
+    src/shared/knock/codec/v3/v3.c \
+    src/shared/knock/codec/v1/v1.c \
+    src/shared/knock/codec/v2/v2.c \
+    src/shared/knock/codec/v3/v3.c \
     src/stdlib/argv.c \
     src/stdlib/parse/ini.c \
     src/stdlib/parse/parse.c \
@@ -220,16 +231,16 @@ SRC_KNOCKER = \
     src/stdlib/net/ip/range/range.c \
     src/stdlib/net/socket/socket.c \
     src/stdlib/net/udp/udp.c \
-    src/stdlib/protocol/udp/m7mux2/connect/connect.c \
-    src/stdlib/protocol/udp/m7mux2/inbox/inbox.c \
-    src/stdlib/protocol/udp/m7mux2/outbox/outbox.c \
-    src/stdlib/protocol/udp/m7mux2/ingress/ingress.c \
-    src/stdlib/protocol/udp/m7mux2/normalize/adapter/adapter.c \
-    src/stdlib/protocol/udp/m7mux2/normalize/normalize.c \
-    src/stdlib/protocol/udp/m7mux2/session/session.c \
-    src/stdlib/protocol/udp/m7mux2/stream/stream.c \
-    src/stdlib/protocol/udp/m7mux2/egress/egress.c \
-    src/stdlib/protocol/udp/m7mux2/m7mux2.c \
+    src/stdlib/protocol/udp/m7mux/connect/connect.c \
+    src/stdlib/protocol/udp/m7mux/inbox/inbox.c \
+    src/stdlib/protocol/udp/m7mux/outbox/outbox.c \
+    src/stdlib/protocol/udp/m7mux/ingress/ingress.c \
+    src/stdlib/protocol/udp/m7mux/normalize/adapter/adapter.c \
+    src/stdlib/protocol/udp/m7mux/normalize/normalize.c \
+    src/stdlib/protocol/udp/m7mux/session/session.c \
+    src/stdlib/protocol/udp/m7mux/stream/stream.c \
+    src/stdlib/protocol/udp/m7mux/egress/egress.c \
+    src/stdlib/protocol/udp/m7mux/m7mux.c \
     src/stdlib/nonce.c \
     src/stdlib/signal.c \
     src/stdlib/time.c \
@@ -239,7 +250,13 @@ SRC_KNOCKER = \
     src/stdlib/stdin.c \
     src/stdlib/hmac_key.c \
     src/stdlib/file.c \
-    src/stdlib/openssl.c \
+    src/stdlib/openssl/digest/digest.c \
+    src/stdlib/openssl/context/context.c \
+    src/stdlib/openssl/aesgcm/aesgcm.c \
+    src/stdlib/openssl/hmac/hmac.c \
+    src/stdlib/openssl/rsa/rsa.c \
+    src/stdlib/openssl/session/session.c \
+    src/stdlib/openssl/openssl.c \
     src/stdlib/print.c \
     src/stdlib/unicode.c \
     src/stdlib/utils.c

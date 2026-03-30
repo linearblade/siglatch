@@ -9,25 +9,44 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "../normalized.h"
 #include "../../packet.h"
+#include "../context.h"
+#include "../normalized.h"
 #include "v1_packet.h"
 
+typedef struct SharedKnockCodecV1State SharedKnockCodecV1State;
+
 typedef struct {
-  int (*init)(void);
+  const char *name;
+  int (*init)(const SharedKnockCodecContext *context);
   void (*shutdown)(void);
-  int (*pack)(const KnockPacket *pkt, uint8_t *out_buf, size_t maxlen);
-  int (*unpack)(const uint8_t *buf, size_t buflen, KnockPacket *pkt);
-  int (*validate)(const KnockPacket *pkt);
-  int (*deserialize)(const uint8_t *buf, size_t buflen, KnockPacket *pkt);
-  int (*normalize)(const uint8_t *buf,
+  int (*create_state)(SharedKnockCodecV1State **out_state);
+  void (*destroy_state)(SharedKnockCodecV1State *state);
+  int (*detect)(const SharedKnockCodecV1State *state, const uint8_t *buf, size_t buflen);
+  int (*decode)(const SharedKnockCodecV1State *state,
+                const uint8_t *buf,
+                size_t buflen,
+                const char *ip,
+                uint16_t client_port,
+                int encrypted,
+                SharedKnockNormalizedUnit *out);
+  int (*wire_auth)(const SharedKnockCodecV1State *state,
+                   const uint8_t *buf,
                    size_t buflen,
                    const char *ip,
                    uint16_t client_port,
                    int encrypted,
-                   SharedKnockNormalizedUnit *out);
+                   SharedKnockNormalizedUnit *normal);
+  int (*encode)(const SharedKnockCodecV1State *state,
+                const SharedKnockNormalizedUnit *normal,
+                uint8_t *out_buf,
+                size_t *out_len);
+  int (*pack)(const KnockPacket *pkt, uint8_t *out_buf, size_t maxlen);
+  int (*unpack)(const uint8_t *buf, size_t buflen, KnockPacket *pkt);
+  int (*validate)(const KnockPacket *pkt);
+  int (*deserialize)(const uint8_t *decrypted_buffer, size_t decrypted_len, KnockPacket *pkt);
   const char *(*deserialize_strerror)(int code);
-} SharedKnockV1CodecLib;
+} SharedKnockCodecV1Lib;
 
 #ifndef SL_PAYLOAD_OK
 #define SL_PAYLOAD_OK 0
@@ -37,19 +56,38 @@ typedef struct {
 #define SL_PAYLOAD_ERR_OVERFLOW -4
 #endif
 
-int shared_knock_v1_codec_init(void);
-void shared_knock_v1_codec_shutdown(void);
-int shared_knock_v1_codec_pack(const KnockPacket *pkt, uint8_t *out_buf, size_t maxlen);
-int shared_knock_v1_codec_unpack(const uint8_t *buf, size_t buflen, KnockPacket *pkt);
-int shared_knock_v1_codec_validate(const KnockPacket *pkt);
-int shared_knock_v1_codec_deserialize(const uint8_t *buf, size_t buflen, KnockPacket *pkt);
-int shared_knock_v1_codec_normalize(const uint8_t *buf,
-                                    size_t buflen,
-                                    const char *ip,
-                                    uint16_t client_port,
-                                    int encrypted,
-                                    SharedKnockNormalizedUnit *out);
-const char *shared_knock_v1_codec_deserialize_strerror(int code);
-const SharedKnockV1CodecLib *get_shared_knock_v1_codec_lib(void);
+int shared_knock_codec_v1_create_state(SharedKnockCodecV1State **out_state);
+void shared_knock_codec_v1_destroy_state(SharedKnockCodecV1State *state);
+int shared_knock_codec_v1_init(const SharedKnockCodecContext *context);
+void shared_knock_codec_v1_shutdown(void);
+int shared_knock_codec_v1_detect(const SharedKnockCodecV1State *state,
+                                 const uint8_t *buf,
+                                 size_t buflen);
+int shared_knock_codec_v1_decode(const SharedKnockCodecV1State *state,
+                                  const uint8_t *buf,
+                                  size_t buflen,
+                                  const char *ip,
+                                  uint16_t client_port,
+                                  int encrypted,
+                                  SharedKnockNormalizedUnit *out);
+int shared_knock_codec_v1_wire_auth(const SharedKnockCodecV1State *state,
+                                     const uint8_t *buf,
+                                     size_t buflen,
+                                     const char *ip,
+                                     uint16_t client_port,
+                                     int encrypted,
+                                     SharedKnockNormalizedUnit *normal);
+int shared_knock_codec_v1_encode(const SharedKnockCodecV1State *state,
+                                  const SharedKnockNormalizedUnit *normal,
+                                  uint8_t *out_buf,
+                                  size_t *out_len);
+int shared_knock_codec_v1_pack(const KnockPacket *pkt, uint8_t *out_buf, size_t maxlen);
+int shared_knock_codec_v1_unpack(const uint8_t *buf, size_t buflen, KnockPacket *pkt);
+int shared_knock_codec_v1_validate(const KnockPacket *pkt);
+int shared_knock_codec_v1_deserialize(const uint8_t *decrypted_buffer,
+                                      size_t decrypted_len,
+                                      KnockPacket *pkt);
+const char *shared_knock_codec_v1_deserialize_strerror(int code);
+const SharedKnockCodecV1Lib *get_shared_knock_codec_v1_lib(void);
 
 #endif /* SIGLATCH_SHARED_KNOCK_CODEC_V1_H */

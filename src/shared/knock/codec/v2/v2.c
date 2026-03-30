@@ -5,124 +5,217 @@
 
 #include "v2.h"
 
+#include <openssl/evp.h>
+#include <openssl/rsa.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
-#define SHARED_KNOCK_V2_FORM1_TIMESTAMP_FUZZ 300
+#include "../../response.h"
+#include "../../digest.h"
+#include "../../../../stdlib/nonce.h"
+#include "v2_form1.h"
 
-static uint16_t shared_knock_v2_read_u16_be(const uint8_t *src) {
+#define SHARED_KNOCK_CODEC_V2_FORM1_TIMESTAMP_FUZZ 300
+
+static uint16_t shared_knock_codec_v2_read_u16_be(const uint8_t *src) {
   return (uint16_t)(((uint16_t)src[0] << 8) | (uint16_t)src[1]);
 }
 
-static uint32_t shared_knock_v2_read_u32_be(const uint8_t *src) {
+static uint32_t shared_knock_codec_v2_read_u32_be(const uint8_t *src) {
   return ((uint32_t)src[0] << 24) |
          ((uint32_t)src[1] << 16) |
          ((uint32_t)src[2] << 8) |
          (uint32_t)src[3];
 }
 
-static void shared_knock_v2_write_u16_be(uint8_t *dst, uint16_t value) {
-  dst[0] = (uint8_t)((value >> 8) & 0xFFu);
-  dst[1] = (uint8_t)(value & 0xFFu);
+static void shared_knock_codec_v2_write_u16_be(uint8_t *dst, uint16_t value) {
+  dst[0] = (uint8_t)((value >> 8) & 0xffu);
+  dst[1] = (uint8_t)(value & 0xffu);
 }
 
-static void shared_knock_v2_write_u32_be(uint8_t *dst, uint32_t value) {
-  dst[0] = (uint8_t)((value >> 24) & 0xFFu);
-  dst[1] = (uint8_t)((value >> 16) & 0xFFu);
-  dst[2] = (uint8_t)((value >> 8) & 0xFFu);
-  dst[3] = (uint8_t)(value & 0xFFu);
+static void shared_knock_codec_v2_write_u32_be(uint8_t *dst, uint32_t value) {
+  dst[0] = (uint8_t)((value >> 24) & 0xffu);
+  dst[1] = (uint8_t)((value >> 16) & 0xffu);
+  dst[2] = (uint8_t)((value >> 8) & 0xffu);
+  dst[3] = (uint8_t)(value & 0xffu);
 }
 
-int shared_knock_v2_form1_codec_init(void) {
+struct SharedKnockCodecV2State {
+  NonceCache nonce;
+  int nonce_ready;
+  int last_packet_encrypted;
+};
+
+static const SharedKnockCodecContext *g_context = NULL;
+static const SharedKnockCodecContext *shared_knock_codec_v2_context(void);
+static int shared_knock_codec_v2_sync_nonce_cache(SharedKnockCodecV2State *state);
+static int shared_knock_codec_v2_private_decrypt(const uint8_t *input,
+                                                  size_t input_len,
+                                                  uint8_t *output,
+                                                  size_t *output_len);
+static int shared_knock_codec_v2_unpack_wire(const uint8_t *buf,
+                                         size_t buflen,
+                                         SharedKnockCodecV2Form1Packet *pkt);
+static int shared_knock_codec_v2_validate_wire(const SharedKnockCodecV2Form1Packet *pkt);
+static int shared_knock_codec_v2_deserialize_wire(const uint8_t *buf,
+                                              size_t buflen,
+                                              SharedKnockCodecV2Form1Packet *pkt);
+static int shared_knock_codec_v2_normalize(const uint8_t *buf,
+                                            size_t buflen,
+                                            const char *ip,
+                                            uint16_t client_port,
+                                            int encrypted,
+                                            SharedKnockNormalizedUnit *out);
+static int shared_knock_codec_v2_packet_nonce_accept(SharedKnockCodecV2State *state,
+                                                      uint32_t timestamp,
+                                                      uint32_t challenge);
+void shared_knock_codec_v2_destroy_state(SharedKnockCodecV2State *state);
+
+static const SharedKnockCodecContext *shared_knock_codec_v2_context(void) {
+  return g_context;
+}
+
+static time_t shared_knock_codec_v2_nonce_ttl(void) {
+  const SharedKnockCodecContext *context = shared_knock_codec_v2_context();
+  time_t ttl_seconds = NONCE_DEFAULT_TTL_SECONDS;
+
+  if (context && context->nonce_window_ms > 0u) {
+    ttl_seconds = (time_t)(context->nonce_window_ms / 1000u);
+    if (ttl_seconds <= 0) {
+      ttl_seconds = NONCE_DEFAULT_TTL_SECONDS;
+    }
+  }
+
+  return ttl_seconds;
+}
+
+static int shared_knock_codec_v2_sync_nonce_cache(SharedKnockCodecV2State *state) {
+  NonceConfig cfg = {0};
+
+  if (!state) {
+    return 0;
+  }
+
+  cfg.capacity = NONCE_DEFAULT_CAPACITY;
+  cfg.nonce_strlen = NONCE_DEFAULT_STRLEN;
+  cfg.ttl_seconds = shared_knock_codec_v2_nonce_ttl();
+
+  if (state->nonce_ready &&
+      state->nonce.capacity == cfg.capacity &&
+      state->nonce.nonce_strlen == cfg.nonce_strlen &&
+      state->nonce.ttl_seconds == cfg.ttl_seconds) {
+    return 1;
+  }
+
+  if (state->nonce_ready) {
+    lib_nonce_cache_shutdown(&state->nonce);
+    state->nonce_ready = 0;
+  }
+
+  if (!lib_nonce_cache_init(&state->nonce, &cfg)) {
+    return 0;
+  }
+
+  state->nonce_ready = 1;
   return 1;
 }
 
-void shared_knock_v2_form1_codec_shutdown(void) {
+static int shared_knock_codec_v2_private_decrypt(const uint8_t *input,
+                                                  size_t input_len,
+                                                  uint8_t *output,
+                                                  size_t *output_len) {
+  EVP_PKEY_CTX *pctx = NULL;
+  size_t plain_len = 0u;
+  int ok = 0;
+  const SharedKnockCodecContext *context = shared_knock_codec_v2_context();
+
+  if (!context || !context->has_server_key || !context->server_key.private_key ||
+      !input || !output || !output_len || *output_len == 0u) {
+    return 0;
+  }
+
+  pctx = EVP_PKEY_CTX_new(context->server_key.private_key, NULL);
+  if (!pctx) {
+    return 0;
+  }
+
+  do {
+    if (EVP_PKEY_decrypt_init(pctx) <= 0) {
+      break;
+    }
+
+    if (EVP_PKEY_CTX_set_rsa_padding(pctx, RSA_PKCS1_PADDING) <= 0) {
+      break;
+    }
+
+    if (EVP_PKEY_decrypt(pctx, NULL, &plain_len, input, input_len) <= 0) {
+      break;
+    }
+
+    if (plain_len > *output_len) {
+      break;
+    }
+
+    if (EVP_PKEY_decrypt(pctx, output, &plain_len, input, input_len) <= 0) {
+      break;
+    }
+
+    *output_len = plain_len;
+    ok = 1;
+  } while (0);
+
+  EVP_PKEY_CTX_free(pctx);
+  return ok;
 }
 
-int shared_knock_v2_form1_codec_pack(const KnockPacketV2Form1 *pkt, uint8_t *out_buf, size_t maxlen) {
-  size_t payload_len = 0;
-
-  if (!pkt || !out_buf) {
-    return SL_PAYLOAD_ERR_NULL_PTR;
-  }
-
-  if (maxlen < SHARED_KNOCK_V2_FORM1_PACKET_SIZE) {
-    return SL_PAYLOAD_ERR_UNPACK;
-  }
-
-  if (shared_knock_v2_form1_codec_validate(pkt) != SL_PAYLOAD_OK) {
-    return SL_PAYLOAD_ERR_VALIDATE;
-  }
-
-  payload_len = pkt->inner.payload_len;
-  memset(out_buf, 0, SHARED_KNOCK_V2_FORM1_PACKET_SIZE);
-
-  shared_knock_v2_write_u32_be(out_buf + 0, pkt->outer.magic);
-  shared_knock_v2_write_u32_be(out_buf + 4, pkt->outer.version);
-  out_buf[8] = pkt->outer.form;
-
-  shared_knock_v2_write_u32_be(out_buf + 9, pkt->inner.timestamp);
-  shared_knock_v2_write_u16_be(out_buf + 13, pkt->inner.user_id);
-  out_buf[15] = pkt->inner.action_id;
-  shared_knock_v2_write_u32_be(out_buf + 16, pkt->inner.challenge);
-  memcpy(out_buf + 20, pkt->inner.hmac, sizeof(pkt->inner.hmac));
-  shared_knock_v2_write_u16_be(out_buf + 52, pkt->inner.payload_len);
-
-  if (payload_len > 0) {
-    memcpy(out_buf + SHARED_KNOCK_V2_FORM1_OUTER_SIZE + SHARED_KNOCK_V2_FORM1_INNER_SIZE,
-           pkt->payload,
-           payload_len);
-  }
-
-  return (int)SHARED_KNOCK_V2_FORM1_PACKET_SIZE;
-}
-
-int shared_knock_v2_form1_codec_unpack(const uint8_t *buf, size_t buflen, KnockPacketV2Form1 *pkt) {
+static int shared_knock_codec_v2_unpack_wire(const uint8_t *buf,
+                                         size_t buflen,
+                                         SharedKnockCodecV2Form1Packet *pkt) {
   if (!buf || !pkt) {
     return SL_PAYLOAD_ERR_NULL_PTR;
   }
 
-  if (buflen != SHARED_KNOCK_V2_FORM1_PACKET_SIZE) {
+  if (buflen != SHARED_KNOCK_CODEC_V2_FORM1_PACKET_SIZE) {
     return SL_PAYLOAD_ERR_UNPACK;
   }
 
   memset(pkt, 0, sizeof(*pkt));
 
-  pkt->outer.magic = shared_knock_v2_read_u32_be(buf + 0);
-  pkt->outer.version = shared_knock_v2_read_u32_be(buf + 4);
+  pkt->outer.magic = shared_knock_codec_v2_read_u32_be(buf + 0);
+  pkt->outer.version = shared_knock_codec_v2_read_u32_be(buf + 4);
   pkt->outer.form = buf[8];
 
-  pkt->inner.timestamp = shared_knock_v2_read_u32_be(buf + 9);
-  pkt->inner.user_id = shared_knock_v2_read_u16_be(buf + 13);
+  pkt->inner.timestamp = shared_knock_codec_v2_read_u32_be(buf + 9);
+  pkt->inner.user_id = shared_knock_codec_v2_read_u16_be(buf + 13);
   pkt->inner.action_id = buf[15];
-  pkt->inner.challenge = shared_knock_v2_read_u32_be(buf + 16);
+  pkt->inner.challenge = shared_knock_codec_v2_read_u32_be(buf + 16);
   memcpy(pkt->inner.hmac, buf + 20, sizeof(pkt->inner.hmac));
-  pkt->inner.payload_len = shared_knock_v2_read_u16_be(buf + 52);
+  pkt->inner.payload_len = shared_knock_codec_v2_read_u16_be(buf + 52);
 
   memcpy(pkt->payload,
-         buf + SHARED_KNOCK_V2_FORM1_OUTER_SIZE + SHARED_KNOCK_V2_FORM1_INNER_SIZE,
+         buf + SHARED_KNOCK_CODEC_V2_FORM1_OUTER_SIZE + SHARED_KNOCK_CODEC_V2_FORM1_INNER_SIZE,
          sizeof(pkt->payload));
 
   return SL_PAYLOAD_OK;
 }
 
-int shared_knock_v2_form1_codec_validate(const KnockPacketV2Form1 *pkt) {
+static int shared_knock_codec_v2_validate_wire(const SharedKnockCodecV2Form1Packet *pkt) {
   time_t now = 0;
 
   if (!pkt) {
     return SL_PAYLOAD_ERR_NULL_PTR;
   }
 
-  if (pkt->outer.magic != SHARED_KNOCK_FAMILY_MAGIC) {
+  if (pkt->outer.magic != SHARED_KNOCK_PREFIX_MAGIC) {
     return SL_PAYLOAD_ERR_VALIDATE;
   }
 
-  if (pkt->outer.version != SHARED_KNOCK_V2_WIRE_VERSION) {
+  if (pkt->outer.version != SHARED_KNOCK_CODEC_V2_WIRE_VERSION) {
     return SL_PAYLOAD_ERR_VALIDATE;
   }
 
-  if (pkt->outer.form != SHARED_KNOCK_FORM1_ID) {
+  if (pkt->outer.form != SHARED_KNOCK_CODEC_FORM1_ID) {
     return SL_PAYLOAD_ERR_VALIDATE;
   }
 
@@ -131,25 +224,25 @@ int shared_knock_v2_form1_codec_validate(const KnockPacketV2Form1 *pkt) {
   }
 
   now = time(NULL);
-  if (pkt->inner.timestamp > now + SHARED_KNOCK_V2_FORM1_TIMESTAMP_FUZZ ||
-      pkt->inner.timestamp < now - SHARED_KNOCK_V2_FORM1_TIMESTAMP_FUZZ) {
+  if (pkt->inner.timestamp > now + SHARED_KNOCK_CODEC_V2_FORM1_TIMESTAMP_FUZZ ||
+      pkt->inner.timestamp < now - SHARED_KNOCK_CODEC_V2_FORM1_TIMESTAMP_FUZZ) {
     return SL_PAYLOAD_ERR_VALIDATE;
   }
 
   return SL_PAYLOAD_OK;
 }
 
-int shared_knock_v2_form1_codec_deserialize(const uint8_t *buf,
-                                            size_t buflen,
-                                            KnockPacketV2Form1 *pkt) {
+static int shared_knock_codec_v2_deserialize_wire(const uint8_t *buf,
+                                              size_t buflen,
+                                              SharedKnockCodecV2Form1Packet *pkt) {
   int validate_rc = 0;
 
-  validate_rc = shared_knock_v2_form1_codec_unpack(buf, buflen, pkt);
+  validate_rc = shared_knock_codec_v2_unpack_wire(buf, buflen, pkt);
   if (validate_rc != SL_PAYLOAD_OK) {
     return validate_rc;
   }
 
-  validate_rc = shared_knock_v2_form1_codec_validate(pkt);
+  validate_rc = shared_knock_codec_v2_validate_wire(pkt);
   if (validate_rc == SL_PAYLOAD_ERR_OVERFLOW) {
     return SL_PAYLOAD_ERR_OVERFLOW;
   }
@@ -160,13 +253,13 @@ int shared_knock_v2_form1_codec_deserialize(const uint8_t *buf,
   return SL_PAYLOAD_OK;
 }
 
-int shared_knock_v2_form1_codec_normalize(const uint8_t *buf,
-                                          size_t buflen,
-                                          const char *ip,
-                                          uint16_t client_port,
-                                          int encrypted,
-                                          SharedKnockNormalizedUnit *out) {
-  KnockPacketV2Form1 pkt = {0};
+static int shared_knock_codec_v2_normalize(const uint8_t *buf,
+                                            size_t buflen,
+                                            const char *ip,
+                                            uint16_t client_port,
+                                            int encrypted,
+                                            SharedKnockNormalizedUnit *out) {
+  SharedKnockCodecV2Form1Packet pkt = {0};
   int deserialize_rc = 0;
   size_t ip_len = 0;
   size_t copy_len = 0;
@@ -176,7 +269,7 @@ int shared_knock_v2_form1_codec_normalize(const uint8_t *buf,
     return SL_PAYLOAD_ERR_NULL_PTR;
   }
 
-  deserialize_rc = shared_knock_v2_form1_codec_deserialize(buf, buflen, &pkt);
+  deserialize_rc = shared_knock_codec_v2_deserialize_wire(buf, buflen, &pkt);
   if (deserialize_rc != SL_PAYLOAD_OK) {
     return deserialize_rc;
   }
@@ -223,34 +316,361 @@ int shared_knock_v2_form1_codec_normalize(const uint8_t *buf,
   return overflow ? SL_PAYLOAD_ERR_OVERFLOW : SL_PAYLOAD_OK;
 }
 
-const char *shared_knock_v2_form1_codec_deserialize_strerror(int code) {
+static int shared_knock_codec_v2_packet_nonce_accept(SharedKnockCodecV2State *state,
+                                                      uint32_t timestamp,
+                                                      uint32_t challenge) {
+  char nonce_str[64] = {0};
+  time_t now = time(NULL);
+
+  if (!state) {
+    return 0;
+  }
+
+  if (!shared_knock_codec_v2_sync_nonce_cache(state)) {
+    return 0;
+  }
+
+  snprintf(nonce_str, sizeof(nonce_str), "%u-%u", timestamp, challenge);
+  if (lib_nonce_check(&state->nonce, nonce_str, now)) {
+    return 0;
+  }
+
+  lib_nonce_add(&state->nonce, nonce_str, now);
+  return 1;
+}
+
+int shared_knock_codec_v2_pack(const SharedKnockCodecV2Form1Packet *pkt,
+                                uint8_t *out_buf,
+                                size_t maxlen) {
+  if (!pkt || !out_buf) {
+    return SL_PAYLOAD_ERR_NULL_PTR;
+  }
+
+  if (maxlen < SHARED_KNOCK_CODEC_V2_FORM1_PACKET_SIZE) {
+    return SL_PAYLOAD_ERR_UNPACK;
+  }
+
+  if (pkt->inner.payload_len > sizeof(pkt->payload)) {
+    return SL_PAYLOAD_ERR_OVERFLOW;
+  }
+
+  memset(out_buf, 0, SHARED_KNOCK_CODEC_V2_FORM1_PACKET_SIZE);
+  shared_knock_codec_v2_write_u32_be(out_buf + 0, pkt->outer.magic);
+  shared_knock_codec_v2_write_u32_be(out_buf + 4, pkt->outer.version);
+  out_buf[8] = pkt->outer.form;
+  shared_knock_codec_v2_write_u32_be(out_buf + 9, pkt->inner.timestamp);
+  shared_knock_codec_v2_write_u16_be(out_buf + 13, pkt->inner.user_id);
+  out_buf[15] = pkt->inner.action_id;
+  shared_knock_codec_v2_write_u32_be(out_buf + 16, pkt->inner.challenge);
+  memcpy(out_buf + 20, pkt->inner.hmac, sizeof(pkt->inner.hmac));
+  shared_knock_codec_v2_write_u16_be(out_buf + 52, pkt->inner.payload_len);
+  if (pkt->inner.payload_len > 0u) {
+    memcpy(out_buf + SHARED_KNOCK_CODEC_V2_FORM1_OUTER_SIZE +
+           SHARED_KNOCK_CODEC_V2_FORM1_INNER_SIZE,
+           pkt->payload,
+           pkt->inner.payload_len);
+  }
+
+  return (int)SHARED_KNOCK_CODEC_V2_FORM1_PACKET_SIZE;
+}
+
+int shared_knock_codec_v2_unpack(const uint8_t *buf,
+                                  size_t buflen,
+                                  SharedKnockCodecV2Form1Packet *pkt) {
+  return shared_knock_codec_v2_unpack_wire(buf, buflen, pkt);
+}
+
+int shared_knock_codec_v2_validate(const SharedKnockCodecV2Form1Packet *pkt) {
+  return shared_knock_codec_v2_validate_wire(pkt);
+}
+
+int shared_knock_codec_v2_deserialize(const uint8_t *buf,
+                                       size_t buflen,
+                                       SharedKnockCodecV2Form1Packet *pkt) {
+  return shared_knock_codec_v2_deserialize_wire(buf, buflen, pkt);
+}
+
+const char *shared_knock_codec_v2_deserialize_strerror(int code) {
   switch (code) {
   case SL_PAYLOAD_OK:
-    return "No error";
+    return "ok";
   case SL_PAYLOAD_ERR_NULL_PTR:
-    return "KnockPacketV2Form1 pointer is null";
+    return "null_ptr";
   case SL_PAYLOAD_ERR_UNPACK:
-    return "Failed to unpack v2.form1 knock payload";
+    return "unpack";
   case SL_PAYLOAD_ERR_VALIDATE:
-    return "V2.form1 knock packet validation failed";
+    return "validate";
   case SL_PAYLOAD_ERR_OVERFLOW:
-    return "V2.form1 payload_len exceeds payload buffer";
+    return "overflow";
   default:
-    return "Unknown payload error";
+    return "unknown";
   }
 }
 
-static const SharedKnockV2Form1CodecLib shared_knock_v2_form1_codec = {
-  .init = shared_knock_v2_form1_codec_init,
-  .shutdown = shared_knock_v2_form1_codec_shutdown,
-  .pack = shared_knock_v2_form1_codec_pack,
-  .unpack = shared_knock_v2_form1_codec_unpack,
-  .validate = shared_knock_v2_form1_codec_validate,
-  .deserialize = shared_knock_v2_form1_codec_deserialize,
-  .normalize = shared_knock_v2_form1_codec_normalize,
-  .deserialize_strerror = shared_knock_v2_form1_codec_deserialize_strerror
+int shared_knock_codec_v2_create_state(SharedKnockCodecV2State **out_state) {
+  SharedKnockCodecV2State *state = NULL;
+
+  if (!out_state) {
+    return 0;
+  }
+
+  state = (SharedKnockCodecV2State *)calloc(1u, sizeof(*state));
+  if (!state) {
+    return 0;
+  }
+
+  if (!shared_knock_codec_v2_sync_nonce_cache(state)) {
+    shared_knock_codec_v2_destroy_state(state);
+    *out_state = NULL;
+    return 0;
+  }
+
+  *out_state = state;
+  return 1;
+}
+
+void shared_knock_codec_v2_destroy_state(SharedKnockCodecV2State *state) {
+  if (!state) {
+    return;
+  }
+
+  if (state->nonce_ready) {
+    lib_nonce_cache_shutdown(&state->nonce);
+    state->nonce_ready = 0;
+  }
+
+  free(state);
+}
+
+int shared_knock_codec_v2_init(const SharedKnockCodecContext *context) {
+  g_context = context;
+  return 1;
+}
+
+void shared_knock_codec_v2_shutdown(void) {
+  g_context = NULL;
+}
+
+int shared_knock_codec_v2_detect(const SharedKnockCodecV2State *state,
+                                  const uint8_t *buf,
+                                  size_t buflen) {
+  SharedKnockCodecV2Form1Packet pkt = {0};
+  size_t decrypted_cap = 0u;
+  const SharedKnockCodecContext *context = shared_knock_codec_v2_context();
+
+  if (!buf) {
+    return 0;
+  }
+
+  if (buflen == SHARED_KNOCK_CODEC_V2_FORM1_PACKET_SIZE &&
+      shared_knock_codec_v2_deserialize_wire(buf, buflen, &pkt) == SL_PAYLOAD_OK) {
+    if (state) {
+      ((SharedKnockCodecV2State *)state)->last_packet_encrypted = 0;
+    }
+    return 1;
+  }
+
+  if (!state || !context || !context->has_server_key ||
+      !context->server_key.private_key) {
+    return 0;
+  }
+
+  decrypted_cap = (size_t)EVP_PKEY_get_size(context->server_key.private_key);
+  if (decrypted_cap == 0u) {
+    return 0;
+  }
+  {
+    uint8_t *decrypted = (uint8_t *)calloc(1u, decrypted_cap);
+    size_t decrypted_len = decrypted_cap;
+
+    if (!decrypted) {
+      return 0;
+    }
+
+    if (!shared_knock_codec_v2_private_decrypt(buf, buflen, decrypted, &decrypted_len)) {
+      free(decrypted);
+      return 0;
+    }
+
+    if (decrypted_len != SHARED_KNOCK_CODEC_V2_FORM1_PACKET_SIZE) {
+      free(decrypted);
+      return 0;
+    }
+
+    if (shared_knock_codec_v2_deserialize_wire(decrypted, decrypted_len, &pkt) != SL_PAYLOAD_OK) {
+      free(decrypted);
+      return 0;
+    }
+
+    free(decrypted);
+  }
+
+  ((SharedKnockCodecV2State *)state)->last_packet_encrypted = 1;
+  return 1;
+}
+
+int shared_knock_codec_v2_decode(const SharedKnockCodecV2State *state,
+                                  const uint8_t *buf,
+                                  size_t buflen,
+                                  const char *ip,
+                                  uint16_t client_port,
+                                  int encrypted,
+                                  SharedKnockNormalizedUnit *out) {
+  const uint8_t *payload = buf;
+  size_t payload_len = buflen;
+  int should_decrypt = 0;
+  int rc = 0;
+  const SharedKnockCodecContext *context = shared_knock_codec_v2_context();
+
+  if (!state || !out || !buf) {
+    return 0;
+  }
+
+  (void)encrypted;
+  should_decrypt = state->last_packet_encrypted ? 1 : 0;
+  if (should_decrypt) {
+    size_t decrypted_cap;
+    uint8_t *decrypted_buf = NULL;
+
+    if (!context || !context->has_server_key || !context->server_key.private_key) {
+      return 0;
+    }
+    decrypted_cap = (size_t)EVP_PKEY_get_size(context->server_key.private_key);
+    if (decrypted_cap == 0u) {
+      return 0;
+    }
+    decrypted_buf = (uint8_t *)calloc(1u, decrypted_cap);
+    if (!decrypted_buf) {
+      return 0;
+    }
+    size_t decrypted_len = decrypted_cap;
+    if (!shared_knock_codec_v2_private_decrypt(buf,
+                                                buflen,
+                                                decrypted_buf,
+                                                &decrypted_len)) {
+      free(decrypted_buf);
+      return 0;
+    }
+    payload = decrypted_buf;
+    payload_len = decrypted_len;
+  }
+
+  if (context && context->server_secure && !should_decrypt) {
+    return 0;
+  }
+
+  rc = shared_knock_codec_v2_normalize(payload, payload_len, ip, client_port, should_decrypt, out);
+  if (rc != SL_PAYLOAD_OK) {
+    if (should_decrypt) {
+      free((void *)payload);
+    }
+    return 0;
+  }
+
+  if (should_decrypt) {
+    free((void *)payload);
+  }
+
+  return 1;
+}
+
+int shared_knock_codec_v2_wire_auth(const SharedKnockCodecV2State *state,
+                                     const uint8_t *buf,
+                                     size_t buflen,
+                                     const char *ip,
+                                     uint16_t client_port,
+                                     int encrypted,
+                                     SharedKnockNormalizedUnit *normal) {
+  if (!state || !normal) {
+    return 0;
+  }
+
+  (void)buf;
+  (void)buflen;
+  (void)ip;
+  (void)client_port;
+  (void)encrypted;
+
+  normal->wire_auth = shared_knock_codec_v2_packet_nonce_accept((SharedKnockCodecV2State *)state,
+                                                                 normal->timestamp,
+                                                                 normal->challenge) ? 1 : 0;
+  return normal->wire_auth;
+}
+
+int shared_knock_codec_v2_encode(const SharedKnockCodecV2State *state,
+                                  const SharedKnockNormalizedUnit *normal,
+                                  uint8_t *out_buf,
+                                  size_t *out_len) {
+  SharedKnockCodecV2Form1Packet wire_pkt = {0};
+  const SharedKnockCodecContext *context = shared_knock_codec_v2_context();
+  uint8_t digest[32] = {0};
+  size_t capacity = 0u;
+
+  (void)state;
+
+  if (!normal || !out_buf || !out_len) {
+    return 0;
+  }
+
+  capacity = *out_len;
+  if (capacity < SHARED_KNOCK_CODEC_V2_FORM1_PACKET_SIZE) {
+    return 0;
+  }
+
+  if (normal->payload_len > SHARED_KNOCK_CODEC_V2_FORM1_PAYLOAD_MAX) {
+    return 0;
+  }
+
+  if (!context || !context->openssl_session || context->openssl_session->hmac_key_len < 32u) {
+    return 0;
+  }
+
+  wire_pkt.outer.magic = SHARED_KNOCK_PREFIX_MAGIC;
+  wire_pkt.outer.version = SHARED_KNOCK_CODEC_V2_WIRE_VERSION;
+  wire_pkt.outer.form = SHARED_KNOCK_CODEC_FORM1_ID;
+  wire_pkt.inner.timestamp = normal->timestamp;
+  wire_pkt.inner.user_id = normal->user_id;
+  wire_pkt.inner.action_id = SL_KNOCK_RESPONSE_ACTION_ID;
+  wire_pkt.inner.challenge = normal->challenge;
+  wire_pkt.inner.payload_len = (uint16_t)normal->payload_len;
+
+  if (normal->payload_len > 0u) {
+    memcpy(wire_pkt.payload, normal->payload, normal->payload_len);
+  }
+
+  if (!shared_knock_digest_generate_v2_form1(&wire_pkt, digest)) {
+    return 0;
+  }
+
+  if (!shared_knock_digest_sign(context->openssl_session->hmac_key, digest, wire_pkt.inner.hmac)) {
+    return 0;
+  }
+
+  if (shared_knock_codec_v2_pack(&wire_pkt, out_buf, capacity) < 0) {
+    return 0;
+  }
+
+  *out_len = SHARED_KNOCK_CODEC_V2_FORM1_PACKET_SIZE;
+  return 1;
+}
+
+static const SharedKnockCodecV2Lib shared_knock_codec_v2 = {
+  .name = "v2",
+  .init = shared_knock_codec_v2_init,
+  .shutdown = shared_knock_codec_v2_shutdown,
+  .create_state = shared_knock_codec_v2_create_state,
+  .destroy_state = shared_knock_codec_v2_destroy_state,
+  .detect = shared_knock_codec_v2_detect,
+  .decode = shared_knock_codec_v2_decode,
+  .wire_auth = shared_knock_codec_v2_wire_auth,
+  .encode = shared_knock_codec_v2_encode,
+  .pack = shared_knock_codec_v2_pack,
+  .unpack = shared_knock_codec_v2_unpack,
+  .validate = shared_knock_codec_v2_validate,
+  .deserialize = shared_knock_codec_v2_deserialize,
+  .deserialize_strerror = shared_knock_codec_v2_deserialize_strerror
 };
 
-const SharedKnockV2Form1CodecLib *get_shared_knock_v2_form1_codec_lib(void) {
-  return &shared_knock_v2_form1_codec;
+const SharedKnockCodecV2Lib *get_shared_knock_codec_v2_lib(void) {
+  return &shared_knock_codec_v2;
 }

@@ -18,7 +18,7 @@
 #include "../stdlib/parse/parse.h"
 #include "../stdlib/print.h"
 #include "../stdlib/stdin.h"
-#include "../stdlib/protocol/udp/m7mux2/m7mux2.h"
+#include "../stdlib/protocol/udp/m7mux/m7mux.h"
 #include "../stdlib/utils.h"
 #include <stdio.h>
 // Global lib object
@@ -37,7 +37,7 @@ Lib lib = {
     .stdin = {0},
     .unicode = {0},
     .net = {0},
-    .m7mux2 = {0}
+    .m7mux = {0}
 };
 
 //  SYSTEM INITIALIZATION ORDER 
@@ -74,7 +74,7 @@ int init_lib(void) {
     int utils_initialized = 0;
     int argv_initialized = 0;
     int parse_initialized = 0;
-    int m7mux2_initialized = 0;
+    int m7mux_initialized = 0;
 
     //  1. Acquire all libraries first (no init yet)
     lib.net             = *get_lib_net();
@@ -93,7 +93,7 @@ int init_lib(void) {
     lib.print           = *get_lib_print();
     lib.stdin           = *get_lib_stdin();
     lib.unicode         = *get_lib_unicode();
-    lib.m7mux2          = *get_lib_m7mux2();
+    lib.m7mux          = *get_lib_m7mux();
     utils               = get_lib_utils();
 
     if (!utils) {
@@ -127,11 +127,11 @@ int init_lib(void) {
         !lib.signal.take_last_signal || !lib.signal.has_pending ||
         !lib.signal.clear_pending || !lib.signal.request_exit ||
         !lib.openssl.init || !lib.openssl.shutdown ||
-        !lib.m7mux2.connect.init || !lib.m7mux2.connect.set_context || !lib.m7mux2.connect.shutdown ||
-        !lib.m7mux2.connect.state_init || !lib.m7mux2.connect.state_reset ||
-        !lib.m7mux2.connect.connect_ip || !lib.m7mux2.connect.connect_socket ||
-        !lib.m7mux2.connect.disconnect ||
-        !lib.m7mux2.init || !lib.m7mux2.shutdown || !lib.m7mux2.set_context ||
+        !lib.m7mux.connect.init || !lib.m7mux.connect.set_context || !lib.m7mux.connect.shutdown ||
+        !lib.m7mux.connect.state_init || !lib.m7mux.connect.state_reset ||
+        !lib.m7mux.connect.connect_ip || !lib.m7mux.connect.connect_socket ||
+        !lib.m7mux.connect.disconnect ||
+        !lib.m7mux.init || !lib.m7mux.shutdown || !lib.m7mux.set_context ||
         !lib.hmac.init || !lib.hmac.shutdown ||
         !lib.argv.init || !lib.argv.shutdown ||
         !lib.parse.init || !lib.parse.shutdown ||
@@ -177,19 +177,19 @@ int init_lib(void) {
     net_initialized = 1;
 
     {
-      M7Mux2Context m7mux2_ctx = {
+      M7MuxContext m7mux_ctx = {
         .socket = &lib.net.socket,
         .udp = &lib.net.udp,
         .time = &lib.time,
         .reserved = NULL
       };
 
-      if (!lib.m7mux2.init(&m7mux2_ctx)) {
-        fprintf(stderr, "Failed to initialize lib.m7mux2\n");
+      if (!lib.m7mux.init(&m7mux_ctx)) {
+        fprintf(stderr, "Failed to initialize lib.m7mux\n");
         goto fail;
       }
     }
-    m7mux2_initialized = 1;
+    m7mux_initialized = 1;
     lib.str.init();
     str_initialized = 1;
     lib.unicode.init();
@@ -291,8 +291,8 @@ fail:
       lib.str.shutdown();
     }
     if (net_initialized) {
-      if (m7mux2_initialized) {
-        lib.m7mux2.shutdown();
+      if (m7mux_initialized) {
+        lib.m7mux.shutdown();
       }
       lib.net.shutdown();
     }
@@ -339,7 +339,7 @@ void shutdown_lib(void) {
   lib.random.shutdown();
   lib.log.shutdown();
   lib.str.shutdown();
-  lib.m7mux2.shutdown();
+  lib.m7mux.shutdown();
   lib.net.shutdown();
   lib.time.shutdown();
 

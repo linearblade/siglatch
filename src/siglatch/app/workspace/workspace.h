@@ -6,10 +6,10 @@
 #ifndef SIGLATCH_SERVER_APP_WORKSPACE_H
 #define SIGLATCH_SERVER_APP_WORKSPACE_H
 
-#include "../../../shared/knock/codec3/context.h"
+#include "../../../shared/knock/codec/context.h"
 
 typedef struct {
-  SharedKnockCodec3Context *codec_context;
+  SharedKnockCodecContext *codec_context;
 } AppWorkspace;
 
 typedef struct {

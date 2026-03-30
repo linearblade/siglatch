@@ -40,21 +40,21 @@ static int app_builtin_change_setting_push_wire_policy(
     const siglatch_server *server,
     int enforce_wire_decode,
     int enforce_wire_auth) {
-  M7Mux2Context m7mux2_ctx = {0};
+  M7MuxContext m7mux_ctx = {0};
 
   if (!workspace || !workspace->codec_context || !server) {
     return 0;
   }
 
-  m7mux2_ctx.socket = &lib.net.socket;
-  m7mux2_ctx.udp = &lib.net.udp;
-  m7mux2_ctx.time = &lib.time;
-  m7mux2_ctx.codec_context = workspace->codec_context;
-  m7mux2_ctx.enforce_wire_decode = enforce_wire_decode;
-  m7mux2_ctx.enforce_wire_auth = enforce_wire_auth;
+  m7mux_ctx.socket = &lib.net.socket;
+  m7mux_ctx.udp = &lib.net.udp;
+  m7mux_ctx.time = &lib.time;
+  m7mux_ctx.codec_context = workspace->codec_context;
+  m7mux_ctx.enforce_wire_decode = enforce_wire_decode;
+  m7mux_ctx.enforce_wire_auth = enforce_wire_auth;
 
-  if (!lib.m7mux2.set_context(&m7mux2_ctx)) {
-    LOGE("[builtin:change_setting] Failed to refresh mux wire policy for m7mux2\n");
+  if (!lib.m7mux.set_context(&m7mux_ctx)) {
+    LOGE("[builtin:change_setting] Failed to refresh mux wire policy for m7mux\n");
     return 0;
   }
 

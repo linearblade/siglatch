@@ -10,6 +10,7 @@
 
 typedef struct {
   int help_requested;
+  int version_requested;
   int dump_config_requested;
   int output_mode;
   char config_path[PATH_MAX];

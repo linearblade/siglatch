@@ -10,7 +10,6 @@
 #include "../stdlib/openssl.h"
 #include "../stdlib/print.h"
 #include "knock/codec/codec.h"
-#include "knock/codec3/codec.h"
 #include "knock/debug.h"
 #include "knock/detect.h"
 #include "knock/digest.h"
@@ -23,7 +22,6 @@ typedef struct {
 
 typedef struct {
   SharedKnockCodecLib codec;
-  SharedKnockCodec3Lib codec3;
   SharedKnockDebugLib debug;
   SharedKnockDetectLib detect;
   SharedKnockDigestLib digest;

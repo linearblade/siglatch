@@ -54,6 +54,7 @@ You may also pipe a payload via `--stdin`, or manage aliases separately.
 | `--help`                 | Show this help message |
 | `--port <num>`           | Override default UDP port (default: `50000`) |
 | `--hmac-key <path>`      | Path to HMAC key file |
+| `--protocol <v1|v2|v3>` | Select the structured wire protocol used for sends (default: `v1`) |
 | `--server-key <path>`    | Path to server public key file |
 | `--client-key <path>`    | Path to client private key file |
 | `--no-hmac`              | Disable HMAC signing (testing only) |
@@ -117,6 +118,27 @@ Precedence order is:
 2. `SIGLATCH_OUTPUT_MODE`
 3. `~/.config/siglatch/client.conf` (`output_mode=unicode|ascii`)
 4. compile-time default from `make`
+
+---
+
+## 📡 Protocol Selection
+
+Structured client sends can target a specific wire family with `--protocol`:
+
+```bash
+program --protocol v1 localhost root login "Hello World"
+program --protocol v2 localhost root login "Hello World"
+program --protocol v3 localhost root login "Hello World"
+```
+
+Current behavior:
+
+- `v1` remains the default
+- `v2` is the newer family prefix path
+- `v3` is the hybrid bootstrap path using the new AES-GCM packet shape
+- `v3` requires encryption and a normal HMAC key
+- this selector only changes the wire family used for structured sends
+- dead-drop mode still bypasses structured packet formatting entirely
 
 ---
 

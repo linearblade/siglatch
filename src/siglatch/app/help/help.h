@@ -9,6 +9,7 @@
 typedef struct {
   int (*init)(void);
   void (*shutdown)(void);
+  void (*version)(void);
   void (*show)(int argc, char *argv[]);
 } AppHelpLib;
 

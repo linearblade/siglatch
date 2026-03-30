@@ -12,7 +12,7 @@
 #include "../../../stdlib/parse/ini.h"
 
 #define MAX_USERS 32
-#define MAX_ACTIONS 16
+#define MAX_ACTIONS 32
 #define MAX_SERVERS 5
 #define MAX_DEADDROPS 16
 

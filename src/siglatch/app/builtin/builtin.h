@@ -13,6 +13,7 @@
 #include "rebind_listener.h"
 #include "reload_config.h"
 #include "save_config.h"
+#include "version.h"
 #include "test_blurt.h"
 
 typedef struct {
@@ -36,6 +37,7 @@ typedef struct {
   AppBuiltinHandlerLib save_config;
   AppBuiltinHandlerLib load_config;
   AppBuiltinHandlerLib list_users;
+  AppBuiltinHandlerLib version;
   AppBuiltinHandlerLib test_blurt;
 } AppBuiltinLib;
 

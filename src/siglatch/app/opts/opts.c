@@ -12,6 +12,7 @@
 
 enum {
   OPT_ID_HELP = 1,
+  OPT_ID_VERSION,
   OPT_ID_DUMP_CONFIG,
   OPT_ID_OUTPUT_MODE,
   OPT_ID_CONFIG,
@@ -20,6 +21,7 @@ enum {
 
 static const ArgvOptionSpec app_opts_specs[] = {
   { "--help", OPT_ID_HELP, 0, ARGV_OPT_FLAG, 0, 1, 1 },
+  { "--version", OPT_ID_VERSION, 0, ARGV_OPT_FLAG, 0, 1, 1 },
   { "--dump-config", OPT_ID_DUMP_CONFIG, 0, ARGV_OPT_FLAG, 0, 1, 1 },
   { "--output-mode", OPT_ID_OUTPUT_MODE, 1, ARGV_OPT_KEYED, 0, 1, 1 },
   { "--config", OPT_ID_CONFIG, 1, ARGV_OPT_KEYED, 0, 1, 1 },
@@ -152,6 +154,22 @@ static int app_opts_help_requested(int argc, char *argv[]) {
   return 0;
 }
 
+static int app_opts_version_requested(int argc, char *argv[]) {
+  int i;
+
+  if (!argv) {
+    return 0;
+  }
+
+  for (i = 1; i < argc; ++i) {
+    if (argv[i] && strcmp(argv[i], "--version") == 0) {
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
 static int app_opts_reject_positionals(AppParsedOpts *out, const ArgvParsed *parsed) {
   char message[256];
 
@@ -259,6 +277,13 @@ static int app_opts_parse(int argc, char *argv[], AppParsedOpts *out) {
     return 1;
   }
 
+  if (app_opts_version_requested(argc, argv)) {
+    out->ok = 1;
+    out->exit_code = 0;
+    out->values.version_requested = 1;
+    return 1;
+  }
+
   if (!lib.argv.parse(argc, argv, &parsed, app_opts_specs)) {
     return app_opts_set_argv_error(out, &parsed);
   }
@@ -321,6 +346,8 @@ static void app_opts_dump(const AppParsedOpts *parsed) {
   lib.print.uc_printf("debug", "Dumping Server Options:\n");
   lib.print.uc_printf(NULL, "  Help Requested   : %s\n",
                       parsed->values.help_requested ? "yes" : "no");
+  lib.print.uc_printf(NULL, "  Version Requested: %s\n",
+                      parsed->values.version_requested ? "yes" : "no");
   lib.print.uc_printf(NULL, "  Dump Config      : %s\n",
                       parsed->values.dump_config_requested ? "yes" : "no");
   lib.print.uc_printf(NULL, "  Output Mode      : %s (%d)\n",

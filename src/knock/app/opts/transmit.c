@@ -19,6 +19,7 @@
 enum {
   OPT_ID_NONE = 0,
   OPT_ID_HMAC_KEY,
+  OPT_ID_PROTOCOL,
   OPT_ID_PORT,
   OPT_ID_SERVER_KEY,
   OPT_ID_CLIENT_KEY,
@@ -36,6 +37,7 @@ enum {
 static const ArgvOptionSpec option_specs[] = {
   { "--port",        OPT_ID_PORT,        1, ARGV_OPT_KEYED, 0, 0, 1 },
   { "--hmac-key",    OPT_ID_HMAC_KEY,    1, ARGV_OPT_KEYED, 0, 0, 1 },
+  { "--protocol",    OPT_ID_PROTOCOL,    1, ARGV_OPT_KEYED, 0, 0, 1 },
   { "--server-key",  OPT_ID_SERVER_KEY,  1, ARGV_OPT_KEYED, 0, 0, 1 },
   { "--client-key",  OPT_ID_CLIENT_KEY,  1, ARGV_OPT_KEYED, 0, 0, 1 },
   { "--no-hmac",     OPT_ID_NO_HMAC,     0, ARGV_OPT_FLAG,  0, 0, 1 },
@@ -135,6 +137,19 @@ static const char *app_opts_response_type_name(OptsResponseType value) {
   return "unknown";
 }
 
+static const char *app_opts_protocol_name(KnockProtocol protocol) {
+  switch (protocol) {
+    case KNOCK_PROTOCOL_V1:
+      return "v1";
+    case KNOCK_PROTOCOL_V2:
+      return "v2";
+    case KNOCK_PROTOCOL_V3:
+      return "v3";
+    default:
+      return "unknown";
+  }
+}
+
 static int app_opts_transmit_validate(Opts *opts, AppCommand *cmd) {
   int valid = 1;
   char message[256];
@@ -222,8 +237,29 @@ static int app_opts_transmit_validate(Opts *opts, AppCommand *cmd) {
     opts->encrypt = 1;
   }
 
+  if (opts->protocol == 0) {
+    opts->protocol = KNOCK_PROTOCOL_V1;
+  }
+
   if (opts->dead_drop) {
     opts->hmac_mode = HMAC_MODE_NONE;
+  }
+
+  if (opts->protocol == KNOCK_PROTOCOL_V3) {
+    if (!opts->encrypt) {
+      app_opts_transmit_set_error(cmd, 2, "Protocol v3 requires encryption");
+      valid = 0;
+    }
+
+    if (opts->hmac_mode != HMAC_MODE_NORMAL) {
+      app_opts_transmit_set_error(cmd, 2, "Protocol v3 requires normal HMAC signing");
+      valid = 0;
+    }
+
+    if (opts->dead_drop) {
+      app_opts_transmit_set_error(cmd, 2, "Protocol v3 does not support dead-drop mode");
+      valid = 0;
+    }
   }
 
   return valid;
@@ -250,6 +286,25 @@ static int app_opts_transmit_apply_parsed(const ArgvParsed *parsed, Opts *out, A
     case OPT_ID_HMAC_KEY:
       strncpy(out->hmac_key_path, opt->args[1], PATH_MAX - 1);
       break;
+    case OPT_ID_PROTOCOL: {
+      static const ArgvEnumMap protocol_map[] = {
+        { "v1", KNOCK_PROTOCOL_V1 },
+        { "v2", KNOCK_PROTOCOL_V2 },
+        { "v3", KNOCK_PROTOCOL_V3 }
+      };
+      int protocol = 0;
+
+      if (!lib.argv.get_enum(opt, 0, protocol_map,
+                             sizeof(protocol_map) / sizeof(protocol_map[0]),
+                             &protocol, &parse_err)) {
+        snprintf(message, sizeof(message),
+                 "Invalid protocol: %s (expected 'v1', 'v2', or 'v3')",
+                 lib.argv.option_value(opt, 0) ? lib.argv.option_value(opt, 0) : "(null)");
+        return app_opts_transmit_set_error(cmd, 2, message);
+      }
+      out->protocol = (KnockProtocol)protocol;
+      break;
+    }
     case OPT_ID_SERVER_KEY:
       strncpy(out->server_pubkey_path, opt->args[1], PATH_MAX - 1);
       break;
@@ -380,6 +435,7 @@ static void app_opts_transmit_dump(const Opts *opts) {
 
   lib.print.uc_printf(NULL, "\nModes:\n");
   lib.print.uc_printf(NULL, "  HMAC Mode        : %d\n", opts->hmac_mode);
+  lib.print.uc_printf(NULL, "  Protocol         : %s\n", app_opts_protocol_name(opts->protocol));
   lib.print.uc_printf(NULL, "  Encrypt Payload  : %s\n", opts->encrypt ? "Yes" : "No");
   lib.print.uc_printf(NULL, "  Dead Drop        : %s\n", opts->dead_drop ? "Yes" : "No");
   lib.print.uc_printf(NULL, "  Stdin Requested  : %s\n", opts->stdin_requested ? "Yes" : "No");
@@ -424,6 +480,7 @@ static int app_opts_transmit_parse(const char *mode_selector, const ArgvParsed *
   opts_out = &out->as.transmit;
 
   opts_out->hmac_mode = HMAC_MODE_NORMAL;
+  opts_out->protocol = KNOCK_PROTOCOL_V1;
   opts_out->encrypt = 1;
   opts_out->verbose = 3;
   opts_out->output_mode = 0;

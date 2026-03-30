@@ -177,8 +177,9 @@ allowed_ips = 127.0.0.1/32
 * With `reject`, malformed structured packets are dropped and never dispatched to action scripts.
 * With `clamp`, malformed structured packets are length-clamped and continue through normal structured checks (including signature validation) before dispatch.
 * Secure servers reject plaintext receive traffic in the codec / mux path; only encrypted packets are accepted on the structured path.
-* Wire enforcement policy is intentionally split from job authorization: server-scoped `enforce_wire_decode` and `enforce_wire_auth` govern mux-level packet handling, while action-scoped `enforce_wire_auth` is enforced in daemon4 policy after the job has been decoded.
+* Wire enforcement policy is intentionally split from job authorization: server-scoped `enforce_wire_decode` and `enforce_wire_auth` govern mux-level packet handling, while action-scoped `enforce_wire_auth` is enforced in daemon policy after the job has been decoded.
 * The `change_setting` builtin currently accepts server-scoped wire policy updates via payload lines such as `server.enforce_wire_decode = yes` and `server.enforce_wire_auth = no`. Action-scoped wire policy is not part of that live-setting path yet.
+* The `version` builtin returns the current server banner to the client as a normal action response.
 * All paths should be absolute.
 * Scripts will run without the environment. be aware of this when writing scripts.
 * User keys should be created via `install.sh` or copied securely.
