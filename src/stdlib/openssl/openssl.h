@@ -6,16 +6,14 @@
 #ifndef LIB_SIGLATCH_OPENSSL_H
 #define LIB_SIGLATCH_OPENSSL_H
 
-#include "../file.h"
-#include "../log.h"
 #include "digest/digest.h"
 #include "aesgcm/aesgcm.h"
 #include "hmac/hmac.h"
 #include "session/session.h"
 #include "rsa/rsa.h"
-#include "../openssl_context.h"
+#include "context/context.h"
 
-// Struct holding all lib.openssl function pointers
+// Struct holding the internal OpenSSL function pointers.
 typedef struct {
     int (*init)(SiglatchOpenSSLContext *ctx);          ///< Initialize OpenSSL library
     void (*shutdown)(void);                            ///< Shutdown OpenSSL library

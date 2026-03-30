@@ -7,7 +7,7 @@
 #define SIGLATCH_SERVER_APP_DAEMON_AUTH_H
 
 #include "job.h"
-#include "../../../stdlib/openssl_session.h"
+#include "../../../stdlib/openssl/session/session.h"
 
 typedef struct {
   int (*init)(void);

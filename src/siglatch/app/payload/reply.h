@@ -10,7 +10,7 @@
 
 #include "../runtime/runtime.h"
 #include "codec/codec.h"
-#include "../../../stdlib/openssl_session.h"
+#include "../../../stdlib/openssl/session/session.h"
 
 #define APP_ACTION_REPLY_MESSAGE_MAX 512
 

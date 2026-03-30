@@ -7,7 +7,7 @@
 #define SIGLATCH_SHARED_H
 
 #include "../stdlib/log.h"
-#include "../stdlib/openssl.h"
+#include "../stdlib/openssl/openssl.h"
 #include "../stdlib/print.h"
 #include "knock/codec/codec.h"
 #include "knock/debug.h"

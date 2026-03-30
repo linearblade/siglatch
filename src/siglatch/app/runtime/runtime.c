@@ -8,7 +8,7 @@
 #include <openssl/evp.h>
 #include <string.h>
 
-#include "../../../stdlib/openssl_session.h"
+#include "../../../stdlib/openssl/session/session.h"
 #include "../app.h"
 #include "../../lib.h"
 

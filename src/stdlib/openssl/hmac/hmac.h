@@ -8,7 +8,7 @@
 
 #include <stdint.h>
 
-#include "../../openssl_session.h"
+#include "../session/session.h"
 
 int siglatch_openssl_sign(SiglatchOpenSSLSession *session, const uint8_t *digest, uint8_t *out_signature);
 

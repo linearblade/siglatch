@@ -10,7 +10,7 @@
 #include <stdint.h>
 
 #include "../../stdlib/log.h"
-#include "../../stdlib/openssl.h"
+#include "../../stdlib/openssl/openssl.h"
 #include "packet.h"
 #include "codec/normalized.h"
 #include "codec/v2/v2_form1.h"

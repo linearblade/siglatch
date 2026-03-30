@@ -8,7 +8,7 @@
 
 #include "connection.h"
 #include "../runtime/runtime.h"
-#include "../../../stdlib/openssl_session.h"
+#include "../../../stdlib/openssl/session/session.h"
 
 #define APP_JOB_PAYLOAD_BLOCK_SIZE 1280u
 #define APP_JOB_RESPONSE_BLOCK_SIZE 1280u

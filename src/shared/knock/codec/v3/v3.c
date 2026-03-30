@@ -15,7 +15,7 @@
 
 #include "../../digest.h"
 #include "../../../../stdlib/nonce.h"
-#include "../../../../stdlib/openssl.h"
+#include "../../../../stdlib/openssl/openssl.h"
 
 #define SHARED_KNOCK_CODEC_V3_TIMESTAMP_FUZZ 300
 
@@ -24,18 +24,40 @@ struct SharedKnockCodecV3State {
   int nonce_ready;
 };
 
+typedef struct {
+  SharedKnockDigestLib lib;
+  int (*generate_v3_form1)(const SharedKnockNormalizedUnit *normal, uint8_t *out_digest);
+} SharedKnockCodecV3DigestInternal;
+
+typedef struct {
+  NonceLib                         nonce;
+  SiglatchOpenSSL_Lib              openssl;
+  SharedKnockCodecV3DigestInternal digest;
+} SharedKnockCodecV3Internal;
+
 static const SharedKnockCodecContext *g_context = NULL;
+static SharedKnockCodecV3Internal internal = {0};
 
 static const SharedKnockCodecContext *shared_knock_codec_v3_context(void);
+static int shared_knock_codec_v3_attach_internal(void);
 static int shared_knock_codec_v3_sync_nonce_cache(SharedKnockCodecV3State *state);
 static int shared_knock_codec_v3_packet_nonce_accept(SharedKnockCodecV3State *state,
                                                       uint32_t timestamp,
                                                       uint32_t challenge);
-static int shared_knock_codec_v3_private_decrypt(const uint8_t *input,
-                                                  size_t input_len,
-                                                  uint8_t *output,
-                                                  size_t *output_len);
-static void shared_knock_codec_v3_log_openssl_error(const char *label);
+static int shared_knock_codec_v3_decrypt_payload_key(const uint8_t *input,
+                                                     size_t input_len,
+                                                     uint8_t *output,
+                                                     size_t *output_len);
+static int shared_knock_codec_v3_get_payload_key(const SharedKnockCodecV3Form1Packet *pkt,
+                                                 const char *ip,
+                                                 uint16_t client_port,
+                                                 size_t buflen,
+                                                 uint8_t *cek,
+                                                 size_t *cek_len);
+static int shared_knock_codec_v3_encrypt_payload_key(const uint8_t *input,
+                                                     size_t input_len,
+                                                     uint8_t *output,
+                                                     size_t *output_len);
 static size_t shared_knock_codec_v3_plaintext_size(size_t payload_len);
 static int shared_knock_codec_v3_pack_plaintext(const SharedKnockNormalizedUnit *normal,
                                                 uint8_t *out_buf,
@@ -56,12 +78,17 @@ static int shared_knock_codec_v3_validate_wire(const SharedKnockCodecV3Form1Pack
 static int shared_knock_codec_v3_deserialize_wire(const uint8_t *buf,
                                                   size_t buflen,
                                                   SharedKnockCodecV3Form1Packet *pkt);
-static int shared_knock_codec_v3_normalize(const uint8_t *buf,
-                                           size_t buflen,
-                                           const char *ip,
-                                           uint16_t client_port,
-                                           int encrypted,
-                                           SharedKnockNormalizedUnit *out);
+static int shared_knock_codec_v3_decrypt_and_unpack_packet(const SharedKnockCodecV3Form1Packet *pkt,
+                                                           size_t buflen,
+                                                           const char *ip,
+                                                           uint16_t client_port,
+                                                           int encrypted,
+                                                           SharedKnockNormalizedUnit *out);
+static int shared_knock_codec_v3_unpack_unencrypted_packet(const SharedKnockCodecV3Form1Packet *pkt,
+                                                           size_t buflen,
+                                                           const char *ip,
+                                                           uint16_t client_port,
+                                                           SharedKnockNormalizedUnit *out);
 
 static uint16_t shared_knock_codec_v3_read_u16_be(const uint8_t *src) {
   return (uint16_t)(((uint16_t)src[0] << 8) | (uint16_t)src[1]);
@@ -86,34 +113,36 @@ static void shared_knock_codec_v3_write_u32_be(uint8_t *dst, uint32_t value) {
   dst[3] = (uint8_t)(value & 0xffu);
 }
 
-static void shared_knock_codec_v3_log_openssl_error(const char *label) {
-  unsigned long err = 0u;
-  const char *reason = NULL;
-  int saw_error = 0;
-
-  while ((err = ERR_get_error()) != 0u) {
-    saw_error = 1;
-    reason = ERR_reason_error_string(err);
-    if (!reason) {
-      reason = "(unknown)";
-    }
-
-    fprintf(stderr,
-            "[codec.v3] %s openssl error=0x%lx reason=%s\n",
-            label ? label : "(null)",
-            err,
-            reason);
-  }
-
-  if (!saw_error) {
-    fprintf(stderr,
-            "[codec.v3] %s openssl error unavailable\n",
-            label ? label : "(null)");
-  }
-}
-
 static const SharedKnockCodecContext *shared_knock_codec_v3_context(void) {
   return g_context;
+}
+
+static int shared_knock_codec_v3_attach_internal(void) {
+  const NonceLib *nonce_lib = NULL;
+  const SharedKnockDigestLib *digest_lib = NULL;
+  const SiglatchOpenSSL_Lib *openssl_lib = NULL;
+
+  nonce_lib = get_lib_nonce();
+  digest_lib = get_shared_knock_digest_lib();
+  openssl_lib = get_siglatch_openssl();
+  if (!nonce_lib || !digest_lib || !openssl_lib) {
+    return 0;
+  }
+
+  internal.nonce = *nonce_lib;
+  internal.digest.lib = *digest_lib;
+  internal.digest.generate_v3_form1 = shared_knock_digest_generate_v3_form1;
+  internal.openssl = *openssl_lib;
+  if (!internal.digest.generate_v3_form1 ||
+      !internal.digest.lib.sign ||
+      !internal.openssl.session_encrypt ||
+      !internal.openssl.session_decrypt ||
+      !internal.openssl.session_decrypt_strerror ||
+      !internal.openssl.aesgcm_encrypt ||
+      !internal.openssl.aesgcm_decrypt) {
+    return 0;
+  }
+  return 1;
 }
 
 static time_t shared_knock_codec_v3_nonce_ttl(void) {
@@ -149,11 +178,11 @@ static int shared_knock_codec_v3_sync_nonce_cache(SharedKnockCodecV3State *state
   }
 
   if (state->nonce_ready) {
-    lib_nonce_cache_shutdown(&state->nonce);
+    internal.nonce.cache_shutdown(&state->nonce);
     state->nonce_ready = 0;
   }
 
-  if (!lib_nonce_cache_init(&state->nonce, &cfg)) {
+  if (!internal.nonce.cache_init(&state->nonce, &cfg)) {
     return 0;
   }
 
@@ -176,89 +205,127 @@ static int shared_knock_codec_v3_packet_nonce_accept(SharedKnockCodecV3State *st
   }
 
   snprintf(nonce_str, sizeof(nonce_str), "%u-%u", timestamp, challenge);
-  if (lib_nonce_check(&state->nonce, nonce_str, now)) {
+  if (internal.nonce.check(&state->nonce, nonce_str, now)) {
     return 0;
   }
 
-  lib_nonce_add(&state->nonce, nonce_str, now);
+  internal.nonce.add(&state->nonce, nonce_str, now);
   return 1;
 }
 
-static int shared_knock_codec_v3_private_decrypt(const uint8_t *input,
-                                                 size_t input_len,
-                                                 uint8_t *output,
-                                                 size_t *output_len) {
-  EVP_PKEY_CTX *pctx = NULL;
-  EVP_PKEY *private_key = NULL;
-  uint8_t temp_output[SHARED_KNOCK_CODEC_V3_FORM1_CEK_MAX] = {0};
-  size_t temp_output_cap = sizeof(temp_output);
-  size_t plain_len = 0u;
-  int ok = 0;
+static int shared_knock_codec_v3_decrypt_payload_key(const uint8_t *input,
+                                                     size_t input_len,
+                                                     uint8_t *output,
+                                                     size_t *output_len) {
   const SharedKnockCodecContext *context = shared_knock_codec_v3_context();
-  const SiglatchOpenSSLSession *session = NULL;
+  uint8_t temp_output[SHARED_KNOCK_CODEC_V3_FORM1_CEK_MAX] = {0};
+  size_t temp_output_len = sizeof(temp_output);
+  int decrypt_rc = SL_SSL_DECRYPT_ERR_ARGS;
 
-  if (!context || !input || !output || !output_len || *output_len == 0u) {
+  if (!context || !context->openssl_session || !internal.openssl.session_decrypt ||
+      !internal.openssl.session_decrypt_strerror || !input || !output || !output_len ||
+      *output_len == 0u) {
     return 0;
   }
 
-  session = context->openssl_session;
-  if (session && session->private_key) {
-    private_key = session->private_key;
-  } else if (context->has_server_key && context->server_key.private_key) {
-    private_key = context->server_key.private_key;
-  }
-
-  if (!private_key) {
+  decrypt_rc = internal.openssl.session_decrypt(context->openssl_session,
+                                                input,
+                                                input_len,
+                                                temp_output,
+                                                &temp_output_len);
+  if (decrypt_rc != SL_SSL_DECRYPT_OK) {
+    fprintf(stderr,
+            "[codec.v3] payload key decrypt failed rc=%d reason=%s\n",
+            decrypt_rc,
+            internal.openssl.session_decrypt_strerror(decrypt_rc));
     return 0;
   }
 
-  pctx = EVP_PKEY_CTX_new(private_key, NULL);
-  if (!pctx) {
-    fprintf(stderr, "[codec.v3] wrapped cek decrypt ctx alloc failed\n");
-    shared_knock_codec_v3_log_openssl_error("wrapped cek decrypt ctx alloc failed");
+  if (temp_output_len != SHARED_KNOCK_CODEC_V3_FORM1_CEK_SIZE) {
+    fprintf(stderr,
+            "[codec.v3] payload key decrypt unexpected size plain_len=%zu expected=%u\n",
+            temp_output_len,
+            (unsigned)SHARED_KNOCK_CODEC_V3_FORM1_CEK_SIZE);
     return 0;
   }
 
-  do {
-    if (EVP_PKEY_decrypt_init(pctx) <= 0) {
-      shared_knock_codec_v3_log_openssl_error("wrapped cek decrypt init failed");
-      break;
-    }
-    if (EVP_PKEY_CTX_set_rsa_padding(pctx, RSA_PKCS1_PADDING) <= 0) {
-      shared_knock_codec_v3_log_openssl_error("wrapped cek decrypt padding failed");
-      break;
-    }
-    if (EVP_PKEY_decrypt(pctx, NULL, &plain_len, input, input_len) <= 0) {
-      shared_knock_codec_v3_log_openssl_error("wrapped cek decrypt len query failed");
-      break;
-    }
-    if (plain_len > temp_output_cap) {
-      fprintf(stderr,
-              "[codec.v3] wrapped cek decrypt output too small plain_len=%zu cap=%zu\n",
-              plain_len,
-              temp_output_cap);
-      break;
-    }
-    if (EVP_PKEY_decrypt(pctx, temp_output, &plain_len, input, input_len) <= 0) {
-      shared_knock_codec_v3_log_openssl_error("wrapped cek decrypt failed");
-      break;
-    }
+  if (*output_len < temp_output_len) {
+    fprintf(stderr,
+            "[codec.v3] payload key decrypt output too small plain_len=%zu cap=%zu\n",
+            temp_output_len,
+            *output_len);
+    return 0;
+  }
 
-    if (plain_len != SHARED_KNOCK_CODEC_V3_FORM1_CEK_SIZE) {
-      fprintf(stderr,
-              "[codec.v3] wrapped cek decrypt unexpected size plain_len=%zu expected=%u\n",
-              plain_len,
-              (unsigned)SHARED_KNOCK_CODEC_V3_FORM1_CEK_SIZE);
-      break;
-    }
+  memcpy(output, temp_output, temp_output_len);
+  *output_len = temp_output_len;
+  return 1;
+}
 
-    memcpy(output, temp_output, plain_len);
-    *output_len = plain_len;
-    ok = 1;
-  } while (0);
+static int shared_knock_codec_v3_get_payload_key(const SharedKnockCodecV3Form1Packet *pkt,
+                                                 const char *ip,
+                                                 uint16_t client_port,
+                                                 size_t buflen,
+                                                 uint8_t *cek,
+                                                 size_t *cek_len) {
+  if (!pkt || !cek || !cek_len) {
+    return SL_PAYLOAD_ERR_NULL_PTR;
+  }
 
-  EVP_PKEY_CTX_free(pctx);
-  return ok;
+  if (!shared_knock_codec_v3_decrypt_payload_key(pkt->wrapped_cek,
+                                                 pkt->wrapped_cek_len,
+                                                 cek,
+                                                 cek_len)) {
+    fprintf(stderr,
+            "[codec.v3] payload key decrypt failed ip=%s port=%u wrapped=%u bytes=%zu\n",
+            ip ? ip : "(null)",
+            (unsigned)client_port,
+            (unsigned)pkt->wrapped_cek_len,
+            buflen);
+    return SL_PAYLOAD_ERR_VALIDATE;
+  }
+
+  if (*cek_len != SHARED_KNOCK_CODEC_V3_FORM1_CEK_SIZE) {
+    fprintf(stderr,
+            "[codec.v3] cek length mismatch ip=%s port=%u got=%zu expected=%u bytes=%zu\n",
+            ip ? ip : "(null)",
+            (unsigned)client_port,
+            *cek_len,
+            (unsigned)SHARED_KNOCK_CODEC_V3_FORM1_CEK_SIZE,
+            buflen);
+    return SL_PAYLOAD_ERR_VALIDATE;
+  }
+
+  return SL_PAYLOAD_OK;
+}
+
+static int shared_knock_codec_v3_encrypt_payload_key(const uint8_t *input,
+                                                     size_t input_len,
+                                                     uint8_t *output,
+                                                     size_t *output_len) {
+  const SharedKnockCodecContext *context = shared_knock_codec_v3_context();
+  size_t wrapped_len = 0u;
+
+  if (!context || !context->openssl_session || !internal.openssl.session_encrypt ||
+      !input || !output || !output_len || *output_len == 0u) {
+    return 0;
+  }
+
+  wrapped_len = *output_len;
+  if (!internal.openssl.session_encrypt(context->openssl_session,
+                                        input,
+                                        input_len,
+                                        output,
+                                        &wrapped_len)) {
+    return 0;
+  }
+
+  if (wrapped_len == 0u || wrapped_len > *output_len) {
+    return 0;
+  }
+
+  *output_len = wrapped_len;
+  return 1;
 }
 
 static size_t shared_knock_codec_v3_plaintext_size(size_t payload_len) {
@@ -321,6 +388,8 @@ static int shared_knock_codec_v3_unpack_plaintext(const uint8_t *buf,
     return 0;
   }
 
+  (void)encrypted;
+
   payload_len = (size_t)shared_knock_codec_v3_read_u32_be(buf + 11);
   if (payload_len > SHARED_KNOCK_CODEC_V3_FORM1_PAYLOAD_MAX) {
     return 0;
@@ -332,21 +401,10 @@ static int shared_knock_codec_v3_unpack_plaintext(const uint8_t *buf,
   }
 
   memset(out, 0, sizeof(*out));
-  out->complete = 1;
-  out->wire_version = SHARED_KNOCK_CODEC_V3_WIRE_VERSION;
-  out->wire_form = SHARED_KNOCK_CODEC_FORM1_ID;
-  out->session_id = 0;
-  out->message_id = 0;
-  out->stream_id = 0;
-  out->fragment_index = 0;
-  out->fragment_count = 1;
   out->timestamp = shared_knock_codec_v3_read_u32_be(buf + 0);
   out->user_id = shared_knock_codec_v3_read_u16_be(buf + 4);
   out->action_id = buf[6];
   out->challenge = shared_knock_codec_v3_read_u32_be(buf + 7);
-  out->encrypted = encrypted ? 1 : 0;
-  out->wire_decode = 1;
-  out->wire_auth = 0;
 
   if (ip) {
     ip_len = strlen(ip);
@@ -487,14 +545,12 @@ static int shared_knock_codec_v3_deserialize_wire(const uint8_t *buf,
   return SL_PAYLOAD_OK;
 }
 
-static int shared_knock_codec_v3_normalize(const uint8_t *buf,
-                                           size_t buflen,
-                                           const char *ip,
-                                           uint16_t client_port,
-                                           int encrypted,
-                                           SharedKnockNormalizedUnit *out) {
-  SharedKnockCodecV3Form1Packet pkt = {0};
-  const SiglatchOpenSSL_Lib *openssl = NULL;
+static int shared_knock_codec_v3_decrypt_and_unpack_packet(const SharedKnockCodecV3Form1Packet *pkt,
+                                                           size_t buflen,
+                                                           const char *ip,
+                                                           uint16_t client_port,
+                                                           int encrypted,
+                                                           SharedKnockNormalizedUnit *out) {
   uint8_t cek[SHARED_KNOCK_CODEC_V3_FORM1_CEK_SIZE] = {0};
   uint8_t aad[SHARED_KNOCK_CODEC_V3_FORM1_HEADER_SIZE] = {0};
   uint8_t plaintext[SHARED_KNOCK_CODEC_V3_FORM1_BODY_MAX] = {0};
@@ -502,44 +558,20 @@ static int shared_knock_codec_v3_normalize(const uint8_t *buf,
   size_t plaintext_len = sizeof(plaintext);
   int rc = 0;
 
-  if (!out) {
+  if (!pkt) {
     return SL_PAYLOAD_ERR_NULL_PTR;
   }
 
-  if (shared_knock_codec_v3_deserialize_wire(buf, buflen, &pkt) != SL_PAYLOAD_OK) {
-    fprintf(stderr,
-            "[codec.v3] deserialize wire failed ip=%s port=%u bytes=%zu\n",
-            ip ? ip : "(null)",
-            (unsigned)client_port,
-            buflen);
-    return SL_PAYLOAD_ERR_UNPACK;
-  }
-
-  if (!shared_knock_codec_v3_private_decrypt(pkt.wrapped_cek,
-                                             pkt.wrapped_cek_len,
+  if (shared_knock_codec_v3_get_payload_key(pkt,
+                                             ip,
+                                             client_port,
+                                             buflen,
                                              cek,
-                                             &cek_len)) {
-    fprintf(stderr,
-            "[codec.v3] wrapped cek decrypt failed ip=%s port=%u wrapped=%u bytes=%zu\n",
-            ip ? ip : "(null)",
-            (unsigned)client_port,
-            (unsigned)pkt.wrapped_cek_len,
-            buflen);
+                                             &cek_len) != SL_PAYLOAD_OK) {
     return SL_PAYLOAD_ERR_VALIDATE;
   }
 
-  if (cek_len != SHARED_KNOCK_CODEC_V3_FORM1_CEK_SIZE) {
-    fprintf(stderr,
-            "[codec.v3] cek length mismatch ip=%s port=%u got=%zu expected=%u bytes=%zu\n",
-            ip ? ip : "(null)",
-            (unsigned)client_port,
-            cek_len,
-            (unsigned)SHARED_KNOCK_CODEC_V3_FORM1_CEK_SIZE,
-            buflen);
-    return SL_PAYLOAD_ERR_VALIDATE;
-  }
-
-  if (!shared_knock_codec_v3_build_aad(&pkt, aad, sizeof(aad))) {
+  if (!shared_knock_codec_v3_build_aad(pkt, aad, sizeof(aad))) {
     fprintf(stderr,
             "[codec.v3] aad build failed ip=%s port=%u bytes=%zu\n",
             ip ? ip : "(null)",
@@ -548,33 +580,23 @@ static int shared_knock_codec_v3_normalize(const uint8_t *buf,
     return SL_PAYLOAD_ERR_VALIDATE;
   }
 
-  openssl = get_siglatch_openssl();
-  if (!openssl || !openssl->aesgcm_decrypt) {
-    fprintf(stderr,
-            "[codec.v3] aesgcm decrypt helper unavailable ip=%s port=%u bytes=%zu\n",
-            ip ? ip : "(null)",
-            (unsigned)client_port,
-            buflen);
-    return SL_PAYLOAD_ERR_VALIDATE;
-  }
-
-  if (!openssl->aesgcm_decrypt(cek,
-                               cek_len,
-                               pkt.nonce,
-                               sizeof(pkt.nonce),
-                               aad,
-                               sizeof(aad),
-                               pkt.ciphertext,
-                               pkt.ciphertext_len,
-                               pkt.tag,
-                               sizeof(pkt.tag),
-                               plaintext,
-                               &plaintext_len)) {
+  if (!internal.openssl.aesgcm_decrypt(cek,
+                                       cek_len,
+                                       pkt->nonce,
+                                       sizeof(pkt->nonce),
+                                       aad,
+                                       sizeof(aad),
+                                       pkt->ciphertext,
+                                       pkt->ciphertext_len,
+                                       pkt->tag,
+                                       sizeof(pkt->tag),
+                                       plaintext,
+                                       &plaintext_len)) {
     fprintf(stderr,
             "[codec.v3] aesgcm decrypt failed ip=%s port=%u ciphertext=%u bytes=%zu\n",
             ip ? ip : "(null)",
             (unsigned)client_port,
-            (unsigned)pkt.ciphertext_len,
+            (unsigned)pkt->ciphertext_len,
             buflen);
     return SL_PAYLOAD_ERR_VALIDATE;
   }
@@ -595,13 +617,61 @@ static int shared_knock_codec_v3_normalize(const uint8_t *buf,
     return SL_PAYLOAD_ERR_VALIDATE;
   }
 
-  out->complete = 1;
-  out->wire_version = SHARED_KNOCK_CODEC_V3_WIRE_VERSION;
-  out->wire_form = SHARED_KNOCK_CODEC_FORM1_ID;
-  out->encrypted = 1;
-  out->wire_decode = 1;
-  out->wire_auth = 0;
-  out->fragment_count = 1;
+  return SL_PAYLOAD_OK;
+}
+
+static int shared_knock_codec_v3_unpack_unencrypted_packet(const SharedKnockCodecV3Form1Packet *pkt,
+                                                           size_t buflen,
+                                                           const char *ip,
+                                                           uint16_t client_port,
+                                                           SharedKnockNormalizedUnit *out) {
+  const SharedKnockCodecContext *context = shared_knock_codec_v3_context();
+  SharedKnockNormalizedUnit digest_normal = {0};
+  uint8_t digest[32] = {0};
+
+  if (!pkt || !out) {
+    return SL_PAYLOAD_ERR_NULL_PTR;
+  }
+
+  if (!shared_knock_codec_v3_unpack_plaintext(pkt->ciphertext,
+                                              pkt->ciphertext_len,
+                                              ip,
+                                              client_port,
+                                              0,
+                                              out)) {
+    fprintf(stderr,
+            "[codec.v3] plaintext unpack failed ip=%s port=%u plaintext=%u bytes=%zu\n",
+            ip ? ip : "(null)",
+            (unsigned)client_port,
+            (unsigned)pkt->ciphertext_len,
+            buflen);
+    return SL_PAYLOAD_ERR_VALIDATE;
+  }
+
+  if (!context || !context->openssl_session ||
+      context->openssl_session->hmac_key_len < sizeof(out->hmac)) {
+    return SL_PAYLOAD_ERR_VALIDATE;
+  }
+
+  digest_normal = *out;
+  digest_normal.wire_version = SHARED_KNOCK_CODEC_V3_WIRE_VERSION;
+  digest_normal.wire_form = SHARED_KNOCK_CODEC_FORM1_ID;
+
+  if (!internal.digest.generate_v3_form1(&digest_normal, digest)) {
+    return SL_PAYLOAD_ERR_VALIDATE;
+  }
+
+  if (!internal.digest.lib.validate(context->openssl_session->hmac_key,
+                                    digest,
+                                    out->hmac)) {
+    fprintf(stderr,
+            "[codec.v3] plaintext hmac verify failed ip=%s port=%u bytes=%zu\n",
+            ip ? ip : "(null)",
+            (unsigned)client_port,
+            buflen);
+    return SL_PAYLOAD_ERR_VALIDATE;
+  }
+
   return SL_PAYLOAD_OK;
 }
 
@@ -714,7 +784,7 @@ void shared_knock_codec_v3_destroy_state(SharedKnockCodecV3State *state) {
   }
 
   if (state->nonce_ready) {
-    lib_nonce_cache_shutdown(&state->nonce);
+    internal.nonce.cache_shutdown(&state->nonce);
     state->nonce_ready = 0;
   }
 
@@ -723,11 +793,22 @@ void shared_knock_codec_v3_destroy_state(SharedKnockCodecV3State *state) {
 
 int shared_knock_codec_v3_init(const SharedKnockCodecContext *context) {
   g_context = context;
+  memset(&internal, 0, sizeof(internal));
+  if (!shared_knock_codec_v3_attach_internal()) {
+    g_context = NULL;
+    return 0;
+  }
   return 1;
 }
 
 void shared_knock_codec_v3_shutdown(void) {
   g_context = NULL;
+  /*
+   * Keep the internal helper table alive until m7mux tears down its adapter
+   * states. These are borrowed singleton function tables, and the adapter
+   * destroy path still needs internal.nonce for cached nonce cleanup.
+   */
+  //  memset(&internal, 0, sizeof(internal));
 }
 
 int shared_knock_codec_v3_detect(const SharedKnockCodecV3State *state,
@@ -751,13 +832,53 @@ int shared_knock_codec_v3_decode(const SharedKnockCodecV3State *state,
                                  uint16_t client_port,
                                  int encrypted,
                                  SharedKnockNormalizedUnit *out) {
+  SharedKnockCodecV3Form1Packet pkt = {0};
+
   if (!state || !out || !buf) {
     return 0;
   }
 
+  if (shared_knock_codec_v3_deserialize_wire(buf, buflen, &pkt) != SL_PAYLOAD_OK) {
+    fprintf(stderr,
+            "[codec.v3] deserialize wire failed ip=%s port=%u bytes=%zu\n",
+            ip ? ip : "(null)",
+            (unsigned)client_port,
+            buflen);
+    return SL_PAYLOAD_ERR_UNPACK;
+  }
   (void)encrypted;
+  if (1) {
+    if (shared_knock_codec_v3_decrypt_and_unpack_packet(&pkt,
+                                                         buflen,
+                                                         ip,
+                                                         client_port,
+                                                         1,
+                                                         out) != SL_PAYLOAD_OK) {
+      return 0;
+    }
+  } else {
+    printf("TRYING UN ENCRYPTED\n");
+    if (shared_knock_codec_v3_unpack_unencrypted_packet(&pkt,
+                                                        buflen,
+                                                        ip,
+                                                        client_port,
+                                                        out) != SL_PAYLOAD_OK) {
+      return 0;
+    }
+  }
 
-  return shared_knock_codec_v3_normalize(buf, buflen, ip, client_port, 1, out) == SL_PAYLOAD_OK;
+  out->complete = 1;
+  out->wire_version = SHARED_KNOCK_CODEC_V3_WIRE_VERSION;
+  out->wire_form = SHARED_KNOCK_CODEC_FORM1_ID;
+  out->session_id = 0;
+  out->message_id = 0;
+  out->stream_id = 0;
+  out->fragment_index = 0;
+  out->fragment_count = 1;
+  out->encrypted = encrypted ? 1 : 0;
+  out->wire_decode = 1;
+  out->wire_auth = 0;
+  return 1;
 }
 
 int shared_knock_codec_v3_wire_auth(const SharedKnockCodecV3State *state,
@@ -788,7 +909,6 @@ int shared_knock_codec_v3_encode(const SharedKnockCodecV3State *state,
                                  uint8_t *out_buf,
                                  size_t *out_len) {
   const SharedKnockCodecContext *context = shared_knock_codec_v3_context();
-  const SiglatchOpenSSL_Lib *openssl = NULL;
   SharedKnockNormalizedUnit body = {0};
   SharedKnockCodecV3Form1Packet pkt = {0};
   uint8_t digest[32] = {0};
@@ -798,7 +918,7 @@ int shared_knock_codec_v3_encode(const SharedKnockCodecV3State *state,
   uint8_t aad[SHARED_KNOCK_CODEC_V3_FORM1_HEADER_SIZE] = {0};
   size_t plaintext_len = sizeof(plaintext);
   size_t ciphertext_len = sizeof(ciphertext);
-  size_t wrapped_cek_len = 0u;
+  size_t wrapped_cek_len = sizeof(pkt.wrapped_cek);
   size_t out_cap = 0u;
   size_t tag_len = SHARED_KNOCK_CODEC_V3_FORM1_TAG_SIZE;
   size_t total_len = 0u;
@@ -824,12 +944,12 @@ int shared_knock_codec_v3_encode(const SharedKnockCodecV3State *state,
     return 0;
   }
 
-  if (!shared_knock_digest_generate_v3_form1(normal, digest)) {
+  if (!internal.digest.generate_v3_form1(normal, digest)) {
     return 0;
   }
 
   body = *normal;
-  if (!shared_knock_digest_sign(context->openssl_session->hmac_key, digest, body.hmac)) {
+  if (!internal.digest.lib.sign(context->openssl_session->hmac_key, digest, body.hmac)) {
     return 0;
   }
 
@@ -841,29 +961,11 @@ int shared_knock_codec_v3_encode(const SharedKnockCodecV3State *state,
     return 0;
   }
 
-  wrapped_cek_len = (size_t)EVP_PKEY_get_size(context->openssl_session->public_key);
-  if (wrapped_cek_len == 0u || wrapped_cek_len > SHARED_KNOCK_CODEC_V3_FORM1_CEK_MAX) {
-    return 0;
-  }
-
-  {
-    size_t wrapped_len = wrapped_cek_len;
-    if (!context->openssl_session ||
-        !context->openssl_session->public_key ||
-        !get_siglatch_openssl() ||
-        !get_siglatch_openssl()->session_encrypt) {
-      return 0;
-    }
-
-    if (!get_siglatch_openssl()->session_encrypt(context->openssl_session,
-                                                 cek,
+  if (!shared_knock_codec_v3_encrypt_payload_key(cek,
                                                  sizeof(cek),
                                                  pkt.wrapped_cek,
-                                                 &wrapped_len)) {
-      return 0;
-    }
-
-    wrapped_cek_len = wrapped_len;
+                                                 &wrapped_cek_len)) {
+    return 0;
   }
 
   pkt.outer.magic = SHARED_KNOCK_PREFIX_MAGIC;
@@ -880,23 +982,18 @@ int shared_knock_codec_v3_encode(const SharedKnockCodecV3State *state,
     return 0;
   }
 
-  openssl = get_siglatch_openssl();
-  if (!openssl || !openssl->aesgcm_encrypt) {
-    return 0;
-  }
-
-  if (!openssl->aesgcm_encrypt(cek,
-                               sizeof(cek),
-                               pkt.nonce,
-                               sizeof(pkt.nonce),
-                               aad,
-                               sizeof(aad),
-                               plaintext,
-                               plaintext_len,
-                               ciphertext,
-                               &ciphertext_len,
-                               pkt.tag,
-                               tag_len)) {
+  if (!internal.openssl.aesgcm_encrypt(cek,
+                                       sizeof(cek),
+                                       pkt.nonce,
+                                       sizeof(pkt.nonce),
+                                       aad,
+                                       sizeof(aad),
+                                       plaintext,
+                                       plaintext_len,
+                                       ciphertext,
+                                       &ciphertext_len,
+                                       pkt.tag,
+                                       tag_len)) {
     return 0;
   }
 

@@ -11,7 +11,7 @@
 
 #include "../../ingress/ingress.h"
 #include "../normalize.h"
-#include "../../../../../openssl.h"
+#include "../../../../../openssl/openssl.h"
 #include "../../../../../../shared/knock/codec/codec.h"
 #include "../../../../../../shared/knock/codec/v1/v1.h"
 #include "../../../../../../shared/knock/codec/v2/v2.h"

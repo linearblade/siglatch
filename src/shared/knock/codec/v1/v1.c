@@ -13,7 +13,7 @@
 #include "../../../knock/response.h"
 #include "../../digest.h"
 #include "../../../../stdlib/nonce.h"
-#include "../../../../stdlib/openssl_session.h"
+#include "../../../../stdlib/openssl/session/session.h"
 #include "v1_packet.h"
 
 #define SHARED_KNOCK_CODEC_V1_TIMESTAMP_FUZZ 300

@@ -15,7 +15,7 @@
 #include "../stdlib/nonce.h"
 #include "../stdlib/signal.h"
 #include "../stdlib/env.h"
-#include "../stdlib/openssl.h"
+#include "../stdlib/openssl/openssl.h"
 #include "../stdlib/argv.h"
 #include "../stdlib/parse/parse.h"
 #include "../stdlib/str.h"
@@ -24,6 +24,7 @@
 #include "../stdlib/print.h"
 #include "../stdlib/stdin.h"
 #include "../stdlib/unicode.h"
+
 /**
  * @file lib.h
  * @brief Singleton system library registry for siglatch runtime.

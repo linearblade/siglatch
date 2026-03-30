@@ -31,6 +31,7 @@ Lib lib = {
     .file = {0},
     .nonce = {0},
     .signal = {0},
+    .openssl = {0},
     .str = {0},
     .parse = {0},
     .print = {0},

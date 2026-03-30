@@ -9,7 +9,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "../../openssl_session.h"
+#include "../session/session.h"
 
 #define SL_SSL_DECRYPT_OK               0
 #define SL_SSL_DECRYPT_ERR_ARGS       -1

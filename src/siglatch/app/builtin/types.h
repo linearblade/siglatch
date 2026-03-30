@@ -10,7 +10,7 @@
 #include "../payload/reply.h"
 #include "../daemon/job.h"
 #include "../runtime/runtime.h"
-#include "../../../stdlib/openssl_session.h"
+#include "../../../stdlib/openssl/session/session.h"
 
 typedef struct {
   AppRuntimeListenerState *listener;

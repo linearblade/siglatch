@@ -6,7 +6,7 @@
 #ifndef SIGLATCH_KNOCK_APP_TRANSMIT_HELPER_H
 #define SIGLATCH_KNOCK_APP_TRANSMIT_HELPER_H
 
-#include "../../../stdlib/openssl_session.h" // for SiglatchOpenSSLSession
+#include "../../../stdlib/openssl/session/session.h" // for SiglatchOpenSSLSession
 #include "../../../shared/knock/packet.h"
 #include "../opts/contract.h"
 /**

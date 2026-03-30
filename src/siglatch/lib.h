@@ -13,7 +13,7 @@
 #include "../stdlib/file.h"
 #include "../stdlib/nonce.h"
 #include "../stdlib/signal.h"
-#include "../stdlib/openssl.h"
+#include "../stdlib/openssl/openssl.h"
 #include "../stdlib/net.h"
 #include "../shared/knock/codec/context.h"
 #include "../stdlib/protocol/udp/m7mux/m7mux.h"
