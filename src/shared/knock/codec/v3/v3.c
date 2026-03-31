@@ -4,6 +4,8 @@
  */
 
 #include "v3.h"
+#include "../../../../stdlib/protocol/udp/m7mux/normalize/normalize.h"
+#include "../../../../stdlib/protocol/udp/m7mux/ingress/ingress.h"
 
 #include <openssl/err.h>
 #include <openssl/rand.h>
@@ -18,6 +20,7 @@
 #include "../../../../stdlib/openssl/openssl.h"
 
 #define SHARED_KNOCK_CODEC_V3_TIMESTAMP_FUZZ 300
+#define WIRE_VERSION SHARED_KNOCK_CODEC_V3_WIRE_VERSION
 
 struct SharedKnockCodecV3State {
   NonceCache nonce;
@@ -66,7 +69,6 @@ static int shared_knock_codec_v3_unpack_plaintext(const uint8_t *buf,
                                                   size_t buflen,
                                                   const char *ip,
                                                   uint16_t client_port,
-                                                  int encrypted,
                                                   SharedKnockNormalizedUnit *out);
 static int shared_knock_codec_v3_build_aad(const SharedKnockCodecV3Form1Packet *pkt,
                                            uint8_t *aad,
@@ -79,12 +81,6 @@ static int shared_knock_codec_v3_deserialize_wire(const uint8_t *buf,
                                                   size_t buflen,
                                                   SharedKnockCodecV3Form1Packet *pkt);
 static int shared_knock_codec_v3_decrypt_and_unpack_packet(const SharedKnockCodecV3Form1Packet *pkt,
-                                                           size_t buflen,
-                                                           const char *ip,
-                                                           uint16_t client_port,
-                                                           int encrypted,
-                                                           SharedKnockNormalizedUnit *out);
-static int shared_knock_codec_v3_unpack_unencrypted_packet(const SharedKnockCodecV3Form1Packet *pkt,
                                                            size_t buflen,
                                                            const char *ip,
                                                            uint16_t client_port,
@@ -345,7 +341,7 @@ static int shared_knock_codec_v3_pack_plaintext(const SharedKnockNormalizedUnit 
     return 0;
   }
 
-  if (normal->wire_version != SHARED_KNOCK_CODEC_V3_WIRE_VERSION ||
+  if (normal->wire_version != WIRE_VERSION ||
       normal->wire_form != SHARED_KNOCK_CODEC_FORM1_ID) {
     return 0;
   }
@@ -374,7 +370,6 @@ static int shared_knock_codec_v3_unpack_plaintext(const uint8_t *buf,
                                                   size_t buflen,
                                                   const char *ip,
                                                   uint16_t client_port,
-                                                  int encrypted,
                                                   SharedKnockNormalizedUnit *out) {
   size_t payload_len = 0u;
   size_t need = 0u;
@@ -387,8 +382,6 @@ static int shared_knock_codec_v3_unpack_plaintext(const uint8_t *buf,
   if (buflen < SHARED_KNOCK_CODEC_V3_FORM1_BODY_FIXED_SIZE) {
     return 0;
   }
-
-  (void)encrypted;
 
   payload_len = (size_t)shared_knock_codec_v3_read_u32_be(buf + 11);
   if (payload_len > SHARED_KNOCK_CODEC_V3_FORM1_PAYLOAD_MAX) {
@@ -504,7 +497,7 @@ static int shared_knock_codec_v3_validate_wire(const SharedKnockCodecV3Form1Pack
     return SL_PAYLOAD_ERR_VALIDATE;
   }
 
-  if (pkt->outer.version != SHARED_KNOCK_CODEC_V3_WIRE_VERSION) {
+  if (pkt->outer.version != WIRE_VERSION) {
     return SL_PAYLOAD_ERR_VALIDATE;
   }
 
@@ -549,7 +542,6 @@ static int shared_knock_codec_v3_decrypt_and_unpack_packet(const SharedKnockCode
                                                            size_t buflen,
                                                            const char *ip,
                                                            uint16_t client_port,
-                                                           int encrypted,
                                                            SharedKnockNormalizedUnit *out) {
   uint8_t cek[SHARED_KNOCK_CODEC_V3_FORM1_CEK_SIZE] = {0};
   uint8_t aad[SHARED_KNOCK_CODEC_V3_FORM1_HEADER_SIZE] = {0};
@@ -605,7 +597,6 @@ static int shared_knock_codec_v3_decrypt_and_unpack_packet(const SharedKnockCode
                                               plaintext_len,
                                               ip,
                                               client_port,
-                                              encrypted,
                                               out);
   if (rc != 1) {
     fprintf(stderr,
@@ -613,61 +604,6 @@ static int shared_knock_codec_v3_decrypt_and_unpack_packet(const SharedKnockCode
             ip ? ip : "(null)",
             (unsigned)client_port,
             plaintext_len,
-            buflen);
-    return SL_PAYLOAD_ERR_VALIDATE;
-  }
-
-  return SL_PAYLOAD_OK;
-}
-
-static int shared_knock_codec_v3_unpack_unencrypted_packet(const SharedKnockCodecV3Form1Packet *pkt,
-                                                           size_t buflen,
-                                                           const char *ip,
-                                                           uint16_t client_port,
-                                                           SharedKnockNormalizedUnit *out) {
-  const SharedKnockCodecContext *context = shared_knock_codec_v3_context();
-  SharedKnockNormalizedUnit digest_normal = {0};
-  uint8_t digest[32] = {0};
-
-  if (!pkt || !out) {
-    return SL_PAYLOAD_ERR_NULL_PTR;
-  }
-
-  if (!shared_knock_codec_v3_unpack_plaintext(pkt->ciphertext,
-                                              pkt->ciphertext_len,
-                                              ip,
-                                              client_port,
-                                              0,
-                                              out)) {
-    fprintf(stderr,
-            "[codec.v3] plaintext unpack failed ip=%s port=%u plaintext=%u bytes=%zu\n",
-            ip ? ip : "(null)",
-            (unsigned)client_port,
-            (unsigned)pkt->ciphertext_len,
-            buflen);
-    return SL_PAYLOAD_ERR_VALIDATE;
-  }
-
-  if (!context || !context->openssl_session ||
-      context->openssl_session->hmac_key_len < sizeof(out->hmac)) {
-    return SL_PAYLOAD_ERR_VALIDATE;
-  }
-
-  digest_normal = *out;
-  digest_normal.wire_version = SHARED_KNOCK_CODEC_V3_WIRE_VERSION;
-  digest_normal.wire_form = SHARED_KNOCK_CODEC_FORM1_ID;
-
-  if (!internal.digest.generate_v3_form1(&digest_normal, digest)) {
-    return SL_PAYLOAD_ERR_VALIDATE;
-  }
-
-  if (!internal.digest.lib.validate(context->openssl_session->hmac_key,
-                                    digest,
-                                    out->hmac)) {
-    fprintf(stderr,
-            "[codec.v3] plaintext hmac verify failed ip=%s port=%u bytes=%zu\n",
-            ip ? ip : "(null)",
-            (unsigned)client_port,
             buflen);
     return SL_PAYLOAD_ERR_VALIDATE;
   }
@@ -756,6 +692,79 @@ const char *shared_knock_codec_v3_deserialize_strerror(int code) {
   }
 }
 
+static int shared_knock_codec_v3_adapter_create_state(void **out_state) {
+  return shared_knock_codec_v3_create_state((SharedKnockCodecV3State **)out_state);
+}
+
+static void shared_knock_codec_v3_adapter_destroy_state(void *state) {
+  shared_knock_codec_v3_destroy_state((SharedKnockCodecV3State *)state);
+}
+
+static int shared_knock_codec_v3_adapter_detect(const M7MuxContext *ctx,
+                                                 const void *state,
+                                                 const M7MuxIngress *ingress,
+                                                 M7MuxIngressIdentity *identity) {
+  (void)ctx;
+
+  return shared_knock_codec_v3_detect((const SharedKnockCodecV3State *)state, ingress, identity);
+}
+
+static int shared_knock_codec_v3_adapter_decode(const M7MuxContext *ctx,
+                                                 const void *state,
+                                                 const M7MuxIngress *ingress,
+                                                 M7MuxRecvPacket *out) {
+  SharedKnockNormalizedUnit normal = {0};
+
+  (void)ctx;
+
+  if (!shared_knock_codec_v3_decode((const SharedKnockCodecV3State *)state, ingress, &normal)) {
+    return 0;
+  }
+
+  m7mux_normalize_adapter_copy_shared_to_mux(&normal, out);
+  if (out && ingress) {
+    out->received_ms = ingress->received_ms;
+  }
+
+  return 1;
+}
+
+static int shared_knock_codec_v3_adapter_encode(const M7MuxContext *ctx,
+                                                 const void *state,
+                                                 const M7MuxSendPacket *send,
+                                                 M7MuxEgressData *out) {
+  SharedKnockNormalizedUnit normal = {0};
+  uint8_t encoded[SHARED_KNOCK_CODEC_V3_FORM1_PACKET_MAX_SIZE] = {0};
+  size_t encoded_len = sizeof(encoded);
+
+  (void)ctx;
+
+  if (!m7mux_normalize_adapter_copy_mux_to_shared(send, &normal)) {
+    return 0;
+  }
+
+  if (!shared_knock_codec_v3_encode((const SharedKnockCodecV3State *)state,
+                                    &normal,
+                                    encoded,
+                                    &encoded_len)) {
+    return 0;
+  }
+
+  return m7mux_normalize_adapter_fill_egress(send, encoded, encoded_len, out);
+}
+
+static const M7MuxNormalizeAdapter shared_knock_codec_v3_adapter = {
+  .name = "codec.v3",
+  .wire_version = WIRE_VERSION,
+  .create_state = shared_knock_codec_v3_adapter_create_state,
+  .destroy_state = shared_knock_codec_v3_adapter_destroy_state,
+  .detect = shared_knock_codec_v3_adapter_detect,
+  .decode = shared_knock_codec_v3_adapter_decode,
+  .encode = shared_knock_codec_v3_adapter_encode,
+  .state = NULL,
+  .reserved = NULL
+};
+
 int shared_knock_codec_v3_create_state(SharedKnockCodecV3State **out_state) {
   SharedKnockCodecV3State *state = NULL;
 
@@ -812,31 +821,51 @@ void shared_knock_codec_v3_shutdown(void) {
 }
 
 int shared_knock_codec_v3_detect(const SharedKnockCodecV3State *state,
-                                 const uint8_t *buf,
-                                 size_t buflen) {
+                                 const struct M7MuxIngress *ingress,
+                                 M7MuxIngressIdentity *identity) {
   SharedKnockCodecV3Form1Packet pkt = {0};
+  const uint8_t *buf = NULL;
+  size_t buflen = 0u;
 
   (void)state;
 
-  if (!buf) {
+  if (!ingress) {
     return 0;
   }
 
-  return shared_knock_codec_v3_deserialize_wire(buf, buflen, &pkt) == SL_PAYLOAD_OK;
+  buf = ingress->buffer;
+  buflen = ingress->len;
+
+  if (shared_knock_codec_v3_deserialize_wire(buf, buflen, &pkt) != SL_PAYLOAD_OK) {
+    return 0;
+  }
+
+  if (identity) {
+    identity->magic = pkt.outer.magic;
+    identity->version = pkt.outer.version;
+    identity->form = pkt.outer.form;
+  }
+
+  return 1;
 }
 
 int shared_knock_codec_v3_decode(const SharedKnockCodecV3State *state,
-                                 const uint8_t *buf,
-                                 size_t buflen,
-                                 const char *ip,
-                                 uint16_t client_port,
-                                 int encrypted,
+                                 const struct M7MuxIngress *ingress,
                                  SharedKnockNormalizedUnit *out) {
   SharedKnockCodecV3Form1Packet pkt = {0};
+  const uint8_t *buf = NULL;
+  size_t buflen = 0u;
+  const char *ip = NULL;
+  uint16_t client_port = 0u;
 
-  if (!state || !out || !buf) {
+  if (!state || !out || !ingress) {
     return 0;
   }
+
+  buf = ingress->buffer;
+  buflen = ingress->len;
+  ip = ingress->ip;
+  client_port = ingress->client_port;
 
   if (shared_knock_codec_v3_deserialize_wire(buf, buflen, &pkt) != SL_PAYLOAD_OK) {
     fprintf(stderr,
@@ -846,57 +875,36 @@ int shared_knock_codec_v3_decode(const SharedKnockCodecV3State *state,
             buflen);
     return SL_PAYLOAD_ERR_UNPACK;
   }
-  (void)encrypted;
-  if (1) {
-    if (shared_knock_codec_v3_decrypt_and_unpack_packet(&pkt,
-                                                         buflen,
-                                                         ip,
-                                                         client_port,
-                                                         1,
-                                                         out) != SL_PAYLOAD_OK) {
-      return 0;
-    }
-  } else {
-    printf("TRYING UN ENCRYPTED\n");
-    if (shared_knock_codec_v3_unpack_unencrypted_packet(&pkt,
-                                                        buflen,
-                                                        ip,
-                                                        client_port,
-                                                        out) != SL_PAYLOAD_OK) {
-      return 0;
-    }
+  if (shared_knock_codec_v3_decrypt_and_unpack_packet(&pkt,
+                                                       buflen,
+                                                       ip,
+                                                       client_port,
+                                                       out) != SL_PAYLOAD_OK) {
+    return 0;
   }
 
   out->complete = 1;
-  out->wire_version = SHARED_KNOCK_CODEC_V3_WIRE_VERSION;
+  out->wire_version = WIRE_VERSION;
   out->wire_form = SHARED_KNOCK_CODEC_FORM1_ID;
   out->session_id = 0;
   out->message_id = 0;
   out->stream_id = 0;
   out->fragment_index = 0;
   out->fragment_count = 1;
-  out->encrypted = encrypted ? 1 : 0;
+  out->encrypted = 1;
   out->wire_decode = 1;
   out->wire_auth = 0;
   return 1;
 }
 
 int shared_knock_codec_v3_wire_auth(const SharedKnockCodecV3State *state,
-                                    const uint8_t *buf,
-                                    size_t buflen,
-                                    const char *ip,
-                                    uint16_t client_port,
-                                    int encrypted,
+                                    const struct M7MuxIngress *ingress,
                                     SharedKnockNormalizedUnit *normal) {
   if (!state || !normal) {
     return 0;
   }
 
-  (void)buf;
-  (void)buflen;
-  (void)ip;
-  (void)client_port;
-  (void)encrypted;
+  (void)ingress;
 
   normal->wire_auth = shared_knock_codec_v3_packet_nonce_accept((SharedKnockCodecV3State *)state,
                                                                   normal->timestamp,
@@ -935,7 +943,7 @@ int shared_knock_codec_v3_encode(const SharedKnockCodecV3State *state,
     return 0;
   }
 
-  if (normal->wire_version != SHARED_KNOCK_CODEC_V3_WIRE_VERSION ||
+  if (normal->wire_version != WIRE_VERSION ||
       normal->wire_form != SHARED_KNOCK_CODEC_FORM1_ID) {
     return 0;
   }
@@ -969,7 +977,7 @@ int shared_knock_codec_v3_encode(const SharedKnockCodecV3State *state,
   }
 
   pkt.outer.magic = SHARED_KNOCK_PREFIX_MAGIC;
-  pkt.outer.version = SHARED_KNOCK_CODEC_V3_WIRE_VERSION;
+  pkt.outer.version = WIRE_VERSION;
   pkt.outer.form = SHARED_KNOCK_CODEC_FORM1_ID;
   pkt.wrapped_cek_len = (uint16_t)wrapped_cek_len;
   pkt.ciphertext_len = (uint32_t)plaintext_len;
@@ -1018,6 +1026,7 @@ int shared_knock_codec_v3_encode(const SharedKnockCodecV3State *state,
 
 static const SharedKnockCodecV3Lib shared_knock_codec_v3 = {
   .name = "v3",
+  .wire_version = WIRE_VERSION,
   .init = shared_knock_codec_v3_init,
   .shutdown = shared_knock_codec_v3_shutdown,
   .create_state = shared_knock_codec_v3_create_state,
@@ -1035,4 +1044,8 @@ static const SharedKnockCodecV3Lib shared_knock_codec_v3 = {
 
 const SharedKnockCodecV3Lib *get_shared_knock_codec_v3_lib(void) {
   return &shared_knock_codec_v3;
+}
+
+const M7MuxNormalizeAdapter *shared_knock_codec_v3_get_adapter(void) {
+  return &shared_knock_codec_v3_adapter;
 }

@@ -16,6 +16,9 @@ typedef struct M7MuxIngress {
   char ip[64];
   uint16_t client_port;
   int encrypted;
+  uint32_t magic;
+  uint32_t version;
+  uint8_t form;
 } M7MuxIngress;
 
 typedef struct {

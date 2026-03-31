@@ -6,7 +6,6 @@
 #ifndef SIGLATCH_SERVER_APP_PAYLOAD_H
 #define SIGLATCH_SERVER_APP_PAYLOAD_H
 
-#include "codec/codec.h"
 #include "digest/digest.h"
 #include "reply.h"
 #include "unstructured.h"
@@ -18,7 +17,6 @@ typedef struct {
                    const char *run_as);
   int (*run_shell_wait)(const char *script_path, int argc, char *argv[], int exec_split,
                         const char *run_as, int *out_exit_code);
-  AppPayloadCodecLib codec;
   AppPayloadDigestLib digest;
   AppPayloadReplyLib reply;
   AppPayloadUnstructuredLib unstructured;

@@ -31,18 +31,12 @@ static int app_payload_run_shell_wait(
     int *out_exit_code);
 
 static int app_payload_init(void) {
-  if (!app_payload_codec_init()) {
-    return 0;
-  }
-
   if (!app_payload_digest_init()) {
-    app_payload_codec_shutdown();
     return 0;
   }
 
   if (!app_payload_unstructured_init()) {
     app_payload_digest_shutdown();
-    app_payload_codec_shutdown();
     return 0;
   }
 
@@ -52,7 +46,6 @@ static int app_payload_init(void) {
 static void app_payload_shutdown(void) {
   app_payload_unstructured_shutdown();
   app_payload_digest_shutdown();
-  app_payload_codec_shutdown();
 }
 
 static int app_payload_run_shell(
@@ -269,15 +262,6 @@ static const AppPayloadLib app_payload_instance = {
   .shutdown = app_payload_shutdown,
   .run_shell = app_payload_run_shell,
   .run_shell_wait = app_payload_run_shell_wait,
-  .codec = {
-    .init = app_payload_codec_init,
-    .shutdown = app_payload_codec_shutdown,
-    .pack = app_payload_codec_pack,
-    .unpack = app_payload_codec_unpack,
-    .validate = app_payload_codec_validate,
-    .deserialize = app_payload_codec_deserialize,
-    .deserialize_strerror = app_payload_codec_deserialize_strerror
-  },
   .digest = {
     .init = app_payload_digest_init,
     .shutdown = app_payload_digest_shutdown,

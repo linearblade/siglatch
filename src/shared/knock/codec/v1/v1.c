@@ -4,6 +4,8 @@
  */
 
 #include "v1.h"
+#include "../../../../stdlib/protocol/udp/m7mux/normalize/normalize.h"
+#include "../../../../stdlib/protocol/udp/m7mux/ingress/ingress.h"
 
 #include <openssl/rsa.h>
 #include <stdlib.h>
@@ -13,15 +15,16 @@
 #include "../../../knock/response.h"
 #include "../../digest.h"
 #include "../../../../stdlib/nonce.h"
+#include "../../../../stdlib/openssl/rsa/rsa.h"
 #include "../../../../stdlib/openssl/session/session.h"
 #include "v1_packet.h"
 
 #define SHARED_KNOCK_CODEC_V1_TIMESTAMP_FUZZ 300
+#define WIRE_VERSION SHARED_KNOCK_CODEC_V1_VERSION
 
 struct SharedKnockCodecV1State {
   NonceCache nonce;
   int nonce_ready;
-  int last_packet_encrypted;
 };
 
 static const SharedKnockCodecContext *g_context = NULL;
@@ -210,7 +213,7 @@ static int shared_knock_codec_v1_validate_wire(const SharedKnockCodecV1Packet *p
     return SL_PAYLOAD_ERR_NULL_PTR;
   }
 
-  if (pkt->version != SHARED_KNOCK_CODEC_V1_VERSION) {
+  if (pkt->version != WIRE_VERSION) {
     return SL_PAYLOAD_ERR_VALIDATE;
   }
 
@@ -275,7 +278,7 @@ static int shared_knock_codec_v1_normalize(const uint8_t *buf,
   memset(out, 0, sizeof(*out));
 
   out->complete = 1;
-  out->wire_version = pkt.version;
+  out->wire_version = WIRE_VERSION;
   out->wire_form = 0u;
   out->session_id = 0;
   out->message_id = 0;
@@ -381,24 +384,25 @@ void shared_knock_codec_v1_shutdown(void) {
 }
 
 int shared_knock_codec_v1_detect(const SharedKnockCodecV1State *state,
-                                  const uint8_t *buf,
-                                  size_t buflen) {
+                                 const struct M7MuxIngress *ingress,
+                                 M7MuxIngressIdentity *identity) {
   SharedKnockCodecV1Packet pkt = {0};
   size_t decrypted_cap = 0u;
   const SharedKnockCodecContext *context = shared_knock_codec_v1_context();
+  const uint8_t *buf = NULL;
+  size_t buflen = 0u;
 
-  if (!buf) {
+  if (!ingress) {
     return 0;
   }
 
-  if (state) {
-    ((SharedKnockCodecV1State *)state)->last_packet_encrypted = 0;
-  }
+  buf = ingress->buffer;
+  buflen = ingress->len;
 
   if (buflen == SHARED_KNOCK_CODEC_V1_PACKET_SIZE &&
       shared_knock_codec_v1_deserialize_wire(buf, buflen, &pkt) == SL_PAYLOAD_OK) {
-    if (state) {
-      ((SharedKnockCodecV1State *)state)->last_packet_encrypted = 0;
+    if (identity) {
+      identity->encrypted = 0;
     }
     return 1;
   }
@@ -443,30 +447,40 @@ int shared_knock_codec_v1_detect(const SharedKnockCodecV1State *state,
     free(decrypted_buf);
   }
 
-  ((SharedKnockCodecV1State *)state)->last_packet_encrypted = 1;
+  if (identity) {
+    identity->encrypted = 1;
+  }
   return 1;
 }
 
 int shared_knock_codec_v1_decode(const SharedKnockCodecV1State *state,
-                                  const uint8_t *buf,
-                                  size_t buflen,
-                                  const char *ip,
-                                  uint16_t client_port,
-                                  int encrypted,
-                                  SharedKnockNormalizedUnit *out) {
+                                 const struct M7MuxIngress *ingress,
+                                 SharedKnockNormalizedUnit *out) {
   size_t decrypted_cap = 0u;
-  const uint8_t *payload = buf;
-  size_t payload_len = buflen;
+  const uint8_t *payload = NULL;
+  size_t payload_len = 0u;
   int should_decrypt = 0;
   int rc = 0;
   const SharedKnockCodecContext *context = shared_knock_codec_v1_context();
+  const uint8_t *buf = NULL;
+  size_t buflen = 0u;
+  const char *ip = NULL;
+  uint16_t client_port = 0u;
+  int encrypted = 0;
 
-  if (!state || !out || !buf) {
+  if (!state || !out || !ingress) {
     return 0;
   }
 
-  (void)encrypted;
-  should_decrypt = state->last_packet_encrypted ? 1 : 0;
+  buf = ingress->buffer;
+  buflen = ingress->len;
+  ip = ingress->ip;
+  client_port = ingress->client_port;
+  encrypted = ingress->encrypted;
+  payload = buf;
+  payload_len = buflen;
+
+  should_decrypt = encrypted ? 1 : 0;
   if (should_decrypt) {
     if (!context || !context->has_server_key || !context->server_key.private_key) {
       return 0;
@@ -514,21 +528,13 @@ int shared_knock_codec_v1_decode(const SharedKnockCodecV1State *state,
 }
 
 int shared_knock_codec_v1_wire_auth(const SharedKnockCodecV1State *state,
-                                     const uint8_t *buf,
-                                     size_t buflen,
-                                     const char *ip,
-                                     uint16_t client_port,
-                                     int encrypted,
+                                     const struct M7MuxIngress *ingress,
                                      SharedKnockNormalizedUnit *normal) {
   if (!state || !normal) {
     return 0;
   }
 
-  (void)buf;
-  (void)buflen;
-  (void)ip;
-  (void)client_port;
-  (void)encrypted;
+  (void)ingress;
 
   normal->wire_auth = 0;
   if (!shared_knock_codec_v1_authorize_normalized(normal)) {
@@ -549,10 +555,14 @@ int shared_knock_codec_v1_encode(const SharedKnockCodecV1State *state,
   KnockPacket digest_pkt = {0};
   const SharedKnockCodecContext *context = shared_knock_codec_v1_context();
   const SharedKnockDigestLib *digest_lib = NULL;
-  const SiglatchOpenSSLSession *session = NULL;
+  SiglatchOpenSSLSession *session = NULL;
   uint8_t digest[32] = {0};
   size_t payload_len = 0;
   size_t capacity = 0;
+  size_t packed_len = 0;
+  size_t encrypted_cap = 0;
+  int should_encrypt = 0;
+  uint8_t packed[SHARED_KNOCK_CODEC_V1_PACKET_SIZE] = {0};
 
   (void)state;
 
@@ -569,7 +579,7 @@ int shared_knock_codec_v1_encode(const SharedKnockCodecV1State *state,
     return 0;
   }
 
-  wire_pkt.version = SHARED_KNOCK_CODEC_V1_VERSION;
+  wire_pkt.version = WIRE_VERSION;
   wire_pkt.timestamp = normal->timestamp;
   wire_pkt.user_id = normal->user_id;
   wire_pkt.action_id = SL_KNOCK_RESPONSE_ACTION_ID;
@@ -609,11 +619,36 @@ int shared_knock_codec_v1_encode(const SharedKnockCodecV1State *state,
     return 0;
   }
 
-  if (shared_knock_codec_v1_pack_wire(&wire_pkt, out_buf, capacity) < 0) {
+  if (shared_knock_codec_v1_pack_wire(&wire_pkt, packed, sizeof(packed)) < 0) {
     return 0;
   }
 
-  *out_len = SHARED_KNOCK_CODEC_V1_PACKET_SIZE;
+  packed_len = sizeof(packed);
+  should_encrypt = normal->encrypted ? 1 : 0;
+  if (!should_encrypt) {
+    if (capacity < packed_len) {
+      return 0;
+    }
+
+    memcpy(out_buf, packed, packed_len);
+    *out_len = packed_len;
+    return 1;
+  }
+
+  if (!session || !session->public_key) {
+    return 0;
+  }
+
+  encrypted_cap = (size_t)EVP_PKEY_get_size(session->public_key);
+  if (encrypted_cap <= 11u || capacity < encrypted_cap || packed_len > (encrypted_cap - 11u)) {
+    return 0;
+  }
+
+  *out_len = capacity;
+  if (!siglatch_openssl_session_encrypt(session, packed, packed_len, out_buf, out_len)) {
+    return 0;
+  }
+
   return 1;
 }
 
@@ -637,7 +672,7 @@ static int shared_knock_codec_v1_authorize_normalized(const SharedKnockNormalize
     return 0;
   }
 
-  pkt.version = SHARED_KNOCK_CODEC_V1_VERSION;
+  pkt.version = WIRE_VERSION;
   pkt.timestamp = normal->timestamp;
   pkt.user_id = normal->user_id;
   pkt.action_id = normal->action_id;
@@ -696,8 +731,82 @@ const char *shared_knock_codec_v1_deserialize_strerror(int code) {
   }
 }
 
+static int shared_knock_codec_v1_adapter_create_state(void **out_state) {
+  return shared_knock_codec_v1_create_state((SharedKnockCodecV1State **)out_state);
+}
+
+static void shared_knock_codec_v1_adapter_destroy_state(void *state) {
+  shared_knock_codec_v1_destroy_state((SharedKnockCodecV1State *)state);
+}
+
+static int shared_knock_codec_v1_adapter_detect(const M7MuxContext *ctx,
+                                                 const void *state,
+                                                 const M7MuxIngress *ingress,
+                                                 M7MuxIngressIdentity *identity) {
+  (void)ctx;
+
+  return shared_knock_codec_v1_detect((const SharedKnockCodecV1State *)state, ingress, identity);
+}
+
+static int shared_knock_codec_v1_adapter_decode(const M7MuxContext *ctx,
+                                                 const void *state,
+                                                 const M7MuxIngress *ingress,
+                                                 M7MuxRecvPacket *out) {
+  SharedKnockNormalizedUnit normal = {0};
+
+  (void)ctx;
+
+  if (!shared_knock_codec_v1_decode((const SharedKnockCodecV1State *)state, ingress, &normal)) {
+    return 0;
+  }
+
+  m7mux_normalize_adapter_copy_shared_to_mux(&normal, out);
+  if (out && ingress) {
+    out->received_ms = ingress->received_ms;
+  }
+
+  return 1;
+}
+
+static int shared_knock_codec_v1_adapter_encode(const M7MuxContext *ctx,
+                                                 const void *state,
+                                                 const M7MuxSendPacket *send,
+                                                 M7MuxEgressData *out) {
+  SharedKnockNormalizedUnit normal = {0};
+  uint8_t encoded[M7MUX_NORMALIZED_PACKET_BUFFER_SIZE] = {0};
+  size_t encoded_len = sizeof(encoded);
+
+  (void)ctx;
+
+  if (!m7mux_normalize_adapter_copy_mux_to_shared(send, &normal)) {
+    return 0;
+  }
+
+  if (!shared_knock_codec_v1_encode((const SharedKnockCodecV1State *)state,
+                                    &normal,
+                                    encoded,
+                                    &encoded_len)) {
+    return 0;
+  }
+
+  return m7mux_normalize_adapter_fill_egress(send, encoded, encoded_len, out);
+}
+
+static const M7MuxNormalizeAdapter shared_knock_codec_v1_adapter = {
+  .name = "codec.v1",
+  .wire_version = WIRE_VERSION,
+  .create_state = shared_knock_codec_v1_adapter_create_state,
+  .destroy_state = shared_knock_codec_v1_adapter_destroy_state,
+  .detect = shared_knock_codec_v1_adapter_detect,
+  .decode = shared_knock_codec_v1_adapter_decode,
+  .encode = shared_knock_codec_v1_adapter_encode,
+  .state = NULL,
+  .reserved = NULL
+};
+
 static const SharedKnockCodecV1Lib shared_knock_codec_v1 = {
   .name = "v1",
+  .wire_version = WIRE_VERSION,
   .init = shared_knock_codec_v1_init,
   .shutdown = shared_knock_codec_v1_shutdown,
   .create_state = shared_knock_codec_v1_create_state,
@@ -715,4 +824,8 @@ static const SharedKnockCodecV1Lib shared_knock_codec_v1 = {
 
 const SharedKnockCodecV1Lib *get_shared_knock_codec_v1_lib(void) {
   return &shared_knock_codec_v1;
+}
+
+const M7MuxNormalizeAdapter *shared_knock_codec_v1_get_adapter(void) {
+  return &shared_knock_codec_v1_adapter;
 }

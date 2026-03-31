@@ -8,11 +8,13 @@
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 
 #include "../../../shared/shared.h"
 #include "../../../shared/knock/response.h"
+#include "../../../stdlib/protocol/udp/m7mux/ingress/ingress.h"
 #include "../../../stdlib/utils.h"
 #include "../../lib.h"
 #include "helper.h"
@@ -971,10 +973,9 @@ static int app_transmit_wait_for_response_v3(int udp_fd,
                                              SiglatchOpenSSLSession *session,
                                              int *out_status) {
   uint8_t received[KNOCKER_RESPONSE_BUFFER_SIZE] = {0};
-  const uint8_t *reply_buf = received;
   size_t received_len = 0;
-  size_t reply_len = 0;
   struct sockaddr_storage peer = {0};
+  M7MuxIngress reply_ingress = {0};
   SharedKnockNormalizedUnit reply = {0};
   int wait_rc = 0;
   char peer_ip[INET6_ADDRSTRLEN] = {0};
@@ -1009,22 +1010,39 @@ static int app_transmit_wait_for_response_v3(int udp_fd,
     return 0;
   }
 
-  reply_len = received_len;
   if (!lib.net.addr.sock_to_ip(&peer, peer_ip, sizeof(peer_ip))) {
     peer_ip[0] = '\0';
   }
   peer_port = app_transmit_peer_port(&peer);
+
+  if (received_len > sizeof(reply_ingress.buffer)) {
+    if (lib.log.emit) {
+      lib.log.emit(LOG_ERROR, 1, "Received server response exceeds ingress buffer size\n");
+    }
+    return 0;
+  }
+
+  memcpy(reply_ingress.buffer, received, received_len);
+  reply_ingress.len = received_len;
+  reply_ingress.received_ms = 0;
+  if (peer_ip[0] != '\0') {
+    size_t peer_ip_len = strlen(peer_ip);
+
+    if (peer_ip_len >= sizeof(reply_ingress.ip)) {
+      peer_ip_len = sizeof(reply_ingress.ip) - 1u;
+    }
+    memcpy(reply_ingress.ip, peer_ip, peer_ip_len);
+    reply_ingress.ip[peer_ip_len] = '\0';
+  }
+  reply_ingress.client_port = peer_port;
+  reply_ingress.encrypted = 1;
 
   if (!app_transmit_ensure_response_private_key(opts, session)) {
     return 0;
   }
 
   if (!shared.knock.codec.v3.decode(codec_state,
-                                     reply_buf,
-                                     reply_len,
-                                     peer_ip[0] ? peer_ip : NULL,
-                                     peer_port,
-                                     1,
+                                     &reply_ingress,
                                      &reply)) {
     if (lib.log.emit) {
       lib.log.emit(LOG_ERROR, 1, "Failed to decode server response packet\n");
@@ -1033,11 +1051,7 @@ static int app_transmit_wait_for_response_v3(int udp_fd,
   }
 
   if (!shared.knock.codec.v3.wire_auth(codec_state,
-                                        reply_buf,
-                                        reply_len,
-                                        peer_ip[0] ? peer_ip : NULL,
-                                        peer_port,
-                                        1,
+                                        &reply_ingress,
                                         &reply)) {
     if (lib.log.emit) {
       lib.log.emit(LOG_ERROR, 1, "Response wire auth failed\n");

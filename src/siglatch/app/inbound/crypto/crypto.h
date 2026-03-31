@@ -7,7 +7,7 @@
 #define SIGLATCH_SERVER_APP_INBOUND_CRYPTO_H
 
 #include "../../config/config.h"
-#include "../../payload/codec/codec.h"
+#include "../../../../shared/knock/packet.h"
 #include "../../../../stdlib/openssl/session/session.h"
 
 typedef struct {

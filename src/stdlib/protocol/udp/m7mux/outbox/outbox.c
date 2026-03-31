@@ -6,8 +6,6 @@
 #include "outbox.h"
 
 #include "../internal.h"
-#include "../../../../../shared/knock/codec/v2/v2_form1.h"
-#include "../../../../../shared/knock/codec/v3/v3_form1.h"
 
 #include <string.h>
 
@@ -64,20 +62,11 @@ static int m7mux_outbox_has_pending(const M7MuxState *state) {
 }
 
 static const M7MuxNormalizeAdapter *m7mux_outbox_select_adapter(const M7MuxSendPacket *send) {
-  if (!send || !g_ctx.internal || !g_ctx.internal->normalize ||
-      !g_ctx.internal->normalize->adapter.lookup_adapter) {
+  if (!send) {
     return NULL;
   }
 
-  if (send->wire_version == SHARED_KNOCK_CODEC_V3_WIRE_VERSION) {
-    return g_ctx.internal->normalize->adapter.lookup_adapter("codec.v3");
-  }
-
-  if (send->wire_version == SHARED_KNOCK_CODEC_V2_WIRE_VERSION) {
-    return g_ctx.internal->normalize->adapter.lookup_adapter("codec.v2");
-  }
-
-  return g_ctx.internal->normalize->adapter.lookup_adapter("codec.v1");
+  return g_ctx.internal->normalize->adapter.lookup_adapter_wire_version(send->wire_version);
 }
 
 static int m7mux_outbox_stage(M7MuxState *state, const M7MuxSendPacket *send) {

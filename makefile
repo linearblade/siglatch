@@ -124,7 +124,6 @@ SRC_SIGLATCHD = \
     src/siglatch/app/object/test_static.c \
     src/siglatch/objects/static/sample_blurt.c \
     src/siglatch/app/opts/opts.c \
-    src/siglatch/app/payload/codec/codec.c \
     src/siglatch/app/payload/digest/digest.c \
     src/siglatch/app/payload/payload.c \
     src/siglatch/app/payload/reply.c \

@@ -103,7 +103,7 @@ static int m7mux_inbox_pump(M7MuxState *state, uint64_t timeout_ms) {
   while (g_ctx.internal->ingress->drain(&state->ingress, &raw)) {
     memset(&normal, 0, sizeof(normal));
 
-    if (!g_ctx.internal->normalize->normalize(&raw, &normal)) {
+    if (!g_ctx.internal->normalize->normalize(state, &raw, &normal)) {
       continue;
     }
 

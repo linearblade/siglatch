@@ -141,9 +141,6 @@ int init_app(void) {
       !app.policy.init || !app.policy.shutdown ||
       !app.policy.server_ip_allowed || !app.policy.user_ip_allowed ||
       !app.policy.action_ip_allowed || !app.policy.request_ip_allowed ||
-      !app.payload.codec.init || !app.payload.codec.shutdown ||
-      !app.payload.codec.pack || !app.payload.codec.unpack ||
-      !app.payload.codec.validate || !app.payload.codec.deserialize || !app.payload.codec.deserialize_strerror ||
       !app.payload.digest.init || !app.payload.digest.shutdown ||
       !app.payload.digest.generate || !app.payload.digest.generate_oneshot ||
       !app.payload.digest.sign || !app.payload.digest.validate ||

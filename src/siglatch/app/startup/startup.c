@@ -12,6 +12,7 @@
 #include "../../lifecycle.h"
 #include "../../lib.h"
 #include "../../../shared/knock/codec/codec.h"
+#include "../../../stdlib/protocol/udp/m7mux/normalize/normalize.h"
 
 #ifndef SL_CONFIG_PATH_DEFAULT
 #define SL_CONFIG_PATH_DEFAULT "/etc/siglatch/server.conf"
@@ -190,7 +191,55 @@ static int app_startup_register_codec_modules(const AppWorkspace *workspace) {
     return 0;
   }
 
-  return 1;
+  {
+    const M7MuxNormalizeLib *normalize = NULL;
+    const M7MuxNormalizeAdapter *adapter = NULL;
+    const char *registered_names[3] = {0};
+    size_t registered_count = 0u;
+
+    normalize = get_protocol_udp_m7mux_normalize_lib();
+    if (!normalize || !normalize->adapter.register_adapter ||
+        !normalize->adapter.unregister_adapter) {
+      LOGE("Normalize adapter registry unavailable\n");
+      codec->v3.shutdown();
+      codec->v2.shutdown();
+      codec->v1.shutdown();
+      return 0;
+    }
+
+    adapter = shared_knock_codec_v1_get_adapter();
+    if (!adapter || !normalize->adapter.register_adapter(adapter)) {
+      goto fail_unregister_adapters;
+    }
+    registered_names[registered_count++] = adapter->name;
+
+    adapter = shared_knock_codec_v2_get_adapter();
+    if (!adapter || !normalize->adapter.register_adapter(adapter)) {
+      goto fail_unregister_adapters;
+    }
+    registered_names[registered_count++] = adapter->name;
+
+    adapter = shared_knock_codec_v3_get_adapter();
+    if (!adapter || !normalize->adapter.register_adapter(adapter)) {
+      goto fail_unregister_adapters;
+    }
+    registered_names[registered_count++] = adapter->name;
+
+    return 1;
+
+  fail_unregister_adapters:
+    while (registered_count > 0u) {
+      --registered_count;
+      if (registered_names[registered_count]) {
+        normalize->adapter.unregister_adapter(registered_names[registered_count]);
+      }
+    }
+
+    codec->v3.shutdown();
+    codec->v2.shutdown();
+    codec->v1.shutdown();
+    return 0;
+  }
 }
 
 static int app_startup_sync_codec_context(const AppStartupState *state) {

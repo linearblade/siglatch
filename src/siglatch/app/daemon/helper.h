@@ -9,7 +9,8 @@
 #include <stdint.h>
 
 #include "job.h"
-#include "../payload/codec/codec.h"
+#include "../../../shared/knock/codec/normalized.h"
+#include "../../../shared/knock/packet.h"
 
 typedef struct M7MuxSendPacket M7MuxSendPacket;
 

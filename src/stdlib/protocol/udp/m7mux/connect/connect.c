@@ -84,6 +84,7 @@ static int m7mux_connect_state_init(M7MuxState *state) {
 
   memset(state, 0, sizeof(*state));
   state->connect.socket_fd = -1;
+  state->policy_enforce_encryption = M7MUX_POLICY_ENFORCE_ENCRYPTION_ANY;
 
   internal = m7mux_connect_internal();
   if (!internal || !internal->inbox || !internal->outbox ||
@@ -131,6 +132,7 @@ static void m7mux_connect_state_reset(M7MuxState *state) {
 
   memset(&state->connect, 0, sizeof(state->connect));
   state->connect.socket_fd = -1;
+  state->policy_enforce_encryption = M7MUX_POLICY_ENFORCE_ENCRYPTION_ANY;
 }
 
 static M7MuxState *m7mux_connect_alloc_state(void) {

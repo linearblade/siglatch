@@ -13,7 +13,6 @@
 #include "../app.h"
 #include "../../lib.h"
 #include "../../../shared/knock/response.h"
-#include "../../../shared/knock/codec/v1/v1_packet.h"
 #include "../../../stdlib/base64.h"
 
 static int app_daemon_payload_reply_action_prefix(uint8_t action_id,
@@ -130,8 +129,12 @@ static int app_daemon_payload_build_semantic_reply(
 
   rendered_len = strnlen(rendered_message, sizeof(rendered_message));
   max_text_len = out_size - SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE;
-  if (max_text_len > (SHARED_KNOCK_CODEC_V1_PAYLOAD_MAX - SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE)) {
-    max_text_len = SHARED_KNOCK_CODEC_V1_PAYLOAD_MAX - SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE;
+  /*
+   * Keep daemon replies bounded by the app-level reply buffer, not a transport
+   * packet size from one codec family.
+   */
+  if (max_text_len > APP_ACTION_REPLY_MESSAGE_MAX) {
+    max_text_len = APP_ACTION_REPLY_MESSAGE_MAX;
   }
   message_len = rendered_len;
   if (message_len > max_text_len) {

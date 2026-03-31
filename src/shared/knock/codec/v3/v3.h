@@ -14,27 +14,25 @@
 #include "v3_form1.h"
 
 typedef struct SharedKnockCodecV3State SharedKnockCodecV3State;
+struct M7MuxIngress;
+struct M7MuxNormalizeAdapter;
+typedef struct M7MuxIngressIdentity M7MuxIngressIdentity;
 
 typedef struct {
   const char *name;
+  uint32_t wire_version;
   int (*init)(const SharedKnockCodecContext *context);
   void (*shutdown)(void);
   int (*create_state)(SharedKnockCodecV3State **out_state);
   void (*destroy_state)(SharedKnockCodecV3State *state);
-  int (*detect)(const SharedKnockCodecV3State *state, const uint8_t *buf, size_t buflen);
+  int (*detect)(const SharedKnockCodecV3State *state,
+                const struct M7MuxIngress *ingress,
+                M7MuxIngressIdentity *identity);
   int (*decode)(const SharedKnockCodecV3State *state,
-                const uint8_t *buf,
-                size_t buflen,
-                const char *ip,
-                uint16_t client_port,
-                int encrypted,
+                const struct M7MuxIngress *ingress,
                 SharedKnockNormalizedUnit *out);
   int (*wire_auth)(const SharedKnockCodecV3State *state,
-                   const uint8_t *buf,
-                   size_t buflen,
-                   const char *ip,
-                   uint16_t client_port,
-                   int encrypted,
+                   const struct M7MuxIngress *ingress,
                    SharedKnockNormalizedUnit *normal);
   int (*encode)(const SharedKnockCodecV3State *state,
                 const SharedKnockNormalizedUnit *normal,
@@ -62,21 +60,13 @@ void shared_knock_codec_v3_destroy_state(SharedKnockCodecV3State *state);
 int shared_knock_codec_v3_init(const SharedKnockCodecContext *context);
 void shared_knock_codec_v3_shutdown(void);
 int shared_knock_codec_v3_detect(const SharedKnockCodecV3State *state,
-                                 const uint8_t *buf,
-                                 size_t buflen);
+                                 const struct M7MuxIngress *ingress,
+                                 M7MuxIngressIdentity *identity);
 int shared_knock_codec_v3_decode(const SharedKnockCodecV3State *state,
-                                 const uint8_t *buf,
-                                 size_t buflen,
-                                 const char *ip,
-                                 uint16_t client_port,
-                                 int encrypted,
+                                 const struct M7MuxIngress *ingress,
                                  SharedKnockNormalizedUnit *out);
 int shared_knock_codec_v3_wire_auth(const SharedKnockCodecV3State *state,
-                                    const uint8_t *buf,
-                                    size_t buflen,
-                                    const char *ip,
-                                    uint16_t client_port,
-                                    int encrypted,
+                                    const struct M7MuxIngress *ingress,
                                     SharedKnockNormalizedUnit *normal);
 int shared_knock_codec_v3_encode(const SharedKnockCodecV3State *state,
                                  const SharedKnockNormalizedUnit *normal,
@@ -93,6 +83,7 @@ int shared_knock_codec_v3_deserialize(const uint8_t *decrypted_buffer,
                                       size_t decrypted_len,
                                       SharedKnockCodecV3Form1Packet *pkt);
 const char *shared_knock_codec_v3_deserialize_strerror(int code);
+const struct M7MuxNormalizeAdapter *shared_knock_codec_v3_get_adapter(void);
 const SharedKnockCodecV3Lib *get_shared_knock_codec_v3_lib(void);
 
 #endif /* SIGLATCH_SHARED_KNOCK_CODEC_V3_H */

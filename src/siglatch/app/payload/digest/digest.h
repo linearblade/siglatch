@@ -8,7 +8,7 @@
 
 #include <stdint.h>
 
-#include "../codec/codec.h"
+#include "../../../../shared/knock/packet.h"
 
 typedef struct {
   int (*init)(void);

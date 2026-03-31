@@ -15,7 +15,22 @@
 #include "../../lib.h"
 #include "../../../shared/knock/response.h"
 #include "../../../shared/shared.h"
+#include "../../../stdlib/protocol/udp/m7mux/internal.h"
 #include "../../../stdlib/protocol/udp/m7mux/normalize/normalize.h"
+
+static void app_daemon_configure_mux_policy(const AppRuntimeListenerState *listener,
+                                            M7MuxState *mux_state) {
+  if (!mux_state) {
+    return;
+  }
+
+  if (listener && listener->server && listener->server->secure) {
+    mux_state->policy_enforce_encryption = M7MUX_POLICY_ENFORCE_ENCRYPTION_YES;
+    return;
+  }
+
+  mux_state->policy_enforce_encryption = M7MUX_POLICY_ENFORCE_ENCRYPTION_NO;
+}
 
 static int app_daemon_stage_outbox_reply(M7MuxState *mux_state,
                                           AppRuntimeListenerState *listener,
@@ -131,6 +146,7 @@ static void app_daemon_run(AppRuntimeListenerState *listener) {
   if (!mux_state) {
     goto cleanup;
   }
+  app_daemon_configure_mux_policy(listener, mux_state);
   tracked_sock = listener->sock;
 
   if (!app.daemon.job.state_init(&job_state)) {
@@ -147,6 +163,7 @@ static void app_daemon_run(AppRuntimeListenerState *listener) {
 
       lib.m7mux.connect.disconnect(mux_state);
       mux_state = next_mux_state;
+      app_daemon_configure_mux_policy(listener, mux_state);
       tracked_sock = listener->sock;
     }
 
