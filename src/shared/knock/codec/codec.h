@@ -15,6 +15,7 @@
 #include "v1/v1.h"
 #include "v2/v2.h"
 #include "v3/v3.h"
+#include "../../../stdlib/protocol/udp/m7mux/barrel.h"
 
 #define SHARED_KNOCK_CODEC_PACKET_MAX_SIZE \
   (SHARED_KNOCK_CODEC_V1_PACKET_SIZE > SHARED_KNOCK_CODEC_V2_FORM1_PACKET_SIZE ? \
@@ -27,9 +28,12 @@
 
 typedef struct {
   SharedKnockCodecContextLib context;
-  SharedKnockCodecV1Lib v1;
-  SharedKnockCodecV2Lib v2;
-  SharedKnockCodecV3Lib v3;
+  SharedKnockCodecBarrel v1;
+  SharedKnockCodecBarrel v2;
+  SharedKnockCodecBarrel v3;
+  const M7MuxNormalizeAdapter *v1_adapter;
+  const M7MuxNormalizeAdapter *v2_adapter;
+  const M7MuxNormalizeAdapter *v3_adapter;
   int (*encode)(const SharedKnockNormalizedUnit *normal, uint8_t *out_buf, size_t *out_len);
 } SharedKnockCodecLib;
 

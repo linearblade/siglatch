@@ -937,7 +937,7 @@ static int app_transmit_v3_codec_prepare(SiglatchOpenSSLSession *session,
     return 0;
   }
 
-  if (!shared.knock.codec.v3.create_state(&codec_state)) {
+  if (!shared.knock.codec.v3.create_state((void **)&codec_state)) {
     shared.knock.codec.v3.shutdown();
     shared.knock.codec.context.clear_openssl_session(codec_context);
     shared.knock.codec.context.destroy(codec_context);

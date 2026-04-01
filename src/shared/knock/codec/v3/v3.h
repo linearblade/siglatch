@@ -11,41 +11,13 @@
 
 #include "../context.h"
 #include "../normalized.h"
+#include "../../../../stdlib/protocol/udp/m7mux/barrel.h"
 #include "v3_form1.h"
 
 typedef struct SharedKnockCodecV3State SharedKnockCodecV3State;
 struct M7MuxIngress;
 struct M7MuxNormalizeAdapter;
 typedef struct M7MuxIngressIdentity M7MuxIngressIdentity;
-
-typedef struct {
-  const char *name;
-  uint32_t wire_version;
-  int (*init)(const SharedKnockCodecContext *context);
-  void (*shutdown)(void);
-  int (*create_state)(SharedKnockCodecV3State **out_state);
-  void (*destroy_state)(SharedKnockCodecV3State *state);
-  int (*detect)(const SharedKnockCodecV3State *state,
-                const struct M7MuxIngress *ingress,
-                M7MuxIngressIdentity *identity);
-  int (*decode)(const SharedKnockCodecV3State *state,
-                const struct M7MuxIngress *ingress,
-                SharedKnockNormalizedUnit *out);
-  int (*wire_auth)(const SharedKnockCodecV3State *state,
-                   const struct M7MuxIngress *ingress,
-                   SharedKnockNormalizedUnit *normal);
-  int (*encode)(const SharedKnockCodecV3State *state,
-                const SharedKnockNormalizedUnit *normal,
-                uint8_t *out_buf,
-                size_t *out_len);
-  int (*pack)(const SharedKnockCodecV3Form1Packet *pkt, uint8_t *out_buf, size_t maxlen);
-  int (*unpack)(const uint8_t *buf, size_t buflen, SharedKnockCodecV3Form1Packet *pkt);
-  int (*validate)(const SharedKnockCodecV3Form1Packet *pkt);
-  int (*deserialize)(const uint8_t *decrypted_buffer,
-                      size_t decrypted_len,
-                      SharedKnockCodecV3Form1Packet *pkt);
-  const char *(*deserialize_strerror)(int code);
-} SharedKnockCodecV3Lib;
 
 #ifndef SL_PAYLOAD_OK
 #define SL_PAYLOAD_OK 0
@@ -55,35 +27,34 @@ typedef struct {
 #define SL_PAYLOAD_ERR_OVERFLOW -4
 #endif
 
-int shared_knock_codec_v3_create_state(SharedKnockCodecV3State **out_state);
-void shared_knock_codec_v3_destroy_state(SharedKnockCodecV3State *state);
+int shared_knock_codec_v3_create_state(void **out_state);
+void shared_knock_codec_v3_destroy_state(void *state);
 int shared_knock_codec_v3_init(const SharedKnockCodecContext *context);
 void shared_knock_codec_v3_shutdown(void);
-int shared_knock_codec_v3_detect(const SharedKnockCodecV3State *state,
+int shared_knock_codec_v3_detect(const void *state,
                                  const struct M7MuxIngress *ingress,
                                  M7MuxIngressIdentity *identity);
-int shared_knock_codec_v3_decode(const SharedKnockCodecV3State *state,
+int shared_knock_codec_v3_decode(const void *state,
                                  const struct M7MuxIngress *ingress,
                                  SharedKnockNormalizedUnit *out);
-int shared_knock_codec_v3_wire_auth(const SharedKnockCodecV3State *state,
+int shared_knock_codec_v3_wire_auth(const void *state,
                                     const struct M7MuxIngress *ingress,
                                     SharedKnockNormalizedUnit *normal);
-int shared_knock_codec_v3_encode(const SharedKnockCodecV3State *state,
+int shared_knock_codec_v3_encode(const void *state,
                                  const SharedKnockNormalizedUnit *normal,
                                  uint8_t *out_buf,
                                  size_t *out_len);
-int shared_knock_codec_v3_pack(const SharedKnockCodecV3Form1Packet *pkt,
+int shared_knock_codec_v3_pack(const void *pkt,
                                uint8_t *out_buf,
                                size_t maxlen);
 int shared_knock_codec_v3_unpack(const uint8_t *buf,
                                  size_t buflen,
-                                 SharedKnockCodecV3Form1Packet *pkt);
-int shared_knock_codec_v3_validate(const SharedKnockCodecV3Form1Packet *pkt);
+                                 void *pkt);
+int shared_knock_codec_v3_validate(const void *pkt);
 int shared_knock_codec_v3_deserialize(const uint8_t *decrypted_buffer,
                                       size_t decrypted_len,
-                                      SharedKnockCodecV3Form1Packet *pkt);
+                                      void *pkt);
 const char *shared_knock_codec_v3_deserialize_strerror(int code);
 const struct M7MuxNormalizeAdapter *shared_knock_codec_v3_get_adapter(void);
-const SharedKnockCodecV3Lib *get_shared_knock_codec_v3_lib(void);
 
 #endif /* SIGLATCH_SHARED_KNOCK_CODEC_V3_H */

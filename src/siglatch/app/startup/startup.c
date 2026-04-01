@@ -11,6 +11,7 @@
 #include "../app.h"
 #include "../../lifecycle.h"
 #include "../../lib.h"
+#include "../../../shared/shared.h"
 #include "../../../shared/knock/codec/codec.h"
 #include "../../../stdlib/protocol/udp/m7mux/normalize/normalize.h"
 
@@ -165,7 +166,7 @@ static int app_startup_register_codec_modules(const AppWorkspace *workspace) {
     return 0;
   }
 
-  codec = get_shared_knock_codec_lib();
+  codec = &shared.knock.codec;
   if (!codec || !codec->v1.init || !codec->v1.shutdown ||
       !codec->v2.init || !codec->v2.shutdown ||
       !codec->v3.init || !codec->v3.shutdown) {
@@ -207,19 +208,19 @@ static int app_startup_register_codec_modules(const AppWorkspace *workspace) {
       return 0;
     }
 
-    adapter = shared_knock_codec_v1_get_adapter();
+    adapter = codec->v1_adapter;
     if (!adapter || !normalize->adapter.register_adapter(adapter)) {
       goto fail_unregister_adapters;
     }
     registered_names[registered_count++] = adapter->name;
 
-    adapter = shared_knock_codec_v2_get_adapter();
+    adapter = codec->v2_adapter;
     if (!adapter || !normalize->adapter.register_adapter(adapter)) {
       goto fail_unregister_adapters;
     }
     registered_names[registered_count++] = adapter->name;
 
-    adapter = shared_knock_codec_v3_get_adapter();
+    adapter = codec->v3_adapter;
     if (!adapter || !normalize->adapter.register_adapter(adapter)) {
       goto fail_unregister_adapters;
     }

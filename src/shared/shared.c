@@ -35,12 +35,16 @@ int init_shared(const SharedContext *ctx) {
   shared.knock.debug = *get_shared_knock_debug_lib();
   shared.knock.detect = *get_shared_knock_detect_lib();
   shared.knock.digest = *get_shared_knock_digest_lib();
+  shared.knock.codec.v1_adapter = shared_knock_codec_v1_get_adapter();
+  shared.knock.codec.v2_adapter = shared_knock_codec_v2_get_adapter();
+  shared.knock.codec.v3_adapter = shared_knock_codec_v3_get_adapter();
 
   if (!shared.knock.codec.context.init || !shared.knock.codec.context.shutdown ||
       !shared.knock.codec.context.create || !shared.knock.codec.context.destroy ||
       !shared.knock.codec.context.set_server_key || !shared.knock.codec.context.clear_server_key ||
       !shared.knock.codec.context.set_openssl_session || !shared.knock.codec.context.clear_openssl_session ||
       !shared.knock.codec.context.add_keychain || !shared.knock.codec.context.remove_keychain ||
+      !shared.knock.codec.v1_adapter || !shared.knock.codec.v2_adapter || !shared.knock.codec.v3_adapter ||
       !shared.knock.codec.v1.init || !shared.knock.codec.v1.shutdown ||
       !shared.knock.codec.v1.create_state || !shared.knock.codec.v1.destroy_state ||
       !shared.knock.codec.v1.detect || !shared.knock.codec.v1.decode ||

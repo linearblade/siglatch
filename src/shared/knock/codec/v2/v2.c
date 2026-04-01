@@ -73,7 +73,7 @@ static int shared_knock_codec_v2_normalize(const uint8_t *buf,
 static int shared_knock_codec_v2_packet_nonce_accept(SharedKnockCodecV2State *state,
                                                       uint32_t timestamp,
                                                       uint32_t challenge);
-void shared_knock_codec_v2_destroy_state(SharedKnockCodecV2State *state);
+void shared_knock_codec_v2_destroy_state(void *state);
 
 static const SharedKnockCodecContext *shared_knock_codec_v2_context(void) {
   return g_context;
@@ -342,9 +342,11 @@ static int shared_knock_codec_v2_packet_nonce_accept(SharedKnockCodecV2State *st
   return 1;
 }
 
-int shared_knock_codec_v2_pack(const SharedKnockCodecV2Form1Packet *pkt,
+int shared_knock_codec_v2_pack(const void *pkt_,
                                 uint8_t *out_buf,
                                 size_t maxlen) {
+  const SharedKnockCodecV2Form1Packet *pkt = (const SharedKnockCodecV2Form1Packet *)pkt_;
+
   if (!pkt || !out_buf) {
     return SL_PAYLOAD_ERR_NULL_PTR;
   }
@@ -379,17 +381,23 @@ int shared_knock_codec_v2_pack(const SharedKnockCodecV2Form1Packet *pkt,
 
 int shared_knock_codec_v2_unpack(const uint8_t *buf,
                                   size_t buflen,
-                                  SharedKnockCodecV2Form1Packet *pkt) {
+                                  void *pkt_) {
+  SharedKnockCodecV2Form1Packet *pkt = (SharedKnockCodecV2Form1Packet *)pkt_;
+
   return shared_knock_codec_v2_unpack_wire(buf, buflen, pkt);
 }
 
-int shared_knock_codec_v2_validate(const SharedKnockCodecV2Form1Packet *pkt) {
+int shared_knock_codec_v2_validate(const void *pkt_) {
+  const SharedKnockCodecV2Form1Packet *pkt = (const SharedKnockCodecV2Form1Packet *)pkt_;
+
   return shared_knock_codec_v2_validate_wire(pkt);
 }
 
 int shared_knock_codec_v2_deserialize(const uint8_t *buf,
                                        size_t buflen,
-                                       SharedKnockCodecV2Form1Packet *pkt) {
+                                       void *pkt_) {
+  SharedKnockCodecV2Form1Packet *pkt = (SharedKnockCodecV2Form1Packet *)pkt_;
+
   return shared_knock_codec_v2_deserialize_wire(buf, buflen, pkt);
 }
 
@@ -411,7 +419,7 @@ const char *shared_knock_codec_v2_deserialize_strerror(int code) {
 }
 
 static int shared_knock_codec_v2_adapter_create_state(void **out_state) {
-  return shared_knock_codec_v2_create_state((SharedKnockCodecV2State **)out_state);
+  return shared_knock_codec_v2_create_state(out_state);
 }
 
 static void shared_knock_codec_v2_adapter_destroy_state(void *state) {
@@ -483,7 +491,8 @@ static const M7MuxNormalizeAdapter shared_knock_codec_v2_adapter = {
   .reserved = NULL
 };
 
-int shared_knock_codec_v2_create_state(SharedKnockCodecV2State **out_state) {
+int shared_knock_codec_v2_create_state(void **out_state_) {
+  SharedKnockCodecV2State **out_state = (SharedKnockCodecV2State **)out_state_;
   SharedKnockCodecV2State *state = NULL;
 
   if (!out_state) {
@@ -505,7 +514,9 @@ int shared_knock_codec_v2_create_state(SharedKnockCodecV2State **out_state) {
   return 1;
 }
 
-void shared_knock_codec_v2_destroy_state(SharedKnockCodecV2State *state) {
+void shared_knock_codec_v2_destroy_state(void *state_) {
+  SharedKnockCodecV2State *state = (SharedKnockCodecV2State *)state_;
+
   if (!state) {
     return;
   }
@@ -527,9 +538,10 @@ void shared_knock_codec_v2_shutdown(void) {
   g_context = NULL;
 }
 
-int shared_knock_codec_v2_detect(const SharedKnockCodecV2State *state,
+int shared_knock_codec_v2_detect(const void *state_,
                                  const struct M7MuxIngress *ingress,
                                  M7MuxIngressIdentity *identity) {
+  const SharedKnockCodecV2State *state = (const SharedKnockCodecV2State *)state_;
   SharedKnockCodecV2Form1Packet pkt = {0};
   size_t decrypted_cap = 0u;
   const SharedKnockCodecContext *context = shared_knock_codec_v2_context();
@@ -598,9 +610,10 @@ int shared_knock_codec_v2_detect(const SharedKnockCodecV2State *state,
   return 1;
 }
 
-int shared_knock_codec_v2_decode(const SharedKnockCodecV2State *state,
+int shared_knock_codec_v2_decode(const void *state_,
                                  const struct M7MuxIngress *ingress,
                                  SharedKnockNormalizedUnit *out) {
+  const SharedKnockCodecV2State *state = (const SharedKnockCodecV2State *)state_;
   const uint8_t *payload = NULL;
   size_t payload_len = 0u;
   int should_decrypt = 0;
@@ -671,9 +684,10 @@ int shared_knock_codec_v2_decode(const SharedKnockCodecV2State *state,
   return 1;
 }
 
-int shared_knock_codec_v2_wire_auth(const SharedKnockCodecV2State *state,
+int shared_knock_codec_v2_wire_auth(const void *state_,
                                      const struct M7MuxIngress *ingress,
                                      SharedKnockNormalizedUnit *normal) {
+  const SharedKnockCodecV2State *state = (const SharedKnockCodecV2State *)state_;
   if (!state || !normal) {
     return 0;
   }
@@ -686,10 +700,11 @@ int shared_knock_codec_v2_wire_auth(const SharedKnockCodecV2State *state,
   return normal->wire_auth;
 }
 
-int shared_knock_codec_v2_encode(const SharedKnockCodecV2State *state,
+int shared_knock_codec_v2_encode(const void *state_,
                                   const SharedKnockNormalizedUnit *normal,
                                   uint8_t *out_buf,
                                   size_t *out_len) {
+  const SharedKnockCodecV2State *state = (const SharedKnockCodecV2State *)state_;
   SharedKnockCodecV2Form1Packet wire_pkt = {0};
   const SharedKnockCodecContext *context = shared_knock_codec_v2_context();
   SiglatchOpenSSLSession *session = NULL;
@@ -773,28 +788,6 @@ int shared_knock_codec_v2_encode(const SharedKnockCodecV2State *state,
   }
 
   return 1;
-}
-
-static const SharedKnockCodecV2Lib shared_knock_codec_v2 = {
-  .name = "v2",
-  .wire_version = WIRE_VERSION,
-  .init = shared_knock_codec_v2_init,
-  .shutdown = shared_knock_codec_v2_shutdown,
-  .create_state = shared_knock_codec_v2_create_state,
-  .destroy_state = shared_knock_codec_v2_destroy_state,
-  .detect = shared_knock_codec_v2_detect,
-  .decode = shared_knock_codec_v2_decode,
-  .wire_auth = shared_knock_codec_v2_wire_auth,
-  .encode = shared_knock_codec_v2_encode,
-  .pack = shared_knock_codec_v2_pack,
-  .unpack = shared_knock_codec_v2_unpack,
-  .validate = shared_knock_codec_v2_validate,
-  .deserialize = shared_knock_codec_v2_deserialize,
-  .deserialize_strerror = shared_knock_codec_v2_deserialize_strerror
-};
-
-const SharedKnockCodecV2Lib *get_shared_knock_codec_v2_lib(void) {
-  return &shared_knock_codec_v2;
 }
 
 const M7MuxNormalizeAdapter *shared_knock_codec_v2_get_adapter(void) {

@@ -611,9 +611,10 @@ static int shared_knock_codec_v3_decrypt_and_unpack_packet(const SharedKnockCode
   return SL_PAYLOAD_OK;
 }
 
-int shared_knock_codec_v3_pack(const SharedKnockCodecV3Form1Packet *pkt,
+int shared_knock_codec_v3_pack(const void *pkt_,
                                uint8_t *out_buf,
                                size_t maxlen) {
+  const SharedKnockCodecV3Form1Packet *pkt = (const SharedKnockCodecV3Form1Packet *)pkt_;
   size_t total_len = 0u;
 
   if (!pkt || !out_buf) {
@@ -661,17 +662,23 @@ int shared_knock_codec_v3_pack(const SharedKnockCodecV3Form1Packet *pkt,
 
 int shared_knock_codec_v3_unpack(const uint8_t *buf,
                                  size_t buflen,
-                                 SharedKnockCodecV3Form1Packet *pkt) {
+                                 void *pkt_) {
+  SharedKnockCodecV3Form1Packet *pkt = (SharedKnockCodecV3Form1Packet *)pkt_;
+
   return shared_knock_codec_v3_unpack_wire(buf, buflen, pkt);
 }
 
-int shared_knock_codec_v3_validate(const SharedKnockCodecV3Form1Packet *pkt) {
+int shared_knock_codec_v3_validate(const void *pkt_) {
+  const SharedKnockCodecV3Form1Packet *pkt = (const SharedKnockCodecV3Form1Packet *)pkt_;
+
   return shared_knock_codec_v3_validate_wire(pkt);
 }
 
 int shared_knock_codec_v3_deserialize(const uint8_t *decrypted_buffer,
                                       size_t decrypted_len,
-                                      SharedKnockCodecV3Form1Packet *pkt) {
+                                      void *pkt_) {
+  SharedKnockCodecV3Form1Packet *pkt = (SharedKnockCodecV3Form1Packet *)pkt_;
+
   return shared_knock_codec_v3_deserialize_wire(decrypted_buffer, decrypted_len, pkt);
 }
 
@@ -693,7 +700,7 @@ const char *shared_knock_codec_v3_deserialize_strerror(int code) {
 }
 
 static int shared_knock_codec_v3_adapter_create_state(void **out_state) {
-  return shared_knock_codec_v3_create_state((SharedKnockCodecV3State **)out_state);
+  return shared_knock_codec_v3_create_state(out_state);
 }
 
 static void shared_knock_codec_v3_adapter_destroy_state(void *state) {
@@ -765,7 +772,8 @@ static const M7MuxNormalizeAdapter shared_knock_codec_v3_adapter = {
   .reserved = NULL
 };
 
-int shared_knock_codec_v3_create_state(SharedKnockCodecV3State **out_state) {
+int shared_knock_codec_v3_create_state(void **out_state_) {
+  SharedKnockCodecV3State **out_state = (SharedKnockCodecV3State **)out_state_;
   SharedKnockCodecV3State *state = NULL;
 
   if (!out_state) {
@@ -787,7 +795,9 @@ int shared_knock_codec_v3_create_state(SharedKnockCodecV3State **out_state) {
   return 1;
 }
 
-void shared_knock_codec_v3_destroy_state(SharedKnockCodecV3State *state) {
+void shared_knock_codec_v3_destroy_state(void *state_) {
+  SharedKnockCodecV3State *state = (SharedKnockCodecV3State *)state_;
+
   if (!state) {
     return;
   }
@@ -820,14 +830,14 @@ void shared_knock_codec_v3_shutdown(void) {
   //  memset(&internal, 0, sizeof(internal));
 }
 
-int shared_knock_codec_v3_detect(const SharedKnockCodecV3State *state,
+int shared_knock_codec_v3_detect(const void *state_,
                                  const struct M7MuxIngress *ingress,
                                  M7MuxIngressIdentity *identity) {
   SharedKnockCodecV3Form1Packet pkt = {0};
   const uint8_t *buf = NULL;
   size_t buflen = 0u;
 
-  (void)state;
+  (void)state_;
 
   if (!ingress) {
     return 0;
@@ -849,9 +859,10 @@ int shared_knock_codec_v3_detect(const SharedKnockCodecV3State *state,
   return 1;
 }
 
-int shared_knock_codec_v3_decode(const SharedKnockCodecV3State *state,
+int shared_knock_codec_v3_decode(const void *state_,
                                  const struct M7MuxIngress *ingress,
                                  SharedKnockNormalizedUnit *out) {
+  const SharedKnockCodecV3State *state = (const SharedKnockCodecV3State *)state_;
   SharedKnockCodecV3Form1Packet pkt = {0};
   const uint8_t *buf = NULL;
   size_t buflen = 0u;
@@ -897,9 +908,10 @@ int shared_knock_codec_v3_decode(const SharedKnockCodecV3State *state,
   return 1;
 }
 
-int shared_knock_codec_v3_wire_auth(const SharedKnockCodecV3State *state,
+int shared_knock_codec_v3_wire_auth(const void *state_,
                                     const struct M7MuxIngress *ingress,
                                     SharedKnockNormalizedUnit *normal) {
+  const SharedKnockCodecV3State *state = (const SharedKnockCodecV3State *)state_;
   if (!state || !normal) {
     return 0;
   }
@@ -912,10 +924,11 @@ int shared_knock_codec_v3_wire_auth(const SharedKnockCodecV3State *state,
   return normal->wire_auth;
 }
 
-int shared_knock_codec_v3_encode(const SharedKnockCodecV3State *state,
+int shared_knock_codec_v3_encode(const void *state_,
                                  const SharedKnockNormalizedUnit *normal,
                                  uint8_t *out_buf,
                                  size_t *out_len) {
+  const SharedKnockCodecV3State *state = (const SharedKnockCodecV3State *)state_;
   const SharedKnockCodecContext *context = shared_knock_codec_v3_context();
   SharedKnockNormalizedUnit body = {0};
   SharedKnockCodecV3Form1Packet pkt = {0};
@@ -1022,28 +1035,6 @@ int shared_knock_codec_v3_encode(const SharedKnockCodecV3State *state,
               SHARED_KNOCK_CODEC_V3_FORM1_TAG_SIZE;
   *out_len = total_len;
   return 1;
-}
-
-static const SharedKnockCodecV3Lib shared_knock_codec_v3 = {
-  .name = "v3",
-  .wire_version = WIRE_VERSION,
-  .init = shared_knock_codec_v3_init,
-  .shutdown = shared_knock_codec_v3_shutdown,
-  .create_state = shared_knock_codec_v3_create_state,
-  .destroy_state = shared_knock_codec_v3_destroy_state,
-  .detect = shared_knock_codec_v3_detect,
-  .decode = shared_knock_codec_v3_decode,
-  .wire_auth = shared_knock_codec_v3_wire_auth,
-  .encode = shared_knock_codec_v3_encode,
-  .pack = shared_knock_codec_v3_pack,
-  .unpack = shared_knock_codec_v3_unpack,
-  .validate = shared_knock_codec_v3_validate,
-  .deserialize = shared_knock_codec_v3_deserialize,
-  .deserialize_strerror = shared_knock_codec_v3_deserialize_strerror
-};
-
-const SharedKnockCodecV3Lib *get_shared_knock_codec_v3_lib(void) {
-  return &shared_knock_codec_v3;
 }
 
 const M7MuxNormalizeAdapter *shared_knock_codec_v3_get_adapter(void) {
