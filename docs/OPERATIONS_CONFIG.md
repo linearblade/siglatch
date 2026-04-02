@@ -47,6 +47,7 @@ port = 50000
 bind_ip = 127.0.0.1
 allowed_ips = 127.0.0.1,192.168.1.0/24
 secure = yes
+# Deprecated: decode failures now fall through to the raw dead-drop lane.
 enforce_wire_decode = no
 enforce_wire_auth = no
 output_mode = unicode
@@ -68,7 +69,7 @@ log_file = /custom/log/here
     * `127.0.0.1,192.168.1.0/24`
   * This is enforced at runtime before user/action dispatch.
 * **secure**: Enforces encrypted key validation.
-* **enforce_wire_decode**: When `yes`, drop packets that fail wire decode or only fall back to unstructured handling. Default: `no`. This is consumed by the mux layer before job dispatch.
+* **enforce_wire_decode**: Deprecated. When `yes`, older builds would drop packets that failed wire decode before job dispatch. The current raw-dead-drop flow treats decode failures as raw bytes instead, so this setting is retained only for compatibility and is effectively inert. Default: `no`.
 * **enforce_wire_auth**: When `yes`, drop structured packets that fail mux-level wire auth instead of passing them onward. Default: `no`. This is consumed by the mux layer before job dispatch.
 * **priv\_key\_path**: Path to the server's private RSA key.
 * **deaddrops**: Comma-separated list of `deaddrop` modules this server responds to.
@@ -88,6 +89,7 @@ label = Insecure Server
 port = 50001
 deaddrops = pubkey
 secure = no
+# Deprecated: decode failures now fall through to the raw dead-drop lane.
 enforce_wire_decode = no
 enforce_wire_auth = no
 ```
@@ -177,8 +179,8 @@ allowed_ips = 127.0.0.1/32
 * With `reject`, malformed structured packets are dropped and never dispatched to action scripts.
 * With `clamp`, malformed structured packets are length-clamped and continue through normal structured checks (including signature validation) before dispatch.
 * Secure servers reject plaintext receive traffic in the codec / mux path; only encrypted packets are accepted on the structured path.
-* Wire enforcement policy is intentionally split from job authorization: server-scoped `enforce_wire_decode` and `enforce_wire_auth` govern mux-level packet handling, while action-scoped `enforce_wire_auth` is enforced in daemon policy after the job has been decoded.
-* The `change_setting` builtin currently accepts server-scoped wire policy updates via payload lines such as `server.enforce_wire_decode = yes` and `server.enforce_wire_auth = no`. Action-scoped wire policy is not part of that live-setting path yet.
+* Wire enforcement policy is intentionally split from job authorization: server-scoped `enforce_wire_auth` governs mux-level packet handling, while action-scoped `enforce_wire_auth` is enforced in daemon policy after the job has been decoded. `enforce_wire_decode` remains accepted for compatibility, but raw/dead-drop handling now treats decode failures as raw bytes instead of using that gate.
+* The `change_setting` builtin currently accepts server-scoped wire policy updates via payload lines such as `server.enforce_wire_decode = yes` and `server.enforce_wire_auth = no`. `server.enforce_wire_decode` is deprecated and kept only for compatibility. Action-scoped wire policy is not part of that live-setting path yet.
 * The `version` builtin returns the current server banner to the client as a normal action response.
 * All paths should be absolute.
 * Scripts will run without the environment. be aware of this when writing scripts.
