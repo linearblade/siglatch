@@ -21,6 +21,9 @@ static void m7mux_normalize_configure_ingress_identity(const M7MuxState *state,
                                                        const M7MuxNormalizeAdapter *adapter,
                                                        M7MuxIngress *ingress,
                                                        M7MuxIngressIdentity *identity);
+static void m7mux_normalize_log_raw_capture(size_t len,
+                                            const uint8_t *bytes,
+                                            size_t bytes_len);
 
 static M7MuxNormalizeLib _instance = {
   .adapter = {0},
@@ -63,19 +66,45 @@ static int m7mux_normalize_encryption_allowed(const M7MuxState *state, int encry
   return 1;
 }
 
+static void m7mux_normalize_log_raw_capture(size_t len,
+                                            const uint8_t *bytes,
+                                            size_t bytes_len) {
+  char preview[16u * 2u + 4u] = {0};
+  size_t i = 0;
+  size_t preview_len = 0u;
+  static const char hex[] = "0123456789abcdef";
+
+  preview_len = len;
+  if (preview_len > bytes_len) {
+    preview_len = bytes_len;
+  }
+  if (preview_len > 16u) {
+    preview_len = 16u;
+  }
+
+  for (i = 0; i < preview_len; ++i) {
+    preview[i * 2u] = hex[(bytes[i] >> 4) & 0x0f];
+    preview[(i * 2u) + 1u] = hex[bytes[i] & 0x0f];
+  }
+
+  if (len > preview_len) {
+    strcpy(preview + (preview_len * 2u), "...");
+  }
+
+  fprintf(stderr,
+          "[m7mux.normalize] raw bytes captured len=%zu preview=%s\n",
+          len,
+          preview_len > 0u ? preview : "");
+}
+
 static int m7mux_normalize_raw_copy(const M7MuxState *state,
                                     const M7MuxIngress *ingress,
                                     M7MuxRecvPacket *out) {
-  if (ingress->len > sizeof(out->user.payload)) {
-    return 0;
-  }
+  (void)state;
 
-  if (!m7mux_normalize_encryption_allowed(state, ingress->encrypted)) {
+  if (ingress->len > sizeof(out->raw_bytes)) {
     fprintf(stderr,
-            "[m7mux.normalize] raw/unstructured fallback rejected by policy ip=%s port=%u encrypted=%d bytes=%zu\n",
-            ingress->ip,
-            (unsigned)ingress->client_port,
-            ingress->encrypted,
+            "[m7mux.normalize] raw bytes dropped len=%zu reason=oversize\n",
             ingress->len);
     return 0;
   }
@@ -84,20 +113,19 @@ static int m7mux_normalize_raw_copy(const M7MuxState *state,
   out->complete = 1;
   out->received_ms = ingress->received_ms;
   snprintf(out->label, sizeof(out->label), "raw");
-  out->user.complete = 1;
-  out->user.wire_decode = 0;
-  out->user.wire_auth = 0;
-  out->user.encrypted = ingress->encrypted;
-  memcpy(out->user.ip, ingress->ip, sizeof(out->user.ip));
-  out->user.client_port = ingress->client_port;
-  out->user.payload_len = ingress->len;
-  memcpy(out->user.payload, ingress->buffer, ingress->len);
-  fprintf(stderr,
-          "[m7mux.normalize] raw/unstructured fallback ip=%s port=%u encrypted=%d bytes=%zu\n",
-          out->user.ip,
-          (unsigned)out->user.client_port,
-          out->user.encrypted,
-          out->user.payload_len);
+  out->wire_version = 0u;
+  out->wire_form = 0u;
+  memcpy(out->ip, ingress->ip, sizeof(out->ip));
+  out->client_port = ingress->client_port;
+  out->encrypted = ingress->encrypted ? 1 : 0;
+  out->wire_decode = 0;
+  out->wire_auth = 0;
+  out->stream_id = 1u;
+  out->raw_bytes_len = ingress->len;
+  if (ingress->len > 0u) {
+    memcpy(out->raw_bytes, ingress->buffer, ingress->len);
+  }
+  m7mux_normalize_log_raw_capture(ingress->len, out->raw_bytes, sizeof(out->raw_bytes));
   return 1;
 }
 
@@ -184,33 +212,11 @@ static int m7mux_normalize_packet(const M7MuxState *state,
   }
 
   if (_instance.adapter.count() == 0u) {
-    fprintf(stderr,
-            "[m7mux.normalize] adapter registry empty; using raw/unstructured path\n");
-    if (g_ctx.enforce_wire_decode) {
-      fprintf(stderr,
-              "[m7mux.normalize] raw/unstructured fallback rejected by policy\n");
-      return 0;
-    }
     return m7mux_normalize_raw_copy(state, ingress, out);
   }
 
   adapter = _instance.adapter.demux(&g_ctx, ingress, &identity);
   if (!adapter) {
-    fprintf(stderr,
-            "[m7mux.normalize] no adapter matched; using raw/unstructured path ip=%s port=%u encrypted=%d bytes=%zu\n",
-            ingress->ip,
-            (unsigned)ingress->client_port,
-            ingress->encrypted,
-            ingress->len);
-    if (g_ctx.enforce_wire_decode) {
-      fprintf(stderr,
-              "[m7mux.normalize] raw/unstructured fallback rejected by policy ip=%s port=%u encrypted=%d bytes=%zu\n",
-              ingress->ip,
-              (unsigned)ingress->client_port,
-              ingress->encrypted,
-              ingress->len);
-      return 0;
-    }
     return m7mux_normalize_raw_copy(state, ingress, out);
   }
 
@@ -226,23 +232,27 @@ static int m7mux_normalize_packet(const M7MuxState *state,
           configured_ingress.encrypted,
           configured_ingress.len);
   if (!_instance.adapter.decode(&g_ctx, adapter, &configured_ingress, out)) {
-    fprintf(stderr,
-            "[m7mux.normalize] adapter decode failed for adapter=%s ip=%s port=%u bytes=%zu\n",
-            adapter->name,
-            configured_ingress.ip,
-            (unsigned)configured_ingress.client_port,
-            configured_ingress.len);
-    return 0;
+    return m7mux_normalize_raw_copy(state, ingress, out);
   }
 
-  if (!m7mux_normalize_encryption_allowed(state, out->user.encrypted)) {
+  out->received_ms = configured_ingress.received_ms;
+  memcpy(out->ip, configured_ingress.ip, sizeof(out->ip));
+  out->client_port = configured_ingress.client_port;
+  out->encrypted = configured_ingress.encrypted ? 1 : 0;
+  out->wire_decode = 1;
+
+  if (!m7mux_normalize_encryption_allowed(state, out->encrypted)) {
     fprintf(stderr,
             "[m7mux.normalize] structured decode rejected by policy adapter=%s ip=%s port=%u encrypted=%d bytes=%zu\n",
             adapter->name,
             configured_ingress.ip,
             (unsigned)configured_ingress.client_port,
-            out->user.encrypted,
+            out->encrypted,
             configured_ingress.len);
+    if (out->user && adapter->free_user_recv_data) {
+      adapter->free_user_recv_data((M7MuxUserRecvData *)out->user);
+      out->user = NULL;
+    }
     return 0;
   }
 
@@ -257,8 +267,8 @@ static int m7mux_normalize_packet(const M7MuxState *state,
    *         (unsigned long long)out->session_id,
    *         out->stream_id,
    *         (unsigned long long)out->message_id,
-   *         out->user.payload_len,
-   *         out->user.wire_auth);
+   *         configured_ingress.len,
+   *         out->wire_auth);
    */
   return 1;
 }

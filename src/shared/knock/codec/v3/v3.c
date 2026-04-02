@@ -6,6 +6,7 @@
 #include "v3.h"
 #include "../../../../stdlib/protocol/udp/m7mux/normalize/normalize.h"
 #include "../../../../stdlib/protocol/udp/m7mux/ingress/ingress.h"
+#include "../user.h"
 
 #include <openssl/err.h>
 #include <openssl/rand.h>
@@ -85,6 +86,14 @@ static int shared_knock_codec_v3_decrypt_and_unpack_packet(const SharedKnockCode
                                                            const char *ip,
                                                            uint16_t client_port,
                                                            SharedKnockNormalizedUnit *out);
+static int shared_knock_codec_v3_copy_recv_packet(const SharedKnockNormalizedUnit *src,
+                                                  M7MuxRecvPacket *dst);
+static int shared_knock_codec_v3_copy_send_packet(const M7MuxSendPacket *src,
+                                                  SharedKnockNormalizedUnit *dst);
+M7MuxUserRecvData *shared_knock_codec_v3_alloc_user_recv_data(void);
+void shared_knock_codec_v3_free_user_recv_data(M7MuxUserRecvData *user);
+int shared_knock_codec_v3_copy_user_recv_data(M7MuxUserRecvData *dst,
+                                              const M7MuxUserRecvData *src);
 
 static uint16_t shared_knock_codec_v3_read_u16_be(const uint8_t *src) {
   return (uint16_t)(((uint16_t)src[0] << 8) | (uint16_t)src[1]);
@@ -699,6 +708,93 @@ const char *shared_knock_codec_v3_deserialize_strerror(int code) {
   }
 }
 
+static int shared_knock_codec_v3_copy_recv_packet(const SharedKnockNormalizedUnit *src,
+                                                  M7MuxRecvPacket *dst) {
+  M7MuxUserRecvData *user = NULL;
+
+  if (!src || !dst || !dst->user) {
+    return 0;
+  }
+
+  user = (M7MuxUserRecvData *)dst->user;
+
+  if (src->payload_len > sizeof(user->payload)) {
+    return 0;
+  }
+
+  memset(dst, 0, sizeof(*dst));
+  dst->user = user;
+  dst->complete = src->complete;
+  dst->should_reply = 0;
+  dst->synthetic_session = 0;
+  dst->wire_version = src->wire_version;
+  dst->wire_form = src->wire_form;
+  dst->received_ms = 0u;
+  dst->session_id = src->session_id;
+  dst->message_id = src->message_id;
+  dst->stream_id = src->stream_id;
+  dst->fragment_index = src->fragment_index;
+  dst->fragment_count = src->fragment_count;
+  dst->timestamp = src->timestamp;
+  memcpy(dst->label, "codec", sizeof("codec"));
+  memcpy(dst->ip, src->ip, sizeof(dst->ip));
+  dst->client_port = src->client_port;
+  dst->encrypted = src->encrypted;
+  dst->wire_decode = src->wire_decode;
+  dst->wire_auth = src->wire_auth;
+
+  memset(user, 0, sizeof(*user));
+  user->user_id = src->user_id;
+  user->action_id = src->action_id;
+  user->challenge = src->challenge;
+  memcpy(user->hmac, src->hmac, sizeof(user->hmac));
+  user->payload_len = (uint16_t)src->payload_len;
+  if (src->payload_len > 0u) {
+  memcpy(user->payload, src->payload, src->payload_len);
+  }
+
+  return 1;
+}
+
+static int shared_knock_codec_v3_copy_send_packet(const M7MuxSendPacket *src,
+                                                  SharedKnockNormalizedUnit *dst) {
+  const M7MuxUserSendData *user = NULL;
+
+  if (!src || !dst || !src->user) {
+    return 0;
+  }
+
+  user = src->user;
+  if (user->payload_len > sizeof(dst->payload)) {
+    return 0;
+  }
+
+  memset(dst, 0, sizeof(*dst));
+  dst->complete = 1;
+  dst->wire_version = src->wire_version;
+  dst->wire_form = src->wire_form;
+  dst->session_id = src->session_id;
+  dst->message_id = src->message_id;
+  dst->stream_id = src->stream_id;
+  dst->fragment_index = src->fragment_index;
+  dst->fragment_count = src->fragment_count;
+  dst->timestamp = src->timestamp;
+  dst->user_id = user->user_id;
+  dst->action_id = user->action_id;
+  dst->challenge = user->challenge;
+  memcpy(dst->hmac, user->hmac, sizeof(dst->hmac));
+  memcpy(dst->ip, src->ip, sizeof(dst->ip));
+  dst->client_port = src->client_port;
+  dst->encrypted = src->encrypted;
+  dst->wire_auth = src->wire_auth;
+  dst->payload_len = user->payload_len;
+  if (user->payload_len > 0u) {
+    memcpy(dst->payload, user->payload, user->payload_len);
+  }
+
+  return 1;
+}
+
 static int shared_knock_codec_v3_adapter_create_state(void **out_state) {
   return shared_knock_codec_v3_create_state(out_state);
 }
@@ -728,7 +824,9 @@ static int shared_knock_codec_v3_adapter_decode(const M7MuxContext *ctx,
     return 0;
   }
 
-  m7mux_normalize_adapter_copy_shared_to_mux(&normal, out);
+  if (!shared_knock_codec_v3_copy_recv_packet(&normal, out)) {
+    return 0;
+  }
   if (out && ingress) {
     out->received_ms = ingress->received_ms;
   }
@@ -746,7 +844,7 @@ static int shared_knock_codec_v3_adapter_encode(const M7MuxContext *ctx,
 
   (void)ctx;
 
-  if (!m7mux_normalize_adapter_copy_mux_to_shared(send, &normal)) {
+  if (!shared_knock_codec_v3_copy_send_packet(send, &normal)) {
     return 0;
   }
 
@@ -765,6 +863,9 @@ static const M7MuxNormalizeAdapter shared_knock_codec_v3_adapter = {
   .wire_version = WIRE_VERSION,
   .create_state = shared_knock_codec_v3_adapter_create_state,
   .destroy_state = shared_knock_codec_v3_adapter_destroy_state,
+  .alloc_user_recv_data = shared_knock_codec_v3_alloc_user_recv_data,
+  .free_user_recv_data = shared_knock_codec_v3_free_user_recv_data,
+  .copy_user_recv_data = shared_knock_codec_v3_copy_user_recv_data,
   .detect = shared_knock_codec_v3_adapter_detect,
   .decode = shared_knock_codec_v3_adapter_decode,
   .encode = shared_knock_codec_v3_adapter_encode,
@@ -810,6 +911,24 @@ void shared_knock_codec_v3_destroy_state(void *state_) {
   free(state);
 }
 
+M7MuxUserRecvData *shared_knock_codec_v3_alloc_user_recv_data(void) {
+  return (M7MuxUserRecvData *)calloc(1u, sizeof(M7MuxUserRecvData));
+}
+
+void shared_knock_codec_v3_free_user_recv_data(M7MuxUserRecvData *user) {
+  free(user);
+}
+
+int shared_knock_codec_v3_copy_user_recv_data(M7MuxUserRecvData *dst,
+                                              const M7MuxUserRecvData *src) {
+  if (!dst || !src) {
+    return 0;
+  }
+
+  memcpy(dst, src, sizeof(*dst));
+  return 1;
+}
+
 int shared_knock_codec_v3_init(const SharedKnockCodecContext *context) {
   g_context = context;
   memset(&internal, 0, sizeof(internal));
@@ -851,6 +970,7 @@ int shared_knock_codec_v3_detect(const void *state_,
   }
 
   if (identity) {
+    identity->encrypted = 1;
     identity->magic = pkt.outer.magic;
     identity->version = pkt.outer.version;
     identity->form = pkt.outer.form;
@@ -905,6 +1025,7 @@ int shared_knock_codec_v3_decode(const void *state_,
   out->encrypted = 1;
   out->wire_decode = 1;
   out->wire_auth = 0;
+
   return 1;
 }
 
@@ -950,12 +1071,6 @@ int shared_knock_codec_v3_encode(const void *state_,
     return 0;
   }
 
-  if (!context || !context->openssl_session ||
-      !context->openssl_session->public_key ||
-      context->openssl_session->hmac_key_len < sizeof(body.hmac)) {
-    return 0;
-  }
-
   if (normal->wire_version != WIRE_VERSION ||
       normal->wire_form != SHARED_KNOCK_CODEC_FORM1_ID) {
     return 0;
@@ -965,13 +1080,21 @@ int shared_knock_codec_v3_encode(const void *state_,
     return 0;
   }
 
-  if (!internal.digest.generate_v3_form1(normal, digest)) {
-    return 0;
-  }
-
   body = *normal;
-  if (!internal.digest.lib.sign(context->openssl_session->hmac_key, digest, body.hmac)) {
-    return 0;
+  if (normal->wire_auth) {
+    if (!context || !context->openssl_session ||
+        !context->openssl_session->public_key ||
+        context->openssl_session->hmac_key_len < sizeof(body.hmac)) {
+      return 0;
+    }
+
+    if (!internal.digest.generate_v3_form1(normal, digest)) {
+      return 0;
+    }
+
+    if (!internal.digest.lib.sign(context->openssl_session->hmac_key, digest, body.hmac)) {
+      return 0;
+    }
   }
 
   if (!shared_knock_codec_v3_pack_plaintext(&body, plaintext, &plaintext_len)) {

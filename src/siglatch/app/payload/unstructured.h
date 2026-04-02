@@ -10,23 +10,20 @@
 #include <stdint.h>
 
 #include "../runtime/runtime.h"
+#include "../daemon/job.h"
 
 typedef struct {
   int (*init)(void);
   void (*shutdown)(void);
   void (*handle)(
       const AppRuntimeListenerState *listener,
-      const uint8_t *payload,
-      size_t payload_len,
-      const char *ip);
+      AppConnectionJob *job);
 } AppPayloadUnstructuredLib;
 
 int app_payload_unstructured_init(void);
 void app_payload_unstructured_shutdown(void);
 void app_payload_unstructured_handle(
     const AppRuntimeListenerState *listener,
-    const uint8_t *payload,
-    size_t payload_len,
-    const char *ip);
+    AppConnectionJob *job);
 
 #endif

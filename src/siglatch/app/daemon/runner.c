@@ -32,16 +32,69 @@ static void app_daemon_configure_mux_policy(const AppRuntimeListenerState *liste
   mux_state->policy_enforce_encryption = M7MUX_POLICY_ENFORCE_ENCRYPTION_NO;
 }
 
-static int app_daemon_stage_outbox_reply(M7MuxState *mux_state,
-                                          AppRuntimeListenerState *listener,
-                                          const AppConnectionJob *job) {
-  M7MuxSendPacket send = {0};
-  SharedKnockNormalizedUnit user = {0};
+static int app_daemon_stage_raw_outbox_reply(M7MuxState *mux_state,
+                                             AppRuntimeListenerState *listener,
+                                             const AppConnectionJob *job) {
+  M7MuxSendBytesPacket raw_send = {0};
   uint64_t now_ms = 0;
+  size_t response_len = 0;
 
   if (!mux_state || !listener || !job) {
     return 0;
   }
+
+  if (!job->response_buffer || job->response_len == 0u) {
+    return 0;
+  }
+
+  response_len = job->response_len;
+  if (response_len > M7MUX_NORMALIZED_PACKET_BUFFER_SIZE) {
+    LOGW("[daemon.runner] Truncating raw reply from %zu to %u bytes\n",
+         response_len,
+         (unsigned)M7MUX_NORMALIZED_PACKET_BUFFER_SIZE);
+    response_len = M7MUX_NORMALIZED_PACKET_BUFFER_SIZE;
+  }
+
+  raw_send.trace_id = 0u;
+  memcpy(raw_send.label, "daemon", sizeof("daemon"));
+  memcpy(raw_send.ip, job->ip, sizeof(raw_send.ip));
+  raw_send.ip[sizeof(raw_send.ip) - 1u] = '\0';
+  raw_send.client_port = job->client_port;
+  raw_send.received_ms = job->timestamp;
+  raw_send.bytes = job->response_buffer;
+  raw_send.bytes_len = response_len;
+
+  if (lib.m7mux.outbox.stage_bytes(mux_state, &raw_send)) {
+    return 1;
+  }
+
+  now_ms = lib.time.monotonic_ms();
+  if (lib.m7mux.outbox.flush(mux_state, listener->sock, now_ms) < 0) {
+    return -1;
+  }
+
+  if (lib.m7mux.outbox.stage_bytes(mux_state, &raw_send)) {
+    return 1;
+  }
+
+  LOGE("[daemon.runner] Failed to stage raw reply after flushing outbox\n");
+  return 0;
+}
+
+static int app_daemon_stage_outbox_reply(M7MuxState *mux_state,
+                                          AppRuntimeListenerState *listener,
+                                          const AppConnectionJob *job) {
+  if (!mux_state || !listener || !job) {
+    return 0;
+  }
+
+  if (job->wire_version == 0u) {
+    return app_daemon_stage_raw_outbox_reply(mux_state, listener, job);
+  }
+
+  M7MuxSendPacket send = {0};
+  M7MuxUserSendData user = {0};
+  uint64_t now_ms = 0;
 
   if (!app.daemon.helper.copy_job_reply_to_send(job, &send, &user)) {
     return 0;
@@ -108,6 +161,7 @@ static void app_daemon_run(AppRuntimeListenerState *listener) {
   M7MuxState *mux_state = NULL;
   AppJobState job_state = {0};
   M7MuxRecvPacket normal = {0};
+  M7MuxUserRecvData user = {0};
   uint64_t now_ms = 0;
   uint64_t next_tick_at = 0;
   uint64_t timeout_ms = 0;
@@ -153,6 +207,8 @@ static void app_daemon_run(AppRuntimeListenerState *listener) {
     goto cleanup;
   }
 
+  (void)user;
+
   while (!app.signal.should_exit(listener->process)) {
     if (tracked_sock != listener->sock) {
       M7MuxState *next_mux_state = lib.m7mux.connect.connect_socket(listener->sock);
@@ -178,6 +234,8 @@ static void app_daemon_run(AppRuntimeListenerState *listener) {
 
     while (lib.m7mux.inbox.has_pending(mux_state)) {
       memset(&normal, 0, sizeof(normal));
+      memset(&user, 0, sizeof(user));
+      normal.user = &user;
       if (!lib.m7mux.inbox.drain(mux_state, &normal)) {
         break;
       }

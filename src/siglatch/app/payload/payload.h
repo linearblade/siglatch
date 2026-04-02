@@ -17,6 +17,15 @@ typedef struct {
                    const char *run_as);
   int (*run_shell_wait)(const char *script_path, int argc, char *argv[], int exec_split,
                         const char *run_as, int *out_exit_code);
+  int (*run_shell_capture)(const char *script_path,
+                           int argc,
+                           char *argv[],
+                           int exec_split,
+                           const char *run_as,
+                           uint8_t *out_buf,
+                           size_t out_cap,
+                           size_t *out_len,
+                           int *out_exit_code);
   AppPayloadDigestLib digest;
   AppPayloadReplyLib reply;
   AppPayloadUnstructuredLib unstructured;

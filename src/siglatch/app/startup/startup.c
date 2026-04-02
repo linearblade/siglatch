@@ -24,22 +24,16 @@ static int app_startup_init(void) {
 }
 
 static void app_startup_shutdown(void) {
-  const SharedKnockCodecLib *codec = NULL;
+  const SharedCodecLib *codec = NULL;
 
   codec = get_shared_knock_codec_lib();
   if (!codec) {
     return;
   }
 
-  if (codec->v3.shutdown) {
-    codec->v3.shutdown();
-  }
-  if (codec->v2.shutdown) {
-    codec->v2.shutdown();
-  }
-  if (codec->v1.shutdown) {
-    codec->v1.shutdown();
-  }
+  shared_knock_codec_v3_shutdown();
+  shared_knock_codec_v2_shutdown();
+  shared_knock_codec_v1_shutdown();
 }
 
 static void app_startup_reset_state(AppStartupState *state) {
@@ -159,7 +153,7 @@ static void app_startup_apply_logging(const AppStartupState *state) {
 }
 
 static int app_startup_register_codec_modules(const AppWorkspace *workspace) {
-  const SharedKnockCodecLib *codec = NULL;
+  const SharedCodecLib *codec = NULL;
 
   if (!workspace || !workspace->codec_context) {
     LOGE("Codec context unavailable for codec module registration\n");
@@ -167,28 +161,26 @@ static int app_startup_register_codec_modules(const AppWorkspace *workspace) {
   }
 
   codec = &shared.knock.codec;
-  if (!codec || !codec->v1.init || !codec->v1.shutdown ||
-      !codec->v2.init || !codec->v2.shutdown ||
-      !codec->v3.init || !codec->v3.shutdown) {
+  if (!codec || !codec->v1 || !codec->v2 || !codec->v3) {
     LOGE("Codec module registry unavailable\n");
     return 0;
   }
 
-  if (!codec->v1.init(workspace->codec_context)) {
+  if (!shared_knock_codec_v1_init(workspace->codec_context)) {
     LOGE("Failed to initialize codec.v1\n");
     return 0;
   }
 
-  if (!codec->v2.init(workspace->codec_context)) {
+  if (!shared_knock_codec_v2_init(workspace->codec_context)) {
     LOGE("Failed to initialize codec.v2\n");
-    codec->v1.shutdown();
+    shared_knock_codec_v1_shutdown();
     return 0;
   }
 
-  if (!codec->v3.init(workspace->codec_context)) {
+  if (!shared_knock_codec_v3_init(workspace->codec_context)) {
     LOGE("Failed to initialize codec.v3\n");
-    codec->v2.shutdown();
-    codec->v1.shutdown();
+    shared_knock_codec_v2_shutdown();
+    shared_knock_codec_v1_shutdown();
     return 0;
   }
 
@@ -202,25 +194,25 @@ static int app_startup_register_codec_modules(const AppWorkspace *workspace) {
     if (!normalize || !normalize->adapter.register_adapter ||
         !normalize->adapter.unregister_adapter) {
       LOGE("Normalize adapter registry unavailable\n");
-      codec->v3.shutdown();
-      codec->v2.shutdown();
-      codec->v1.shutdown();
+      shared_knock_codec_v3_shutdown();
+      shared_knock_codec_v2_shutdown();
+      shared_knock_codec_v1_shutdown();
       return 0;
     }
 
-    adapter = codec->v1_adapter;
+    adapter = codec->v1 ? codec->v1() : NULL;
     if (!adapter || !normalize->adapter.register_adapter(adapter)) {
       goto fail_unregister_adapters;
     }
     registered_names[registered_count++] = adapter->name;
 
-    adapter = codec->v2_adapter;
+    adapter = codec->v2 ? codec->v2() : NULL;
     if (!adapter || !normalize->adapter.register_adapter(adapter)) {
       goto fail_unregister_adapters;
     }
     registered_names[registered_count++] = adapter->name;
 
-    adapter = codec->v3_adapter;
+    adapter = codec->v3 ? codec->v3() : NULL;
     if (!adapter || !normalize->adapter.register_adapter(adapter)) {
       goto fail_unregister_adapters;
     }
@@ -236,9 +228,9 @@ static int app_startup_register_codec_modules(const AppWorkspace *workspace) {
       }
     }
 
-    codec->v3.shutdown();
-    codec->v2.shutdown();
-    codec->v1.shutdown();
+    shared_knock_codec_v3_shutdown();
+    shared_knock_codec_v2_shutdown();
+    shared_knock_codec_v1_shutdown();
     return 0;
   }
 }

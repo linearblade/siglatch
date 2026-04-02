@@ -27,6 +27,33 @@ static M7MuxSession *m7mux_session_find(M7MuxSessionState *state,
   return NULL;
 }
 
+static M7MuxSession *m7mux_session_find_raw_by_ip(M7MuxSessionState *state,
+                                                  const char *ip) {
+  size_t i = 0;
+
+  if (!state || !ip || ip[0] == '\0') {
+    return NULL;
+  }
+
+  for (i = 0; i < M7MUX_SESSION_SESSION_CAPACITY; ++i) {
+    if (!state->sessions[i].active) {
+      continue;
+    }
+
+    if (state->sessions[i].wire_version != 0u) {
+      continue;
+    }
+
+    if (strncmp(state->sessions[i].ip, ip, sizeof(state->sessions[i].ip)) != 0) {
+      continue;
+    }
+
+    return &state->sessions[i];
+  }
+
+  return NULL;
+}
+
 static void m7mux_session_touch(M7MuxSession *session, uint64_t now_ms) {
   if (!session) {
     return;
@@ -57,18 +84,29 @@ static int m7mux_session_register(M7MuxSessionState *state,
   if (!state || !normal || !out_session) {
     return 0;
   }
-  //$FIXUP == I'm not sure on this yet. really need to investigate
+
   *out_session = NULL;
-  
+
   if (normal->session_id != 0) {
     *out_session = m7mux_session_find(state, normal->session_id);
     if (*out_session) {
       (*out_session)->wire_version = normal->wire_version;
       (*out_session)->wire_form = normal->wire_form;
-      memcpy((*out_session)->ip, normal->user.ip, sizeof((*out_session)->ip));
+      memcpy((*out_session)->ip, normal->ip, sizeof((*out_session)->ip));
       (*out_session)->ip[sizeof((*out_session)->ip) - 1] = '\0';
-      (*out_session)->client_port = normal->user.client_port;
-      (*out_session)->encrypted = normal->user.encrypted;
+      (*out_session)->client_port = normal->client_port;
+      (*out_session)->encrypted = normal->encrypted;
+      return 1;
+    }
+  }
+
+  if (normal->wire_version == 0u) {
+    *out_session = m7mux_session_find_raw_by_ip(state, normal->ip);
+    if (*out_session) {
+      (*out_session)->client_port = normal->client_port;
+      (*out_session)->encrypted = normal->encrypted;
+      (*out_session)->wire_version = normal->wire_version;
+      (*out_session)->wire_form = normal->wire_form;
       return 1;
     }
   }
@@ -80,10 +118,10 @@ static int m7mux_session_register(M7MuxSessionState *state,
       if (state->sessions[i].session_id >= state->next_session_id) {
         state->next_session_id = state->sessions[i].session_id + 1u;
       }
-      memcpy(state->sessions[i].ip, normal->user.ip, sizeof(state->sessions[i].ip));
+      memcpy(state->sessions[i].ip, normal->ip, sizeof(state->sessions[i].ip));
       state->sessions[i].ip[sizeof(state->sessions[i].ip) - 1] = '\0';
-      state->sessions[i].client_port = normal->user.client_port;
-      state->sessions[i].encrypted = normal->user.encrypted;
+      state->sessions[i].client_port = normal->client_port;
+      state->sessions[i].encrypted = normal->encrypted;
       state->sessions[i].wire_version = normal->wire_version;
       state->sessions[i].wire_form = normal->wire_form;
       state->sessions[i].active = 1;

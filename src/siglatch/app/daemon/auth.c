@@ -20,7 +20,6 @@ static void app_daemon_auth_shutdown(void) {
 static int app_daemon_auth_authorize(SiglatchOpenSSLSession *session,
                                       AppConnectionJob *job) {
   const siglatch_user *user = NULL;
-  KnockPacket pkt = {0};
 
   if (!job) {
     return 0;
@@ -51,14 +50,7 @@ static int app_daemon_auth_authorize(SiglatchOpenSSLSession *session,
     return 0;
   }
 
-  if (!app.daemon.helper.copy_job_to_knock_packet(job, &pkt)) {
-    LOGE("[daemon.auth] Failed to reconstruct auth packet from job (user_id=%u action_id=%u)\n",
-         job->request.user_id,
-         job->request.action_id);
-    return 0;
-  }
-
-  if (!app.inbound.crypto.validate_signature(session, &pkt)) {
+  if (!app.inbound.crypto.validate_signature(session, job)) {
     return 0;
   }
 

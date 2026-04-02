@@ -66,7 +66,9 @@ static int m7mux_normalize_adapter_register(const M7MuxNormalizeAdapter *adapter
   size_t i = 0;
 
   if (!adapter || !adapter->name || !adapter->detect ||
-      !adapter->decode || !adapter->encode) {
+      !adapter->decode || !adapter->encode ||
+      !adapter->alloc_user_recv_data || !adapter->free_user_recv_data ||
+      !adapter->copy_user_recv_data) {
     return 0;
   }
 
@@ -174,11 +176,43 @@ static int m7mux_normalize_adapter_decode(const M7MuxContext *ctx,
                                           const M7MuxNormalizeAdapter *adapter,
                                           const M7MuxIngress *ingress,
                                           M7MuxRecvPacket *out) {
+  M7MuxUserRecvData *owned_user = NULL;
+
   if (!ctx || !adapter || !adapter->decode) {
     return 0;
   }
 
-  return adapter->decode(ctx, adapter->state, ingress, out);
+  if (out && !out->user) {
+    if (!adapter->alloc_user_recv_data || !adapter->free_user_recv_data) {
+      return 0;
+    }
+
+    owned_user = adapter->alloc_user_recv_data();
+    if (!owned_user) {
+      return 0;
+    }
+
+    out->user = owned_user;
+  }
+
+  if (!adapter->decode(ctx, adapter->state, ingress, out)) {
+    if (owned_user) {
+      adapter->free_user_recv_data(owned_user);
+    }
+    if (out && out->user == owned_user) {
+      out->user = NULL;
+    }
+    return 0;
+  }
+
+  if (out && !out->user) {
+    if (owned_user) {
+      adapter->free_user_recv_data(owned_user);
+    }
+    return 0;
+  }
+
+  return 1;
 }
 
 static int m7mux_normalize_adapter_encode(const M7MuxContext *ctx,
@@ -208,68 +242,6 @@ static void m7mux_normalize_adapter_destroy_slot(M7MuxNormalizeAdapter *adapter)
   memset(adapter, 0, sizeof(*adapter));
 }
 
-void m7mux_normalize_adapter_copy_shared_to_mux(const SharedKnockNormalizedUnit *src,
-                                                M7MuxRecvPacket *dst) {
-  if (!src || !dst) {
-    return;
-  }
-
-  memset(dst, 0, sizeof(*dst));
-  dst->complete = src->complete;
-  dst->should_reply = 0;
-  dst->synthetic_session = 0;
-  dst->wire_version = src->wire_version;
-  dst->wire_form = src->wire_form;
-  dst->received_ms = 0u;
-  dst->session_id = src->session_id;
-  dst->message_id = src->message_id;
-  dst->stream_id = src->stream_id;
-  dst->fragment_index = src->fragment_index;
-  dst->fragment_count = src->fragment_count;
-  dst->timestamp = src->timestamp;
-  memcpy(dst->label, "codec", sizeof("codec"));
-  dst->user = *src;
-}
-
-int m7mux_normalize_adapter_copy_mux_to_shared(const M7MuxSendPacket *src,
-                                               SharedKnockNormalizedUnit *dst) {
-  const SharedKnockNormalizedUnit *user = NULL;
-
-  if (!src || !dst || !src->user) {
-    return 0;
-  }
-
-  user = src->user;
-  if (user->payload_len > sizeof(dst->payload)) {
-    return 0;
-  }
-
-  memset(dst, 0, sizeof(*dst));
-  dst->complete = src->complete;
-  dst->wire_version = src->wire_version;
-  dst->wire_form = src->wire_form;
-  dst->session_id = src->session_id;
-  dst->message_id = src->message_id;
-  dst->stream_id = src->stream_id;
-  dst->fragment_index = src->fragment_index;
-  dst->fragment_count = src->fragment_count;
-  dst->timestamp = src->timestamp;
-  dst->user_id = user->user_id;
-  dst->action_id = user->action_id;
-  dst->challenge = user->challenge;
-  memcpy(dst->hmac, user->hmac, sizeof(dst->hmac));
-  memcpy(dst->ip, src->ip, sizeof(dst->ip));
-  dst->client_port = src->client_port;
-  dst->encrypted = src->encrypted;
-  dst->wire_auth = src->wire_auth;
-  dst->payload_len = user->payload_len;
-  if (user->payload_len > 0u) {
-    memcpy(dst->payload, user->payload, user->payload_len);
-  }
-
-  return 1;
-}
-
 int m7mux_normalize_adapter_fill_egress(const M7MuxSendPacket *src,
                                         const uint8_t *payload,
                                         size_t payload_len,
@@ -279,9 +251,6 @@ int m7mux_normalize_adapter_fill_egress(const M7MuxSendPacket *src,
   }
 
   memset(dst, 0, sizeof(*dst));
-  dst->complete = src->complete;
-  dst->should_reply = src->should_reply;
-  dst->available = 1;
   dst->trace_id = src->trace_id;
   memcpy(dst->label, src->label, sizeof(dst->label));
   dst->wire_version = src->wire_version;

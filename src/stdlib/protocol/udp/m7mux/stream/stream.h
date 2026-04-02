@@ -19,7 +19,12 @@ typedef struct {
   M7MuxRecvPacket ready_queue[M7MUX_STREAM_READY_QUEUE_CAPACITY];
   size_t ready_count;
   uint64_t next_message_id;
+  const M7MuxNormalizeAdapterLib *adapter_lib;
 } M7MuxStreamState;
+
+typedef struct M7MuxStreamReleaseContext {
+  const M7MuxNormalizeAdapterLib *adapter_lib;
+} M7MuxStreamReleaseContext;
 
 typedef struct {
   int (*init)(void);
@@ -32,6 +37,8 @@ typedef struct {
   int (*expire)(M7MuxStreamState *state, uint64_t now_ms);
   int (*pump)(M7MuxStreamState *state, uint64_t now_ms);
 } M7MuxStreamLib;
+
+void m7mux_stream_release_user(M7MuxStreamState *state, const M7MuxRecvPacket *packet);
 
 const M7MuxStreamLib *get_protocol_udp_m7mux_stream_lib(void);
 

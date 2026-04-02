@@ -7,7 +7,7 @@
 #define SIGLATCH_SERVER_APP_INBOUND_CRYPTO_H
 
 #include "../../config/config.h"
-#include "../../../../shared/knock/packet.h"
+#include "../../daemon/connection.h"
 #include "../../../../stdlib/openssl/session/session.h"
 
 typedef struct {
@@ -21,7 +21,7 @@ typedef struct {
       const siglatch_user *user);
   int (*validate_signature)(
       const SiglatchOpenSSLSession *session,
-      const KnockPacket *pkt);
+      const AppConnectionJob *job);
 } AppInboundCryptoLib;
 
 int app_inbound_crypto_init(void);
@@ -34,6 +34,6 @@ int app_inbound_crypto_assign_session_to_user(
     const siglatch_user *user);
 int app_inbound_crypto_validate_signature(
     const SiglatchOpenSSLSession *session,
-    const KnockPacket *pkt);
+    const AppConnectionJob *job);
 
 #endif

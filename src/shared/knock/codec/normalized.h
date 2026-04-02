@@ -11,7 +11,7 @@
 
 #define SHARED_KNOCK_NORMALIZED_PAYLOAD_MAX 1024u
 
-typedef struct {
+typedef struct SharedKnockNormalizedUnit {
   int complete;
   uint32_t wire_version;
   uint8_t wire_form;

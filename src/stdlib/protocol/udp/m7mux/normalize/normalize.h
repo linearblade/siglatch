@@ -10,7 +10,6 @@
 #include <stdint.h>
 
 #include "../m7mux.h"
-#include "../../../../../shared/knock/codec/normalized.h"
 
 struct M7MuxIngressIdentity {
   int encrypted;
@@ -24,6 +23,8 @@ struct M7MuxIngressIdentity {
 #define M7MUX_NORMALIZED_PACKET_BUFFER_SIZE 1024u
 
 typedef struct M7MuxState M7MuxState;
+typedef struct M7MuxUserSendData M7MuxUserSendData;
+typedef struct M7MuxUserRecvData M7MuxUserRecvData;
 
 typedef struct M7MuxRecvPacket {
   int complete;
@@ -39,13 +40,17 @@ typedef struct M7MuxRecvPacket {
   uint32_t fragment_count;
   uint32_t timestamp;
   char label[64];
-  SharedKnockNormalizedUnit user;
+  char ip[64];
+  uint16_t client_port;
+  int encrypted;
+  int wire_decode;
+  int wire_auth;
+  uint8_t raw_bytes[M7MUX_NORMALIZED_PACKET_BUFFER_SIZE];
+  size_t raw_bytes_len;
+  const M7MuxUserRecvData *user;
 } M7MuxRecvPacket;
 
 typedef struct M7MuxSendPacket {
-  int complete;
-  int should_reply;
-  int available;
   uint64_t trace_id;
   char label[64];
   uint32_t wire_version;
@@ -61,13 +66,10 @@ typedef struct M7MuxSendPacket {
   uint16_t client_port;
   int encrypted;
   int wire_auth;
-  const SharedKnockNormalizedUnit *user;
+  const M7MuxUserSendData *user;
 } M7MuxSendPacket;
 
 typedef struct M7MuxEgressData {
-  int complete;
-  int should_reply;
-  int available;
   uint64_t trace_id;
   char label[64];
   uint32_t wire_version;

@@ -31,9 +31,7 @@ void app_payload_unstructured_shutdown(void) {
 
 void app_payload_unstructured_handle(
     const AppRuntimeListenerState *listener,
-    const uint8_t *payload,
-    size_t payload_len,
-    const char *ip_addr) {
+    AppConnectionJob *job) {
   const siglatch_deaddrop *deaddrop = NULL;
   char match[512] = {0};
   size_t match_len = 0;
@@ -43,14 +41,22 @@ void app_payload_unstructured_handle(
   char *argv[5] = {0};
   size_t payload_b64_size = 0;
   size_t payload_tail_len = 0;
+  int shell_exit_code = 127;
+  const uint8_t *payload = NULL;
+  size_t payload_len = 0;
+  const char *ip_addr = NULL;
   int payload_b64_allocated = 0;
 
   LOGD("[payload] [unstructured] processing unstructured data.\n");
 
-  if (!listener || !listener->server) {
+  if (!listener || !listener->server || !job) {
     LOGE("[payload] [unstructured] current server context is NULL; dropping packet.\n");
     return;
   }
+
+  payload = job->request.payload_buffer;
+  payload_len = job->request.payload_len;
+  ip_addr = job->ip;
 
   if (payload_len > 0u && !payload) {
     LOGE("[payload] [unstructured] payload buffer is NULL for non-empty input\n");
@@ -113,13 +119,37 @@ void app_payload_unstructured_handle(
        encrypted_str,
        deaddrop->exec_split);
 
-  app.payload.run_shell(
-      deaddrop->constructor,
-      4,
-      argv,
-      deaddrop->exec_split,
-      deaddrop->run_as[0] ? deaddrop->run_as : NULL);
+  job->response_len = 0u;
+  job->should_reply = 0;
+  if (!app.daemon.job.reserve_response(job, APP_JOB_RESPONSE_BLOCK_SIZE)) {
+    LOGE("[payload] [unstructured] failed to reserve response buffer for dead-drop output\n");
+    goto cleanup;
+  }
 
+  memset(job->response_buffer, 0, job->response_cap);
+  if (!app.payload.run_shell_capture(
+          deaddrop->constructor,
+          4,
+          argv,
+          deaddrop->exec_split,
+          deaddrop->run_as[0] ? deaddrop->run_as : NULL,
+          job->response_buffer,
+          job->response_cap,
+          &job->response_len,
+          &shell_exit_code)) {
+    LOGE("[payload] [unstructured] failed to capture dead-drop response for %s\n",
+         deaddrop->name);
+    job->response_len = 0u;
+    job->should_reply = 0;
+    goto cleanup;
+  }
+
+  if (job->response_len > 0u) {
+    job->should_reply = 1;
+  } else {
+  }
+
+cleanup:
   if (payload_b64_allocated) {
     free(payload_b64);
   }
@@ -163,6 +193,10 @@ static int app_payload_unstructured_is_ascii(const unsigned char *buf, size_t le
   }
 
   for (size_t i = 0; i < len; ++i) {
+    if (buf[i] == '\n' || buf[i] == '\r' || buf[i] == '\t') {
+      continue;
+    }
+
     if (buf[i] < 32 || buf[i] > 126) {
       return 0;
     }

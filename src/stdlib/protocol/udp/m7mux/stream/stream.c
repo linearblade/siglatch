@@ -7,6 +7,12 @@
 
 #include <string.h>
 
+void m7mux_stream_release_user(M7MuxStreamState *state, const M7MuxRecvPacket *packet);
+static int m7mux_stream_copy_user(M7MuxStreamState *state,
+                                  const M7MuxRecvPacket *packet,
+                                  M7MuxUserRecvData *dst,
+                                  const M7MuxUserRecvData *src);
+
 static int m7mux_stream_init(void) {
   return 1;
 }
@@ -25,11 +31,20 @@ static int m7mux_stream_state_init(M7MuxStreamState *state) {
 }
 
 static void m7mux_stream_state_reset(M7MuxStreamState *state) {
+  size_t i = 0;
+  const M7MuxNormalizeAdapterLib *adapter_lib = NULL;
+
   if (!state) {
     return;
   }
 
+  adapter_lib = state->adapter_lib;
+  for (i = 0; i < M7MUX_STREAM_READY_QUEUE_CAPACITY; ++i) {
+    m7mux_stream_release_user(state, &state->ready_queue[i]);
+  }
+
   memset(state, 0, sizeof(*state));
+  state->adapter_lib = adapter_lib;
   state->next_message_id = 1u;
 }
 
@@ -55,6 +70,43 @@ static int m7mux_stream_is_expired(const M7MuxRecvPacket *slot, uint64_t now_ms)
   }
 
   return (now_ms - slot->received_ms) >= M7MUX_STREAM_EXPIRE_AFTER_MS;
+}
+
+void m7mux_stream_release_user(M7MuxStreamState *state, const M7MuxRecvPacket *packet) {
+  const M7MuxNormalizeAdapter *adapter = NULL;
+
+  if (!state || !state->adapter_lib || !state->adapter_lib->lookup_adapter_wire_version ||
+      !packet || !packet->user) {
+    return;
+  }
+
+  adapter = state->adapter_lib->lookup_adapter_wire_version(packet->wire_version);
+
+  if (!adapter || !adapter->free_user_recv_data) {
+    return;
+  }
+
+  adapter->free_user_recv_data((M7MuxUserRecvData *)packet->user);
+}
+
+static int m7mux_stream_copy_user(M7MuxStreamState *state,
+                                  const M7MuxRecvPacket *packet,
+                                  M7MuxUserRecvData *dst,
+                                  const M7MuxUserRecvData *src) {
+  const M7MuxNormalizeAdapter *adapter = NULL;
+
+  if (!state || !state->adapter_lib || !state->adapter_lib->lookup_adapter_wire_version ||
+      !packet || !dst || !src) {
+    return 0;
+  }
+
+  adapter = state->adapter_lib->lookup_adapter_wire_version(packet->wire_version);
+
+  if (!adapter || !adapter->copy_user_recv_data) {
+    return 0;
+  }
+
+  return adapter->copy_user_recv_data(dst, src);
 }
 
 static int m7mux_stream_ingest(M7MuxStreamState *state, const M7MuxRecvPacket *normal) {
@@ -103,7 +155,6 @@ static int m7mux_stream_ingest(M7MuxStreamState *state, const M7MuxRecvPacket *n
 
       memcpy(slot, normal, sizeof(*slot));
       slot->message_id = state->next_message_id++;
-      slot->user.message_id = slot->message_id;
       if (slot->message_id >= state->next_message_id) {
         state->next_message_id = slot->message_id + 1u;
       }
@@ -122,49 +173,13 @@ static int m7mux_stream_ingest(M7MuxStreamState *state, const M7MuxRecvPacket *n
     return 0;
   }
 
-  if (slot->user.payload_len + normal->user.payload_len > sizeof(slot->user.payload)) {
-    return 0;
-  }
-
-  if (normal->user.payload_len > 0u) {
-    memcpy(slot->user.payload + slot->user.payload_len,
-           normal->user.payload,
-           normal->user.payload_len);
-    slot->user.payload_len += normal->user.payload_len;
-  }
-
-  slot->fragment_index = normal->fragment_index;
-  if (normal->fragment_count > slot->fragment_count) {
-    slot->fragment_count = normal->fragment_count;
-  }
-  slot->complete = final_fragment ? 1 : 0;
-  slot->should_reply |= normal->should_reply;
-  slot->wire_version = normal->wire_version;
-  slot->wire_form = normal->wire_form;
-  slot->received_ms = normal->received_ms;
-  slot->timestamp = normal->timestamp;
-  memcpy(slot->label, normal->label, sizeof(slot->label));
-  slot->user.complete = slot->complete;
-  slot->user.fragment_index = slot->fragment_index;
-  slot->user.fragment_count = slot->fragment_count;
-  slot->user.timestamp = slot->timestamp;
-  slot->user.wire_version = slot->wire_version;
-  slot->user.wire_form = slot->wire_form;
-  memcpy(slot->user.ip, normal->user.ip, sizeof(slot->user.ip));
-  slot->user.client_port = normal->user.client_port;
-  slot->user.encrypted = normal->user.encrypted;
-  slot->user.wire_auth = normal->user.wire_auth;
-
-  if (slot->complete) {
-    state->ready_count++;
-  }
-
-  return 1;
+  return 0;
 }
 
 static int m7mux_stream_drain(M7MuxStreamState *state, M7MuxRecvPacket *out_normal) {
   size_t i = 0;
   M7MuxRecvPacket *slot = NULL;
+  const M7MuxUserRecvData *caller_user = NULL;
 
   if (!state || !out_normal) {
     return 0;
@@ -182,7 +197,27 @@ static int m7mux_stream_drain(M7MuxStreamState *state, M7MuxRecvPacket *out_norm
     return 0;
   }
 
+  caller_user = out_normal->user;
+
+  if (slot->user && !caller_user) {
+    return 0;
+  }
+
+  if (caller_user && slot->user) {
+    if (!m7mux_stream_copy_user(state,
+                                slot,
+                                (M7MuxUserRecvData *)caller_user,
+                                (const M7MuxUserRecvData *)slot->user)) {
+      return 0;
+    }
+  }
+
   memcpy(out_normal, slot, sizeof(*out_normal));
+
+  out_normal->user = slot->user ? caller_user : NULL;
+
+  m7mux_stream_release_user(state, slot);
+
   memset(slot, 0, sizeof(*slot));
 
   if (state->ready_count > 0u) {
@@ -207,7 +242,11 @@ static int m7mux_stream_expire(M7MuxStreamState *state, uint64_t now_ms) {
       continue;
     }
 
+    m7mux_stream_release_user(state, slot);
     memset(slot, 0, sizeof(*slot));
+    if (state->ready_count > 0u) {
+      state->ready_count--;
+    }
     expired++;
   }
 

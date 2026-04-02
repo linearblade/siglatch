@@ -30,6 +30,8 @@ typedef struct M7MuxIngressIdentity M7MuxIngressIdentity;
 
 int shared_knock_codec_v1_create_state(void **out_state);
 void shared_knock_codec_v1_destroy_state(void *state);
+M7MuxUserRecvData *shared_knock_codec_v1_alloc_user_recv_data(void);
+void shared_knock_codec_v1_free_user_recv_data(M7MuxUserRecvData *user);
 int shared_knock_codec_v1_init(const SharedKnockCodecContext *context);
 void shared_knock_codec_v1_shutdown(void);
 int shared_knock_codec_v1_detect(const void *state,

@@ -62,7 +62,7 @@ static int _enqueue_egress(M7MuxEgressState *state,
                            const M7MuxEgressData *egress) {
   M7MuxEgressData *slot = NULL;
 
-  if (!state || !egress || !egress->available) {
+  if (!state || !egress) {
     return 0;
   }
 
@@ -78,7 +78,6 @@ static int _enqueue_egress(M7MuxEgressState *state,
   memset(slot, 0, sizeof(*slot));
   memcpy(slot, egress, sizeof(*slot));
   slot->ip[sizeof(slot->ip) - 1] = '\0';
-  slot->available = 1;
 
   state->tail = (state->tail + 1u) % M7MUX_EGRESS_QUEUE_CAPACITY;
   state->count++;
@@ -94,20 +93,11 @@ static int _stage_egress(M7MuxEgressState *state,
     return 0;
   }
 
-  if (!packet->complete) {
-    return 0;
-  }
-
-  if (!packet->should_reply && packet->egress_len == 0u) {
-    return 1;
-  }
-
   if (packet->egress_len > sizeof(egress.egress_buffer)) {
     return 0;
   }
 
   egress = *packet;
-  egress.available = 1;
 
   return _enqueue_egress(state, &egress);
 }
@@ -138,7 +128,7 @@ static int _flush_egress(M7MuxEgressState *state,
       return flushed;
     }
 
-    if (!egress->available || egress->egress_len == 0u) {
+    if (egress->egress_len == 0u) {
       memset(egress, 0, sizeof(*egress));
       state->head = (state->head + 1u) % M7MUX_EGRESS_QUEUE_CAPACITY;
       state->count--;

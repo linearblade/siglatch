@@ -137,7 +137,7 @@ int init_app(void) {
       !app.object.build_context || !app.object.run_static || !app.object.run_dynamic ||
       !app.opts.init || !app.opts.shutdown ||
       !app.payload.init || !app.payload.shutdown ||
-      !app.payload.run_shell || !app.payload.run_shell_wait ||
+      !app.payload.run_shell || !app.payload.run_shell_wait || !app.payload.run_shell_capture ||
       !app.policy.init || !app.policy.shutdown ||
       !app.policy.server_ip_allowed || !app.policy.user_ip_allowed ||
       !app.policy.action_ip_allowed || !app.policy.request_ip_allowed ||

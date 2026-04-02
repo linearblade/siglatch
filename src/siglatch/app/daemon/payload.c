@@ -175,14 +175,18 @@ static int app_daemon_payload_consume(AppRuntimeListenerState *listener,
 
   if (job->wire_version == 0u) {
     LOGD("[daemon.payload] Routing raw unstructured payload to fallback handler\n");
-    app.payload.unstructured.handle(listener,
-                                    job->request.payload_buffer,
-                                    job->request.payload_len,
-                                    job->ip);
+    app.payload.unstructured.handle(listener, job);
     return 1;
   }
 
   if (!app.daemon.request.bind_user_action(listener, job, session, &user, &action)) {
+    return 0;
+  }
+
+  if (!app.daemon.auth.authorize(session, job)) {
+    LOGE("[daemon.payload] Signature authorization failed for user_id=%u action_id=%u\n",
+         job->request.user_id,
+         job->request.action_id);
     return 0;
   }
 

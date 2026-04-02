@@ -21,7 +21,7 @@ typedef struct {
 } SharedContext;
 
 typedef struct {
-  SharedKnockCodecLib codec;
+  SharedCodecLib codec;
   SharedKnockDebugLib debug;
   SharedKnockDetectLib detect;
   SharedKnockDigestLib digest;

@@ -14,7 +14,10 @@
 
 #include "../../../shared/shared.h"
 #include "../../../shared/knock/response.h"
+#include "../../../shared/knock/codec/user.h"
 #include "../../../stdlib/protocol/udp/m7mux/ingress/ingress.h"
+#include "../../../stdlib/protocol/udp/m7mux/outbox/outbox.h"
+#include "../../../stdlib/protocol/udp/m7mux/normalize/normalize.h"
 #include "../../../stdlib/utils.h"
 #include "../../lib.h"
 #include "helper.h"
@@ -111,8 +114,8 @@ static const char *app_transmit_protocol_name(KnockProtocol protocol) {
 }
 
 static int app_transmit_response_print_payload(const uint8_t *payload,
-                                               size_t payload_len,
-                                               int *out_status) {
+                                              size_t payload_len,
+                                              int *out_status) {
   const char *status_name = "UNKNOWN";
   char text[KNOCKER_RESPONSE_BUFFER_SIZE] = {0};
   uint8_t status = 0;
@@ -179,6 +182,19 @@ static int app_transmit_response_print(const KnockPacket *reply_pkt, int *out_st
   return app_transmit_response_print_payload(reply_pkt->payload, reply_pkt->payload_len, out_status);
 }
 
+static void app_transmit_dead_drop_print_raw_response(const M7MuxRecvPacket *reply) {
+  if (!reply) {
+    return;
+  }
+
+  if (reply->raw_bytes_len > 0u) {
+    (void)fwrite(reply->raw_bytes, 1u, reply->raw_bytes_len, stdout);
+    if (reply->raw_bytes[reply->raw_bytes_len - 1u] != '\n') {
+      fputc('\n', stdout);
+    }
+  }
+}
+
 static int app_transmit_ensure_response_private_key(const Opts *opts,
                                                     SiglatchOpenSSLSession *session) {
   if (!opts || !session) {
@@ -217,133 +233,6 @@ static int app_transmit_ensure_response_private_key(const Opts *opts,
   }
 
   return 1;
-}
-
-static int app_transmit_wait_for_response(int udp_fd,
-                                          const Opts *opts,
-                                          const KnockPacket *request_pkt,
-                                          SiglatchOpenSSLSession *session,
-                                          int *out_status) {
-  uint8_t received[KNOCKER_RESPONSE_BUFFER_SIZE] = {0};
-  uint8_t decrypted[KNOCKER_RESPONSE_BUFFER_SIZE] = {0};
-  const uint8_t *reply_buf = received;
-  size_t received_len = 0;
-  size_t reply_len = 0;
-  struct sockaddr_storage peer = {0};
-  KnockPacket reply_pkt = {0};
-  int wait_rc = 0;
-
-  if (!opts || !request_pkt || !session || !out_status) {
-    return 0;
-  }
-
-  *out_status = 0;
-
-  wait_rc = lib.net.socket.wait_readable(udp_fd, KNOCKER_RESPONSE_TIMEOUT_MS);
-  if (wait_rc == 0) {
-    lib.print.uc_printf(NULL, "No response from host\n");
-    return 1;
-  }
-
-  if (wait_rc < 0) {
-    if (errno == EINTR) {
-      return 0;
-    }
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Failed while waiting for server response\n");
-    }
-    return 0;
-  }
-
-  if (!lib.net.udp.recv(udp_fd, received, sizeof(received), &peer, &received_len)) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Failed to receive server response datagram\n");
-    }
-    return 0;
-  }
-
-  reply_len = received_len;
-
-  if (opts->encrypt) {
-    int decrypt_rc = 0;
-    size_t decrypted_len = sizeof(decrypted);
-
-    if (!app_transmit_ensure_response_private_key(opts, session)) {
-      return 0;
-    }
-
-    decrypt_rc = lib.openssl.session_decrypt(session,
-                                             received, received_len,
-                                             decrypted, &decrypted_len);
-    if (decrypt_rc != SL_SSL_DECRYPT_OK) {
-      if (lib.log.emit) {
-        lib.log.emit(LOG_ERROR, 1, "Failed to decrypt server response: %s\n",
-                     lib.openssl.session_decrypt_strerror(decrypt_rc));
-      }
-      return 0;
-    }
-
-    reply_buf = decrypted;
-    reply_len = decrypted_len;
-  }
-
-  if (shared.knock.codec.v1.deserialize(reply_buf, reply_len, &reply_pkt) != SL_PAYLOAD_OK) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Failed to deserialize server response packet\n");
-    }
-    return 0;
-  }
-
-  if (reply_pkt.action_id != SL_KNOCK_RESPONSE_ACTION_ID) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received non-response packet on reply channel (action=%u)\n",
-                   (unsigned int)reply_pkt.action_id);
-    }
-    return 0;
-  }
-
-  if (reply_pkt.user_id != request_pkt->user_id) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received response for unexpected user_id=%u\n",
-                   (unsigned int)reply_pkt.user_id);
-    }
-    return 0;
-  }
-
-  if (reply_pkt.challenge != request_pkt->challenge) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received response for unexpected challenge=%u\n",
-                   (unsigned int)reply_pkt.challenge);
-    }
-    return 0;
-  }
-
-  if (reply_pkt.payload_len < SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received malformed response payload\n");
-    }
-    return 0;
-  }
-
-  if (reply_pkt.payload[1] != request_pkt->action_id) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received response for unexpected request action=%u\n",
-                   (unsigned int)reply_pkt.payload[1]);
-    }
-    return 0;
-  }
-
-  if (!app_transmit_response_validate_signature(opts, session, &reply_pkt)) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Response signature validation failed\n");
-    }
-    return 0;
-  }
-
-  LOGI("Received response on %s (%d)\n",
-       app_transmit_protocol_name(opts->protocol),
-       (int)opts->protocol);
-  return app_transmit_response_print(&reply_pkt, out_status);
 }
 
 static int app_transmit_init(void) {
@@ -386,127 +275,705 @@ static int app_transmit_resolve_payload(Opts *opts) {
   return 1;
 }
 
-static int app_transmit_v2_structure_packet(SharedKnockCodecV2Form1Packet *pkt_out,
-                                            const uint8_t *payload,
-                                            size_t len,
-                                            uint16_t user_id,
-                                            uint8_t action_id) {
-  if (!pkt_out || !payload) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "structurePacketV2: Invalid input\n");
-    }
-    return 0;
-  }
-
-  memset(pkt_out, 0, sizeof(*pkt_out));
-
-  pkt_out->outer.magic = SHARED_KNOCK_PREFIX_MAGIC;
-  pkt_out->outer.version = SHARED_KNOCK_CODEC_V2_WIRE_VERSION;
-  pkt_out->outer.form = SHARED_KNOCK_CODEC_FORM1_ID;
-  pkt_out->inner.timestamp = (uint32_t)lib.time.unix_ts();
-  pkt_out->inner.user_id = user_id;
-  pkt_out->inner.action_id = action_id;
-  pkt_out->inner.challenge = lib.random.challenge();
-
-  if (len > sizeof(pkt_out->payload)) {
-    len = sizeof(pkt_out->payload);
-  }
-
-  memcpy(pkt_out->payload, payload, len);
-  pkt_out->inner.payload_len = (uint16_t)len;
-
-  return 1;
-}
-
-static int app_transmit_v2_sign_packet(SiglatchOpenSSLSession *session,
-                                       SharedKnockCodecV2Form1Packet *pkt) {
-  uint8_t digest[32] = {0};
-
-  if (!session || !pkt) {
-    return 0;
-  }
-
-  if (!shared_knock_digest_generate_v2_form1(pkt, digest)) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Failed to generate v2 digest\n");
-    }
-    return 0;
-  }
-
-  dumpDigest("Client-computed Digest", digest, sizeof(digest));
-
-  if (!lib.openssl.sign(session, digest, pkt->inner.hmac)) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Failed to sign v2 digest\n");
-    }
-    return 0;
-  }
-
-  return 1;
-}
-
-static int app_transmit_v2_sign_wrapper(const Opts *opts,
-                                        SiglatchOpenSSLSession *session,
-                                        SharedKnockCodecV2Form1Packet *pkt) {
-  if (!opts || !session || !pkt) {
-    return 0;
-  }
-
-  switch (opts->hmac_mode) {
-    case HMAC_MODE_NORMAL:
-      return app_transmit_v2_sign_packet(session, pkt);
-
-    case HMAC_MODE_DUMMY:
-      memset(pkt->inner.hmac, 0x42, sizeof(pkt->inner.hmac));
-      LOGD("Using dummy HMAC (0x42 padded)\n");
-      return 1;
-
-    case HMAC_MODE_NONE:
-      memset(pkt->inner.hmac, 0, sizeof(pkt->inner.hmac));
-      LOGD("HMAC signing disabled\n");
-      return 1;
-
+static uint32_t app_transmit_protocol_wire_version(KnockProtocol protocol) {
+  switch (protocol) {
+    case KNOCK_PROTOCOL_V1:
+      return SHARED_KNOCK_CODEC_V1_VERSION;
+    case KNOCK_PROTOCOL_V2:
+      return SHARED_KNOCK_CODEC_V2_WIRE_VERSION;
+    case KNOCK_PROTOCOL_V3:
+      return SHARED_KNOCK_CODEC_V3_WIRE_VERSION;
     default:
-      if (lib.log.emit) {
-        lib.log.emit(LOG_ERROR, 1, "Unknown HMAC mode: %d\n", opts->hmac_mode);
-      }
-      return 0;
+      return SHARED_KNOCK_CODEC_V1_VERSION;
   }
 }
 
-static int app_transmit_v2_structure_or_dead_drop(const Opts *opts,
-                                                  const SharedKnockCodecV2Form1Packet *pkt,
-                                                  uint8_t *packed,
-                                                  int *packed_len) {
-  if (!opts || !pkt || !packed || !packed_len) {
+static uint8_t app_transmit_protocol_wire_form(KnockProtocol protocol) {
+  switch (protocol) {
+    case KNOCK_PROTOCOL_V1:
+      return 0u;
+    case KNOCK_PROTOCOL_V2:
+    case KNOCK_PROTOCOL_V3:
+      return SHARED_KNOCK_CODEC_FORM1_ID;
+    default:
+      return SHARED_KNOCK_CODEC_FORM1_ID;
+  }
+}
+
+static const M7MuxNormalizeAdapter *app_transmit_protocol_adapter(KnockProtocol protocol) {
+  switch (protocol) {
+    case KNOCK_PROTOCOL_V1:
+      return shared.knock.codec.v1 ? shared.knock.codec.v1() : NULL;
+    case KNOCK_PROTOCOL_V2:
+      return shared.knock.codec.v2 ? shared.knock.codec.v2() : NULL;
+    case KNOCK_PROTOCOL_V3:
+      return shared.knock.codec.v3 ? shared.knock.codec.v3() : NULL;
+    default:
+      break;
+  }
+
+  return NULL;
+}
+
+static int app_transmit_register_m7mux_adapters(void) {
+  const M7MuxNormalizeAdapterLib *normalize = NULL;
+  const M7MuxNormalizeAdapter *adapter = NULL;
+
+  normalize = get_protocol_udp_m7mux_normalize_adapter_lib();
+  if (!normalize || !normalize->register_adapter || !normalize->count) {
     return 0;
   }
 
-  if (opts->dead_drop) {
-    if (opts->payload_len == 0) {
-      if (lib.log.emit) {
-        lib.log.emit(LOG_ERROR, 1, "Dead drop mode requires non-empty payload\n");
-      }
-      return 0;
-    }
-
-    memcpy(packed, opts->payload, opts->payload_len);
-    *packed_len = (int)opts->payload_len;
-
-    LOGD("Prepared dead-drop payload (%d bytes)", *packed_len);
+  if (normalize->count() > 0u) {
     return 1;
   }
 
-  *packed_len = shared.knock.codec.v2.pack(pkt, packed, SHARED_KNOCK_CODEC_V2_FORM1_PACKET_SIZE);
-  if (*packed_len <= 0) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Failed to pack structured v2 payload\n");
-    }
+  adapter = app_transmit_protocol_adapter(KNOCK_PROTOCOL_V1);
+  if (!adapter || !normalize->register_adapter(adapter)) {
     return 0;
   }
 
-  LOGD("Packed structured KnockPacket V2 (%d bytes)", *packed_len);
+  adapter = app_transmit_protocol_adapter(KNOCK_PROTOCOL_V2);
+  if (!adapter || !normalize->register_adapter(adapter)) {
+    return 0;
+  }
+
+  adapter = app_transmit_protocol_adapter(KNOCK_PROTOCOL_V3);
+  if (!adapter || !normalize->register_adapter(adapter)) {
+    return 0;
+  }
+
   return 1;
+}
+
+static int app_transmit_m7mux_prepare_runtime(const Opts *opts,
+                                              SiglatchOpenSSLSession *session,
+                                              SharedKnockCodecContext **out_codec_context) {
+  const SharedKnockCodecContextLib *codec_context_lib = NULL;
+  SharedKnockCodecContext *codec_context = NULL;
+  SharedKnockCodecServerKey server_key = {0};
+  M7MuxContext m7mux_ctx = {0};
+
+  if (!opts || !session || !out_codec_context) {
+    return 0;
+  }
+
+  codec_context_lib = &shared.knock.codec.context;
+  if (!codec_context_lib->init || !codec_context_lib->create ||
+      !codec_context_lib->destroy || !codec_context_lib->set_server_key ||
+      !codec_context_lib->clear_server_key || !codec_context_lib->set_openssl_session ||
+      !codec_context_lib->clear_openssl_session) {
+    return 0;
+  }
+
+  if (!codec_context_lib->init()) {
+    return 0;
+  }
+
+  if (!codec_context_lib->create(&codec_context)) {
+    codec_context_lib->shutdown();
+    return 0;
+  }
+
+  if (!codec_context_lib->set_openssl_session(codec_context, session)) {
+    codec_context_lib->destroy(codec_context);
+    codec_context_lib->shutdown();
+    return 0;
+  }
+
+  codec_context->server_secure = opts->encrypt ? 1 : 0;
+
+  if (opts->encrypt) {
+    if (!app_transmit_ensure_response_private_key(opts, session)) {
+      codec_context_lib->clear_openssl_session(codec_context);
+      codec_context_lib->destroy(codec_context);
+      codec_context_lib->shutdown();
+      return 0;
+    }
+
+    if (session->private_key) {
+      server_key.name = "client";
+      server_key.public_key = session->public_key;
+      server_key.private_key = session->private_key;
+      server_key.hmac_key = session->hmac_key;
+      server_key.hmac_key_len = session->hmac_key_len;
+
+      if (!codec_context_lib->set_server_key(codec_context, &server_key)) {
+        codec_context_lib->clear_openssl_session(codec_context);
+        codec_context_lib->destroy(codec_context);
+        codec_context_lib->shutdown();
+        return 0;
+      }
+    }
+  }
+
+  if (!shared_knock_codec_v1_init(codec_context) ||
+      !shared_knock_codec_v2_init(codec_context) ||
+      !shared_knock_codec_v3_init(codec_context)) {
+    if (codec_context->has_server_key) {
+      codec_context_lib->clear_server_key(codec_context);
+    }
+    codec_context_lib->clear_openssl_session(codec_context);
+    codec_context_lib->destroy(codec_context);
+    codec_context_lib->shutdown();
+    return 0;
+  }
+
+  m7mux_ctx.socket = &lib.net.socket;
+  m7mux_ctx.udp = &lib.net.udp;
+  m7mux_ctx.time = &lib.time;
+  m7mux_ctx.codec_context = codec_context;
+  m7mux_ctx.enforce_wire_decode = 1;
+  m7mux_ctx.enforce_wire_auth = 0;
+
+  if (!lib.m7mux.set_context(&m7mux_ctx)) {
+    shared_knock_codec_v3_shutdown();
+    shared_knock_codec_v2_shutdown();
+    shared_knock_codec_v1_shutdown();
+    if (codec_context->has_server_key) {
+      codec_context_lib->clear_server_key(codec_context);
+    }
+    codec_context_lib->clear_openssl_session(codec_context);
+    codec_context_lib->destroy(codec_context);
+    codec_context_lib->shutdown();
+    return 0;
+  }
+
+  *out_codec_context = codec_context;
+  return 1;
+}
+
+static void app_transmit_m7mux_release_runtime(SharedKnockCodecContext *codec_context) {
+  const SharedKnockCodecContextLib *codec_context_lib = NULL;
+
+  codec_context_lib = &shared.knock.codec.context;
+
+  shared_knock_codec_v3_shutdown();
+  shared_knock_codec_v2_shutdown();
+  shared_knock_codec_v1_shutdown();
+
+  if (!codec_context) {
+    if (codec_context_lib->shutdown) {
+      codec_context_lib->shutdown();
+    }
+    return;
+  }
+
+  if (codec_context_lib->clear_server_key) {
+    codec_context_lib->clear_server_key(codec_context);
+  }
+  if (codec_context_lib->clear_openssl_session) {
+    codec_context_lib->clear_openssl_session(codec_context);
+  }
+  if (codec_context_lib->destroy) {
+    codec_context_lib->destroy(codec_context);
+  }
+  if (codec_context_lib->shutdown) {
+    codec_context_lib->shutdown();
+  }
+}
+
+static int app_transmit_build_m7mux_send_packet(const Opts *opts,
+                                                KnockProtocol protocol,
+                                                const char *target_ip,
+                                                uint16_t target_port,
+                                                M7MuxSendPacket *out_send,
+                                                M7MuxUserSendData *out_user) {
+  size_t payload_len = 0u;
+  size_t copy_len = 0u;
+
+  if (!opts || !target_ip || !out_send || !out_user) {
+    return 0;
+  }
+
+  memset(out_send, 0, sizeof(*out_send));
+  memset(out_user, 0, sizeof(*out_user));
+
+  out_send->trace_id = 0u;
+  memcpy(out_send->label, "knocker", sizeof("knocker"));
+  out_send->wire_version = app_transmit_protocol_wire_version(protocol);
+  out_send->wire_form = app_transmit_protocol_wire_form(protocol);
+  out_send->received_ms = lib.time.monotonic_ms();
+  out_send->session_id = 0u;
+  out_send->message_id = 0u;
+  out_send->stream_id = 0u;
+  out_send->fragment_index = 0u;
+  out_send->fragment_count = 1u;
+  out_send->timestamp = (uint32_t)lib.time.unix_ts();
+  memcpy(out_send->ip, target_ip, sizeof(out_send->ip));
+  out_send->ip[sizeof(out_send->ip) - 1u] = '\0';
+  out_send->client_port = target_port;
+  out_send->encrypted = opts->encrypt ? 1 : 0;
+  out_send->wire_auth = (opts->hmac_mode == HMAC_MODE_NORMAL) ? 1 : 0;
+
+  out_user->user_id = (uint16_t)opts->user_id;
+  out_user->action_id = (uint8_t)opts->action_id;
+  out_user->challenge = lib.random.challenge();
+  payload_len = opts->payload_len;
+  if (payload_len > sizeof(out_user->payload)) {
+    payload_len = sizeof(out_user->payload);
+  }
+
+  copy_len = payload_len;
+  if (copy_len > 0u) {
+    memcpy(out_user->payload, opts->payload, copy_len);
+  }
+  out_user->payload_len = (uint16_t)copy_len;
+
+  switch (opts->hmac_mode) {
+    case HMAC_MODE_DUMMY:
+      memset(out_user->hmac, 0x42, sizeof(out_user->hmac));
+      break;
+    case HMAC_MODE_NONE:
+      memset(out_user->hmac, 0, sizeof(out_user->hmac));
+      break;
+    case HMAC_MODE_NORMAL:
+      memset(out_user->hmac, 0, sizeof(out_user->hmac));
+      break;
+    default:
+      return 0;
+  }
+
+  out_send->user = out_user;
+  return 1;
+}
+
+static int app_transmit_m7mux_rehydrate_v1(const M7MuxRecvPacket *reply,
+                                           const M7MuxUserRecvData *user,
+                                           KnockPacket *out_pkt) {
+  if (!reply || !user || !out_pkt) {
+    return 0;
+  }
+
+  memset(out_pkt, 0, sizeof(*out_pkt));
+  out_pkt->version = (uint8_t)reply->wire_version;
+  out_pkt->timestamp = reply->timestamp;
+  out_pkt->user_id = user->user_id;
+  out_pkt->action_id = user->action_id;
+  out_pkt->challenge = user->challenge;
+  memcpy(out_pkt->hmac, user->hmac, sizeof(out_pkt->hmac));
+  out_pkt->payload_len = user->payload_len;
+  if (user->payload_len > 0u) {
+    memcpy(out_pkt->payload, user->payload, user->payload_len);
+  }
+
+  return 1;
+}
+
+static int app_transmit_m7mux_rehydrate_v2(const M7MuxRecvPacket *reply,
+                                           const M7MuxUserRecvData *user,
+                                           SharedKnockCodecV2Form1Packet *out_pkt) {
+  if (!reply || !user || !out_pkt) {
+    return 0;
+  }
+
+  memset(out_pkt, 0, sizeof(*out_pkt));
+  out_pkt->outer.magic = SHARED_KNOCK_PREFIX_MAGIC;
+  out_pkt->outer.version = reply->wire_version;
+  out_pkt->outer.form = reply->wire_form;
+  out_pkt->inner.timestamp = reply->timestamp;
+  out_pkt->inner.user_id = user->user_id;
+  out_pkt->inner.action_id = user->action_id;
+  out_pkt->inner.challenge = user->challenge;
+  memcpy(out_pkt->inner.hmac, user->hmac, sizeof(out_pkt->inner.hmac));
+  out_pkt->inner.payload_len = user->payload_len;
+  if (user->payload_len > 0u) {
+    memcpy(out_pkt->payload, user->payload, user->payload_len);
+  }
+
+  return 1;
+}
+
+static int app_transmit_m7mux_rehydrate_v3(const M7MuxRecvPacket *reply,
+                                           const M7MuxUserRecvData *user,
+                                           SharedKnockNormalizedUnit *out_normal) {
+  if (!reply || !user || !out_normal) {
+    return 0;
+  }
+
+  memset(out_normal, 0, sizeof(*out_normal));
+  out_normal->complete = reply->complete;
+  out_normal->wire_version = reply->wire_version;
+  out_normal->wire_form = reply->wire_form;
+  out_normal->session_id = reply->session_id;
+  out_normal->message_id = reply->message_id;
+  out_normal->stream_id = reply->stream_id;
+  out_normal->fragment_index = reply->fragment_index;
+  out_normal->fragment_count = reply->fragment_count;
+  out_normal->timestamp = reply->timestamp;
+  memcpy(out_normal->ip, reply->ip, sizeof(out_normal->ip));
+  out_normal->client_port = reply->client_port;
+  out_normal->encrypted = reply->encrypted;
+  out_normal->wire_decode = reply->wire_decode;
+  out_normal->wire_auth = reply->wire_auth;
+  out_normal->user_id = user->user_id;
+  out_normal->action_id = user->action_id;
+  out_normal->challenge = user->challenge;
+  memcpy(out_normal->hmac, user->hmac, sizeof(out_normal->hmac));
+  out_normal->payload_len = user->payload_len;
+  if (user->payload_len > 0u) {
+    memcpy(out_normal->payload, user->payload, user->payload_len);
+  }
+
+  return 1;
+}
+
+static int app_transmit_v2_response_validate_signature(const Opts *opts,
+                                                       SiglatchOpenSSLSession *session,
+                                                       const SharedKnockCodecV2Form1Packet *pkt);
+static int app_transmit_v2_response_print(const SharedKnockCodecV2Form1Packet *reply_pkt,
+                                          int *out_status);
+static int app_transmit_v3_response_validate_signature(const Opts *opts,
+                                                       SiglatchOpenSSLSession *session,
+                                                       const SharedKnockNormalizedUnit *normal);
+static int app_transmit_v3_response_print(const SharedKnockNormalizedUnit *reply,
+                                          int *out_status);
+
+static int app_transmit_single_packet_m7mux(const Opts *opts) {
+  int status = 1;
+  int response_status = 0;
+  int udp_fd = -1;
+  M7MuxState *mux_state = NULL;
+  SiglatchOpenSSLSession session = {0};
+  SharedKnockCodecContext *codec_context = NULL;
+  Opts runtime_opts = {0};
+  const Opts *effective = NULL;
+  M7MuxSendPacket send = {0};
+  M7MuxUserSendData send_user = {0};
+  M7MuxRecvPacket reply = {0};
+  M7MuxUserRecvData reply_user = {0};
+  char ip[INET6_ADDRSTRLEN] = {0};
+  unsigned char raw_out[SHARED_KNOCK_CODEC_PACKET_MAX_SIZE] = {0};
+  size_t raw_out_len = 0u;
+  M7MuxSendBytesPacket raw_send = {0};
+  const uint8_t *raw_payload = NULL;
+  size_t raw_payload_len = 0u;
+
+  if (!opts) {
+    if (lib.log.emit) {
+      lib.log.emit(LOG_ERROR, 1, "Transmit requested with NULL opts\n");
+    }
+    return status;
+  }
+
+  runtime_opts = *opts;
+  effective = &runtime_opts;
+
+  do {
+    if (!app_transmit_resolve_payload(&runtime_opts)) {
+      FAIL_SINGLE_PACKET("Failed to resolve payload input\n");
+    }
+
+    if (!init_user_openssl_session(effective, &session)) {
+      FAIL_SINGLE_PACKET("Failed to initialize OpenSSL session\n");
+    }
+    if (effective->dead_drop) {
+      raw_payload = effective->payload;
+      raw_payload_len = effective->payload_len;
+    }
+
+    char ip_local[INET6_ADDRSTRLEN];
+    int host_rv = lib.net.addr.resolve_host_to_ip(effective->host, ip_local, sizeof(ip_local));
+
+    switch (host_rv) {
+      case 1:
+        break;
+      case -2:
+        FAIL_SINGLE_PACKET("Hostname is NULL\n");
+        break;
+      case -3:
+        FAIL_SINGLE_PACKET("Output buffer is NULL\n");
+        break;
+      default:
+        FAIL_SINGLE_PACKET("Could not resolve hostname: %s\n", effective->host);
+        break;
+    }
+
+    memcpy(ip, ip_local, sizeof(ip));
+    ip[sizeof(ip) - 1u] = '\0';
+
+    if (effective->send_from_ip[0] != '\0' && lib.net.addr.is_ipv6(ip)) {
+      FAIL_SINGLE_PACKET("Client source bind (--send-from) currently supports only IPv4 targets; resolved %s to %s\n",
+                         effective->host, ip);
+    }
+
+    if (effective->send_from_ip[0] != '\0') {
+      udp_fd = lib.net.udp.open_bound_auto(ip, effective->send_from_ip, 0, NULL);
+      if (udp_fd < 0) {
+        FAIL_SINGLE_PACKET("Failed to open UDP socket for target %s using source %s\n",
+                           ip, effective->send_from_ip);
+      }
+    } else {
+      udp_fd = lib.net.udp.open_auto(ip);
+      if (udp_fd < 0) {
+        FAIL_SINGLE_PACKET("Failed to open UDP socket for target %s\n", ip);
+      }
+    }
+
+    if (effective->send_from_ip[0] != '\0' && lib.log.emit) {
+      lib.log.emit(LOG_INFO, 1,
+                   "Sending UDP packet to %s:%u from %s",
+                   ip, (unsigned int)effective->port, effective->send_from_ip);
+    }
+
+    if (effective->dead_drop) {
+      if (!encryptWrapper(effective, &session, raw_payload, raw_payload_len, raw_out, &raw_out_len)) {
+        FAIL_SINGLE_PACKET("Failed to prepare dead-drop payload\n");
+      }
+
+      raw_send.trace_id = 0u;
+      memcpy(raw_send.label, "knocker", sizeof("knocker"));
+      memcpy(raw_send.ip, ip, sizeof(raw_send.ip));
+      raw_send.ip[sizeof(raw_send.ip) - 1u] = '\0';
+      raw_send.client_port = effective->port;
+      raw_send.received_ms = lib.time.monotonic_ms();
+      raw_send.bytes = raw_out;
+      raw_send.bytes_len = raw_out_len;
+
+      mux_state = lib.m7mux.connect.connect_socket(udp_fd);
+      if (!mux_state) {
+        FAIL_SINGLE_PACKET("Failed to attach UDP socket to mux state for dead-drop\n");
+      }
+
+      if (!lib.m7mux.outbox.stage_bytes(mux_state, &raw_send)) {
+        FAIL_SINGLE_PACKET("Failed to stage dead-drop payload into mux outbox\n");
+      }
+
+      LOGI("Sending request on %s (%d)\n",
+           app_transmit_protocol_name(effective->protocol),
+           (int)effective->protocol);
+
+      if (lib.m7mux.pump(mux_state, 0u) < 0) {
+        FAIL_SINGLE_PACKET("Failed to flush mux dead-drop payload\n");
+      }
+    }
+
+    if (!effective->dead_drop) {
+      if (!app_transmit_m7mux_prepare_runtime(effective, &session, &codec_context)) {
+        FAIL_SINGLE_PACKET("Failed to prepare mux runtime\n");
+      }
+
+      if (!app_transmit_register_m7mux_adapters()) {
+        FAIL_SINGLE_PACKET("Failed to register mux adapters\n");
+      }
+
+      mux_state = lib.m7mux.connect.connect_socket(udp_fd);
+      if (!mux_state) {
+        FAIL_SINGLE_PACKET("Failed to attach UDP socket to mux state\n");
+      }
+
+      if (!app_transmit_build_m7mux_send_packet(effective,
+                                                effective->protocol,
+                                                ip,
+                                                effective->port,
+                                                &send,
+                                                &send_user)) {
+        FAIL_SINGLE_PACKET("Failed to prepare mux send packet\n");
+      }
+
+      if (!lib.m7mux.outbox.stage(mux_state, &send)) {
+        FAIL_SINGLE_PACKET("Failed to stage request into mux outbox\n");
+      }
+
+      if (effective->send_from_ip[0] != '\0' && lib.log.emit) {
+        lib.log.emit(LOG_INFO, 1,
+                     "Sending UDP packet to %s:%u from %s",
+                     ip, (unsigned int)effective->port, effective->send_from_ip);
+      }
+
+      LOGI("Sending request on %s (%d)\n",
+           app_transmit_protocol_name(effective->protocol),
+           (int)effective->protocol);
+
+      if (lib.m7mux.pump(mux_state, 0u) < 0) {
+        FAIL_SINGLE_PACKET("Failed to flush mux request\n");
+      }
+    }
+
+    if (!lib.m7mux.pump(mux_state, KNOCKER_RESPONSE_TIMEOUT_MS)) {
+      if (!lib.m7mux.inbox.has_pending(mux_state)) {
+        lib.print.uc_printf(NULL, "No response from host\n");
+        status = 0;
+        break;
+      }
+    }
+
+    if (!lib.m7mux.inbox.has_pending(mux_state)) {
+      lib.print.uc_printf(NULL, "No response from host\n");
+      status = 0;
+      break;
+    }
+
+    if (!effective->dead_drop) {
+      reply.user = &reply_user;
+    }
+    if (!lib.m7mux.inbox.drain(mux_state, &reply)) {
+      FAIL_SINGLE_PACKET("Failed to drain mux response\n");
+    }
+
+    if (effective->dead_drop) {
+      if (reply.wire_version != 0u) {
+        FAIL_SINGLE_PACKET("Received structured packet on dead-drop channel (wire=%u)\n",
+                           (unsigned int)reply.wire_version);
+      }
+
+      LOGI("Received response on raw dead-drop channel\n");
+      app_transmit_dead_drop_print_raw_response(&reply);
+      status = 0;
+      break;
+    }
+
+    switch (effective->protocol) {
+      case KNOCK_PROTOCOL_V1: {
+        KnockPacket reply_pkt = {0};
+
+        if (!app_transmit_m7mux_rehydrate_v1(&reply, &reply_user, &reply_pkt)) {
+          FAIL_SINGLE_PACKET("Failed to rehydrate v1 response packet\n");
+        }
+
+        if (reply_pkt.action_id != SL_KNOCK_RESPONSE_ACTION_ID) {
+          FAIL_SINGLE_PACKET("Received non-response packet on reply channel (action=%u)\n",
+                             (unsigned int)reply_pkt.action_id);
+        }
+
+        if (reply_pkt.user_id != send_user.user_id) {
+          FAIL_SINGLE_PACKET("Received response for unexpected user_id=%u\n",
+                             (unsigned int)reply_pkt.user_id);
+        }
+
+        if (reply_pkt.challenge != send_user.challenge) {
+          FAIL_SINGLE_PACKET("Received response for unexpected challenge=%u\n",
+                             (unsigned int)reply_pkt.challenge);
+        }
+
+        if (reply_pkt.payload_len < SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE) {
+          FAIL_SINGLE_PACKET("Received malformed response payload\n");
+        }
+
+        if (reply_pkt.payload[1] != send_user.action_id) {
+          FAIL_SINGLE_PACKET("Received response for unexpected request action=%u\n",
+                             (unsigned int)reply_pkt.payload[1]);
+        }
+
+        if (!app_transmit_response_validate_signature(effective, &session, &reply_pkt)) {
+          FAIL_SINGLE_PACKET("Response signature validation failed\n");
+        }
+
+        LOGI("Received response on %s (%d)\n",
+             app_transmit_protocol_name(effective->protocol),
+             (int)effective->protocol);
+        if (!app_transmit_response_print(&reply_pkt, &response_status)) {
+          FAIL_SINGLE_PACKET("Failed to print response packet\n");
+        }
+
+        status = response_status;
+        break;
+      }
+      case KNOCK_PROTOCOL_V2: {
+        SharedKnockCodecV2Form1Packet reply_pkt = {0};
+
+        if (!app_transmit_m7mux_rehydrate_v2(&reply, &reply_user, &reply_pkt)) {
+          FAIL_SINGLE_PACKET("Failed to rehydrate v2 response packet\n");
+        }
+
+        if (reply_pkt.inner.action_id != SL_KNOCK_RESPONSE_ACTION_ID) {
+          FAIL_SINGLE_PACKET("Received non-response packet on reply channel (action=%u)\n",
+                             (unsigned int)reply_pkt.inner.action_id);
+        }
+
+        if (reply_pkt.inner.user_id != send_user.user_id) {
+          FAIL_SINGLE_PACKET("Received response for unexpected user_id=%u\n",
+                             (unsigned int)reply_pkt.inner.user_id);
+        }
+
+        if (reply_pkt.inner.challenge != send_user.challenge) {
+          FAIL_SINGLE_PACKET("Received response for unexpected challenge=%u\n",
+                             (unsigned int)reply_pkt.inner.challenge);
+        }
+
+        if (reply_pkt.inner.payload_len < SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE) {
+          FAIL_SINGLE_PACKET("Received malformed response payload\n");
+        }
+
+        if (reply_pkt.payload[1] != send_user.action_id) {
+          FAIL_SINGLE_PACKET("Received response for unexpected request action=%u\n",
+                             (unsigned int)reply_pkt.payload[1]);
+        }
+
+        if (!app_transmit_v2_response_validate_signature(effective, &session, &reply_pkt)) {
+          FAIL_SINGLE_PACKET("Response signature validation failed\n");
+        }
+
+        LOGI("Received response on %s (%d)\n",
+             app_transmit_protocol_name(effective->protocol),
+             (int)effective->protocol);
+        if (!app_transmit_v2_response_print(&reply_pkt, &response_status)) {
+          FAIL_SINGLE_PACKET("Failed to print response packet\n");
+        }
+
+        status = response_status;
+        break;
+      }
+      case KNOCK_PROTOCOL_V3: {
+        SharedKnockNormalizedUnit reply_normal = {0};
+
+        if (!app_transmit_m7mux_rehydrate_v3(&reply, &reply_user, &reply_normal)) {
+          FAIL_SINGLE_PACKET("Failed to rehydrate v3 response packet\n");
+        }
+
+        if (reply_normal.action_id != SL_KNOCK_RESPONSE_ACTION_ID) {
+          FAIL_SINGLE_PACKET("Received non-response packet on reply channel (action=%u)\n",
+                             (unsigned int)reply_normal.action_id);
+        }
+
+        if (reply_normal.user_id != send_user.user_id) {
+          FAIL_SINGLE_PACKET("Received response for unexpected user_id=%u\n",
+                             (unsigned int)reply_normal.user_id);
+        }
+
+        if (reply_normal.challenge != send_user.challenge) {
+          FAIL_SINGLE_PACKET("Received response for unexpected challenge=%u\n",
+                             (unsigned int)reply_normal.challenge);
+        }
+
+        if (reply_normal.payload_len < SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE) {
+          FAIL_SINGLE_PACKET("Received malformed response payload\n");
+        }
+
+        if (reply_normal.payload[1] != send_user.action_id) {
+          FAIL_SINGLE_PACKET("Received response for unexpected request action=%u\n",
+                             (unsigned int)reply_normal.payload[1]);
+        }
+
+        if (!app_transmit_v3_response_validate_signature(effective, &session, &reply_normal)) {
+          FAIL_SINGLE_PACKET("Response signature validation failed\n");
+        }
+
+        LOGI("Received response on %s (%d)\n",
+             app_transmit_protocol_name(effective->protocol),
+             (int)effective->protocol);
+        if (!app_transmit_v3_response_print(&reply_normal, &response_status)) {
+          FAIL_SINGLE_PACKET("Failed to print response packet\n");
+        }
+
+        status = response_status;
+        break;
+      }
+      default:
+        FAIL_SINGLE_PACKET("Unknown protocol selected\n");
+    }
+  } while (0);
+
+  if (mux_state) {
+    lib.m7mux.connect.disconnect(mux_state);
+  }
+  if (udp_fd >= 0) {
+    lib.net.udp.close(udp_fd);
+  }
+
+  app_transmit_m7mux_release_runtime(codec_context);
+  lib.openssl.session_free(&session);
+  return status;
 }
 
 static int app_transmit_v2_response_validate_signature(const Opts *opts,
@@ -550,321 +1017,6 @@ static int app_transmit_v2_response_print(const SharedKnockCodecV2Form1Packet *r
                                              reply_pkt->inner.payload_len,
                                              out_status);
 }
-
-static int app_transmit_wait_for_response_v2(int udp_fd,
-                                             const Opts *opts,
-                                             const SharedKnockCodecV2Form1Packet *request_pkt,
-                                             SiglatchOpenSSLSession *session,
-                                             int *out_status) {
-  uint8_t received[KNOCKER_RESPONSE_BUFFER_SIZE] = {0};
-  uint8_t decrypted[KNOCKER_RESPONSE_BUFFER_SIZE] = {0};
-  const uint8_t *reply_buf = received;
-  size_t received_len = 0;
-  size_t reply_len = 0;
-  struct sockaddr_storage peer = {0};
-  SharedKnockCodecV2Form1Packet reply_pkt = {0};
-  int wait_rc = 0;
-
-  if (!opts || !request_pkt || !session || !out_status) {
-    return 0;
-  }
-
-  *out_status = 0;
-
-  wait_rc = lib.net.socket.wait_readable(udp_fd, KNOCKER_RESPONSE_TIMEOUT_MS);
-  if (wait_rc == 0) {
-    lib.print.uc_printf(NULL, "No response from host\n");
-    return 1;
-  }
-
-  if (wait_rc < 0) {
-    if (errno == EINTR) {
-      return 0;
-    }
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Failed while waiting for server response\n");
-    }
-    return 0;
-  }
-
-  if (!lib.net.udp.recv(udp_fd, received, sizeof(received), &peer, &received_len)) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Failed to receive server response datagram\n");
-    }
-    return 0;
-  }
-
-  reply_len = received_len;
-
-  if (opts->encrypt) {
-    int decrypt_rc = 0;
-    size_t decrypted_len = sizeof(decrypted);
-
-    if (!app_transmit_ensure_response_private_key(opts, session)) {
-      return 0;
-    }
-
-    decrypt_rc = lib.openssl.session_decrypt(session,
-                                             received, received_len,
-                                             decrypted, &decrypted_len);
-    if (decrypt_rc != SL_SSL_DECRYPT_OK) {
-      if (lib.log.emit) {
-        lib.log.emit(LOG_ERROR, 1, "Failed to decrypt server response: %s\n",
-                     lib.openssl.session_decrypt_strerror(decrypt_rc));
-      }
-      return 0;
-    }
-
-    reply_buf = decrypted;
-    reply_len = decrypted_len;
-  }
-
-  if (shared.knock.codec.v2.deserialize(reply_buf, reply_len, &reply_pkt) != SL_PAYLOAD_OK) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Failed to deserialize server response packet\n");
-    }
-    return 0;
-  }
-
-  if (reply_pkt.inner.action_id != SL_KNOCK_RESPONSE_ACTION_ID) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received non-response packet on reply channel (action=%u)\n",
-                   (unsigned int)reply_pkt.inner.action_id);
-    }
-    return 0;
-  }
-
-  if (reply_pkt.inner.user_id != request_pkt->inner.user_id) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received response for unexpected user_id=%u\n",
-                   (unsigned int)reply_pkt.inner.user_id);
-    }
-    return 0;
-  }
-
-  if (reply_pkt.inner.challenge != request_pkt->inner.challenge) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received response for unexpected challenge=%u\n",
-                   (unsigned int)reply_pkt.inner.challenge);
-    }
-    return 0;
-  }
-
-  if (reply_pkt.inner.payload_len < SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received malformed response payload\n");
-    }
-    return 0;
-  }
-
-  if (reply_pkt.payload[1] != request_pkt->inner.action_id) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received response for unexpected request action=%u\n",
-                   (unsigned int)reply_pkt.payload[1]);
-    }
-    return 0;
-  }
-
-  if (!app_transmit_v2_response_validate_signature(opts, session, &reply_pkt)) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Response signature validation failed\n");
-    }
-    return 0;
-  }
-
-  LOGI("Received response on %s (%d)\n",
-       app_transmit_protocol_name(opts->protocol),
-       (int)opts->protocol);
-  return app_transmit_v2_response_print(&reply_pkt, out_status);
-}
-
-static int app_transmit_single_packet_v2(const Opts *opts) {
-  int status = 1;
-  int response_status = 0;
-  int udp_fd = -1;
-  SiglatchOpenSSLSession session = {0};
-  Opts runtime_opts = {0};
-  const Opts *effective = NULL;
-
-  if (!opts) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Transmit requested with NULL opts\n");
-    }
-    return status;
-  }
-
-  runtime_opts = *opts;
-  effective = &runtime_opts;
-
-  do {
-    SharedKnockCodecV2Form1Packet pkt = {0};
-
-    if (!app_transmit_resolve_payload(&runtime_opts)) {
-      FAIL_SINGLE_PACKET("Failed to resolve payload input\n");
-    }
-
-    if (!app_transmit_v2_structure_packet(&pkt,
-                                          effective->payload,
-                                          effective->payload_len,
-                                          (uint16_t)effective->user_id,
-                                          (uint8_t)effective->action_id)) {
-      FAIL_SINGLE_PACKET("Failed to structure v2 packet\n");
-    }
-
-    if (!init_user_openssl_session(effective, &session)) {
-      FAIL_SINGLE_PACKET("Failed to initialize OpenSSL session\n");
-    }
-
-    if (!app_transmit_v2_sign_wrapper(effective, &session, &pkt)) {
-      FAIL_SINGLE_PACKET("Failed to sign v2 packet\n");
-    }
-
-    uint8_t packed[SHARED_KNOCK_CODEC_V2_FORM1_PACKET_SIZE] = {0};
-    int packed_len = 0;
-    if (!app_transmit_v2_structure_or_dead_drop(effective, &pkt, packed, &packed_len)) {
-      FAIL_SINGLE_PACKET("Failed to prepare v2 payload (structured or dead-drop)\n");
-    }
-
-    unsigned char data[512] = {0};
-    size_t data_len = 0;
-
-    if (!encryptWrapper(effective, &session, packed, (size_t)packed_len, data, &data_len)) {
-      FAIL_SINGLE_PACKET("Failed to prepare v2 payload (encryption or raw mode)\n");
-    }
-
-    char ip[INET6_ADDRSTRLEN];
-    int rv = lib.net.addr.resolve_host_to_ip(effective->host, ip, sizeof(ip));
-
-    switch (rv) {
-      case 1:
-        break;
-      case -2:
-        FAIL_SINGLE_PACKET("Hostname is NULL\n");
-        break;
-      case -3:
-        FAIL_SINGLE_PACKET("Output buffer is NULL\n");
-        break;
-      default:
-        FAIL_SINGLE_PACKET("Could not resolve hostname: %s\n", effective->host);
-        break;
-    }
-
-    if (effective->send_from_ip[0] != '\0' && lib.net.addr.is_ipv6(ip)) {
-      FAIL_SINGLE_PACKET("Client source bind (--send-from) currently supports only IPv4 targets; resolved %s to %s\n",
-                         effective->host, ip);
-    }
-
-    if (effective->send_from_ip[0] != '\0') {
-      udp_fd = lib.net.udp.open_bound_auto(ip, effective->send_from_ip, 0, NULL);
-      if (udp_fd < 0) {
-        FAIL_SINGLE_PACKET("Failed to open UDP socket for target %s using source %s\n",
-                           ip, effective->send_from_ip);
-      }
-    } else {
-      udp_fd = lib.net.udp.open_auto(ip);
-      if (udp_fd < 0) {
-        FAIL_SINGLE_PACKET("Failed to open UDP socket for target %s\n", ip);
-      }
-    }
-
-    if (effective->send_from_ip[0] != '\0' && lib.log.emit) {
-      lib.log.emit(LOG_INFO, 1,
-                   "Sending UDP packet to %s:%u from %s",
-                   ip, (unsigned int)effective->port, effective->send_from_ip);
-    }
-
-    LOGI("Sending request on %s (%d)\n",
-         app_transmit_protocol_name(effective->protocol),
-         (int)effective->protocol);
-
-    if (!lib.net.udp.send(udp_fd, ip, effective->port, data, data_len)) {
-      FAIL_SINGLE_PACKET("Failed to send UDP packet\n");
-    }
-
-    if (effective->dead_drop) {
-      status = 0;
-      break;
-    }
-
-    if (!app_transmit_wait_for_response_v2(udp_fd, effective, &pkt, &session, &response_status)) {
-      break;
-    }
-
-    status = response_status;
-  } while (0);
-
-  if (udp_fd >= 0) {
-    lib.net.udp.close(udp_fd);
-  }
-
-  lib.openssl.session_free(&session);
-  return status;
-}
-
-static uint16_t app_transmit_peer_port(const struct sockaddr_storage *peer) {
-  if (!peer) {
-    return 0;
-  }
-
-  if (peer->ss_family == AF_INET) {
-    const struct sockaddr_in *addr = (const struct sockaddr_in *)peer;
-    return ntohs(addr->sin_port);
-  }
-
-  if (peer->ss_family == AF_INET6) {
-    const struct sockaddr_in6 *addr = (const struct sockaddr_in6 *)peer;
-    return ntohs(addr->sin6_port);
-  }
-
-  return 0;
-}
-
-static int app_transmit_v3_structure_packet(SharedKnockNormalizedUnit *normal,
-                                            const uint8_t *payload,
-                                            size_t len,
-                                            uint16_t user_id,
-                                            uint8_t action_id) {
-  uint8_t digest[32] = {0};
-
-  if (!normal || !payload) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "structurePacketV3: Invalid input\n");
-    }
-    return 0;
-  }
-
-  memset(normal, 0, sizeof(*normal));
-
-  normal->complete = 1;
-  normal->wire_version = SHARED_KNOCK_CODEC_V3_WIRE_VERSION;
-  normal->wire_form = SHARED_KNOCK_CODEC_FORM1_ID;
-  normal->timestamp = (uint32_t)lib.time.unix_ts();
-  normal->user_id = user_id;
-  normal->action_id = action_id;
-  normal->challenge = lib.random.challenge();
-  normal->fragment_count = 1;
-  normal->wire_decode = 1;
-  normal->wire_auth = 0;
-  normal->encrypted = 1;
-
-  if (len > sizeof(normal->payload)) {
-    len = sizeof(normal->payload);
-  }
-
-  memcpy(normal->payload, payload, len);
-  normal->payload_len = len;
-
-  if (!shared_knock_digest_generate_v3_form1(normal, digest)) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Failed to generate v3 digest\n");
-    }
-    return 0;
-  }
-
-  dumpDigest("Client-computed Digest", digest, sizeof(digest));
-  return 1;
-}
-
 static int app_transmit_v3_response_validate_signature(const Opts *opts,
                                                        SiglatchOpenSSLSession *session,
                                                        const SharedKnockNormalizedUnit *normal) {
@@ -905,347 +1057,8 @@ static int app_transmit_v3_response_print(const SharedKnockNormalizedUnit *reply
   return app_transmit_response_print_payload(reply->payload, reply->payload_len, out_status);
 }
 
-static int app_transmit_v3_codec_prepare(SiglatchOpenSSLSession *session,
-                                         SharedKnockCodecContext **out_context,
-                                         SharedKnockCodecV3State **out_state) {
-  SharedKnockCodecContext *codec_context = NULL;
-  SharedKnockCodecV3State *codec_state = NULL;
-
-  if (!session || !out_context || !out_state) {
-    return 0;
-  }
-
-  if (!shared.knock.codec.context.init()) {
-    return 0;
-  }
-
-  if (!shared.knock.codec.context.create(&codec_context)) {
-    shared.knock.codec.context.shutdown();
-    return 0;
-  }
-
-  if (!shared.knock.codec.context.set_openssl_session(codec_context, session)) {
-    shared.knock.codec.context.destroy(codec_context);
-    shared.knock.codec.context.shutdown();
-    return 0;
-  }
-
-  if (!shared.knock.codec.v3.init(codec_context)) {
-    shared.knock.codec.context.clear_openssl_session(codec_context);
-    shared.knock.codec.context.destroy(codec_context);
-    shared.knock.codec.context.shutdown();
-    return 0;
-  }
-
-  if (!shared.knock.codec.v3.create_state((void **)&codec_state)) {
-    shared.knock.codec.v3.shutdown();
-    shared.knock.codec.context.clear_openssl_session(codec_context);
-    shared.knock.codec.context.destroy(codec_context);
-    shared.knock.codec.context.shutdown();
-    return 0;
-  }
-
-  *out_context = codec_context;
-  *out_state = codec_state;
-  return 1;
-}
-
-static void app_transmit_v3_codec_release(SharedKnockCodecContext *codec_context,
-                                          SharedKnockCodecV3State *codec_state) {
-  if (codec_state) {
-    shared.knock.codec.v3.destroy_state(codec_state);
-  }
-
-  shared.knock.codec.v3.shutdown();
-
-  if (codec_context) {
-    shared.knock.codec.context.clear_openssl_session(codec_context);
-    shared.knock.codec.context.destroy(codec_context);
-  }
-
-  shared.knock.codec.context.shutdown();
-}
-
-static int app_transmit_wait_for_response_v3(int udp_fd,
-                                             const Opts *opts,
-                                             const SharedKnockNormalizedUnit *request,
-                                             const SharedKnockCodecV3State *codec_state,
-                                             SiglatchOpenSSLSession *session,
-                                             int *out_status) {
-  uint8_t received[KNOCKER_RESPONSE_BUFFER_SIZE] = {0};
-  size_t received_len = 0;
-  struct sockaddr_storage peer = {0};
-  M7MuxIngress reply_ingress = {0};
-  SharedKnockNormalizedUnit reply = {0};
-  int wait_rc = 0;
-  char peer_ip[INET6_ADDRSTRLEN] = {0};
-  uint16_t peer_port = 0;
-
-  if (!opts || !request || !codec_state || !session || !out_status) {
-    return 0;
-  }
-
-  *out_status = 0;
-
-  wait_rc = lib.net.socket.wait_readable(udp_fd, KNOCKER_RESPONSE_TIMEOUT_MS);
-  if (wait_rc == 0) {
-    lib.print.uc_printf(NULL, "No response from host\n");
-    return 1;
-  }
-
-  if (wait_rc < 0) {
-    if (errno == EINTR) {
-      return 0;
-    }
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Failed while waiting for server response\n");
-    }
-    return 0;
-  }
-
-  if (!lib.net.udp.recv(udp_fd, received, sizeof(received), &peer, &received_len)) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Failed to receive server response datagram\n");
-    }
-    return 0;
-  }
-
-  if (!lib.net.addr.sock_to_ip(&peer, peer_ip, sizeof(peer_ip))) {
-    peer_ip[0] = '\0';
-  }
-  peer_port = app_transmit_peer_port(&peer);
-
-  if (received_len > sizeof(reply_ingress.buffer)) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received server response exceeds ingress buffer size\n");
-    }
-    return 0;
-  }
-
-  memcpy(reply_ingress.buffer, received, received_len);
-  reply_ingress.len = received_len;
-  reply_ingress.received_ms = 0;
-  if (peer_ip[0] != '\0') {
-    size_t peer_ip_len = strlen(peer_ip);
-
-    if (peer_ip_len >= sizeof(reply_ingress.ip)) {
-      peer_ip_len = sizeof(reply_ingress.ip) - 1u;
-    }
-    memcpy(reply_ingress.ip, peer_ip, peer_ip_len);
-    reply_ingress.ip[peer_ip_len] = '\0';
-  }
-  reply_ingress.client_port = peer_port;
-  reply_ingress.encrypted = 1;
-
-  if (!app_transmit_ensure_response_private_key(opts, session)) {
-    return 0;
-  }
-
-  if (!shared.knock.codec.v3.decode(codec_state,
-                                     &reply_ingress,
-                                     &reply)) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Failed to decode server response packet\n");
-    }
-    return 0;
-  }
-
-  if (!shared.knock.codec.v3.wire_auth(codec_state,
-                                        &reply_ingress,
-                                        &reply)) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Response wire auth failed\n");
-    }
-    return 0;
-  }
-
-  if (reply.action_id != SL_KNOCK_RESPONSE_ACTION_ID) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received non-response packet on reply channel (action=%u)\n",
-                   (unsigned int)reply.action_id);
-    }
-    return 0;
-  }
-
-  if (reply.user_id != request->user_id) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received response for unexpected user_id=%u\n",
-                   (unsigned int)reply.user_id);
-    }
-    return 0;
-  }
-
-  if (reply.challenge != request->challenge) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received response for unexpected challenge=%u\n",
-                   (unsigned int)reply.challenge);
-    }
-    return 0;
-  }
-
-  if (reply.payload_len < SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received malformed response payload\n");
-    }
-    return 0;
-  }
-
-  if (reply.payload[1] != request->action_id) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Received response for unexpected request action=%u\n",
-                   (unsigned int)reply.payload[1]);
-    }
-    return 0;
-  }
-
-  if (!app_transmit_v3_response_validate_signature(opts, session, &reply)) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Response signature validation failed\n");
-    }
-    return 0;
-  }
-
-  LOGI("Received response on %s (%d)\n",
-       app_transmit_protocol_name(opts->protocol),
-       (int)opts->protocol);
-  return app_transmit_v3_response_print(&reply, out_status);
-}
-
-static int app_transmit_single_packet_v3(const Opts *opts) {
-  int status = 1;
-  int response_status = 0;
-  int udp_fd = -1;
-  SiglatchOpenSSLSession session = {0};
-  SharedKnockCodecContext *codec_context = NULL;
-  SharedKnockCodecV3State *codec_state = NULL;
-  Opts runtime_opts = {0};
-  const Opts *effective = NULL;
-
-  if (!opts) {
-    if (lib.log.emit) {
-      lib.log.emit(LOG_ERROR, 1, "Transmit requested with NULL opts\n");
-    }
-    return status;
-  }
-
-  runtime_opts = *opts;
-  effective = &runtime_opts;
-
-  do {
-    SharedKnockNormalizedUnit request = {0};
-    uint8_t encoded[SHARED_KNOCK_CODEC_PACKET_MAX_SIZE] = {0};
-    size_t encoded_len = sizeof(encoded);
-
-    if (!app_transmit_resolve_payload(&runtime_opts)) {
-      FAIL_SINGLE_PACKET("Failed to resolve payload input\n");
-    }
-
-    if (!app_transmit_v3_structure_packet(&request,
-                                          effective->payload,
-                                          effective->payload_len,
-                                          (uint16_t)effective->user_id,
-                                          (uint8_t)effective->action_id)) {
-      FAIL_SINGLE_PACKET("Failed to structure v3 packet\n");
-    }
-
-    if (!init_user_openssl_session(effective, &session)) {
-      FAIL_SINGLE_PACKET("Failed to initialize OpenSSL session\n");
-    }
-
-    if (!app_transmit_v3_codec_prepare(&session, &codec_context, &codec_state)) {
-      FAIL_SINGLE_PACKET("Failed to prepare codec.v3 state\n");
-    }
-
-    if (!shared.knock.codec.v3.encode(codec_state, &request, encoded, &encoded_len)) {
-      FAIL_SINGLE_PACKET("Failed to encode v3 packet\n");
-    }
-    if (lib.log.emit) {
-      lib.log.emit(LOG_INFO, 1, "v3 encoded packet length: %zu\n", encoded_len);
-    }
-
-    char ip[INET6_ADDRSTRLEN];
-    int rv = lib.net.addr.resolve_host_to_ip(effective->host, ip, sizeof(ip));
-
-    switch (rv) {
-      case 1:
-        break;
-      case -2:
-        FAIL_SINGLE_PACKET("Hostname is NULL\n");
-        break;
-      case -3:
-        FAIL_SINGLE_PACKET("Output buffer is NULL\n");
-        break;
-      default:
-        FAIL_SINGLE_PACKET("Could not resolve hostname: %s\n", effective->host);
-        break;
-    }
-
-    if (effective->send_from_ip[0] != '\0' && lib.net.addr.is_ipv6(ip)) {
-      FAIL_SINGLE_PACKET("Client source bind (--send-from) currently supports only IPv4 targets; resolved %s to %s\n",
-                         effective->host, ip);
-    }
-
-    if (effective->send_from_ip[0] != '\0') {
-      udp_fd = lib.net.udp.open_bound_auto(ip, effective->send_from_ip, 0, NULL);
-      if (udp_fd < 0) {
-        FAIL_SINGLE_PACKET("Failed to open UDP socket for target %s using source %s\n",
-                           ip, effective->send_from_ip);
-      }
-    } else {
-      udp_fd = lib.net.udp.open_auto(ip);
-      if (udp_fd < 0) {
-        FAIL_SINGLE_PACKET("Failed to open UDP socket for target %s\n", ip);
-      }
-    }
-
-    if (effective->send_from_ip[0] != '\0' && lib.log.emit) {
-      lib.log.emit(LOG_INFO, 1,
-                   "Sending UDP packet to %s:%u from %s",
-                   ip, (unsigned int)effective->port, effective->send_from_ip);
-    }
-
-    LOGI("Sending request on %s (%d)\n",
-         app_transmit_protocol_name(effective->protocol),
-         (int)effective->protocol);
-
-    if (!lib.net.udp.send(udp_fd, ip, effective->port, encoded, encoded_len)) {
-      if (lib.log.emit) {
-        lib.log.emit(LOG_ERROR, 1,
-                     "Failed to send UDP packet to %s:%u (%zu bytes, errno=%d)\n",
-                     ip,
-                     (unsigned int)effective->port,
-                     encoded_len,
-                     errno);
-      }
-      FAIL_SINGLE_PACKET("Failed to send UDP packet\n");
-    }
-
-    if (!app_transmit_wait_for_response_v3(udp_fd,
-                                           effective,
-                                           &request,
-                                           codec_state,
-                                           &session,
-                                           &response_status)) {
-      break;
-    }
-
-    status = response_status;
-  } while (0);
-
-  if (udp_fd >= 0) {
-    lib.net.udp.close(udp_fd);
-  }
-
-  app_transmit_v3_codec_release(codec_context, codec_state);
-  lib.openssl.session_free(&session);
-  return status;
-}
-
 static int app_transmit_single_packet(const Opts *opts) {
   int status = 1;
-  int response_status = 0;
-  int udp_fd = -1;
-  SiglatchOpenSSLSession session = {0};
   Opts runtime_opts = {0};
   const Opts *effective = NULL;
 
@@ -1263,112 +1076,9 @@ static int app_transmit_single_packet(const Opts *opts) {
        app_transmit_protocol_name(effective->protocol),
        (int)effective->protocol);
 
-  if (effective->protocol == KNOCK_PROTOCOL_V3) {
-    return app_transmit_single_packet_v3(effective);
-  }
-
-  if (effective->protocol == KNOCK_PROTOCOL_V2) {
-    return app_transmit_single_packet_v2(effective);
-  }
-
-  do {
-    KnockPacket pkt = {0};
-    if (!app_transmit_resolve_payload(&runtime_opts)) {
-      FAIL_SINGLE_PACKET("Failed to resolve payload input\n");
-    }
-
-    if (!structurePacket(&pkt, effective->payload, effective->payload_len,
-                         effective->user_id, effective->action_id)) {
-      FAIL_SINGLE_PACKET("Failed to structure packet\n");
-    }
-
-    if (!init_user_openssl_session(effective, &session)) {
-      FAIL_SINGLE_PACKET("Failed to initialize OpenSSL session\n");
-    }
-
-    if (!signWrapper(effective, &session, &pkt)) {
-      FAIL_SINGLE_PACKET("Failed to sign packet\n");
-    }
-
-    uint8_t packed[512] = {0};
-    int packed_len = shared.knock.codec.v1.pack(&pkt, packed, sizeof(packed));
-    if (!structureOrDeadDrop(effective, &pkt, packed, &packed_len)) {
-      FAIL_SINGLE_PACKET("Failed to prepare payload (structured or dead-drop)\n");
-    }
-
-    unsigned char data[512] = {0};
-    size_t data_len = 0;
-
-    if (!encryptWrapper(effective, &session, packed, packed_len, data, &data_len)) {
-      FAIL_SINGLE_PACKET("Failed to prepare payload (encryption or raw mode)\n");
-    }
-    char ip[INET6_ADDRSTRLEN];
-    int rv = lib.net.addr.resolve_host_to_ip(effective->host, ip, sizeof(ip));
-
-    switch (rv) {
-      case 1:
-        break;
-      case -2:
-        FAIL_SINGLE_PACKET("Hostname is NULL\n");
-        break;
-      case -3:
-        FAIL_SINGLE_PACKET("Output buffer is NULL\n");
-        break;
-      default:
-        FAIL_SINGLE_PACKET("Could not resolve hostname: %s\n", effective->host);
-        break;
-    }
-
-    if (effective->send_from_ip[0] != '\0' && lib.net.addr.is_ipv6(ip)) {
-      FAIL_SINGLE_PACKET("Client source bind (--send-from) currently supports only IPv4 targets; resolved %s to %s\n",
-                         effective->host, ip);
-    }
-
-    if (effective->send_from_ip[0] != '\0') {
-      udp_fd = lib.net.udp.open_bound_auto(ip, effective->send_from_ip, 0, NULL);
-      if (udp_fd < 0) {
-        FAIL_SINGLE_PACKET("Failed to open UDP socket for target %s using source %s\n",
-                           ip, effective->send_from_ip);
-      }
-    } else {
-      udp_fd = lib.net.udp.open_auto(ip);
-      if (udp_fd < 0) {
-        FAIL_SINGLE_PACKET("Failed to open UDP socket for target %s\n", ip);
-      }
-    }
-
-    if (effective->send_from_ip[0] != '\0' && lib.log.emit) {
-      lib.log.emit(LOG_INFO, 1,
-                   "Sending UDP packet to %s:%u from %s",
-                   ip, (unsigned int)effective->port, effective->send_from_ip);
-    }
-
-    LOGI("Sending request on %s (%d)\n",
-         app_transmit_protocol_name(effective->protocol),
-         (int)effective->protocol);
-
-    if (!lib.net.udp.send(udp_fd, ip, effective->port, data, data_len)) {
-      FAIL_SINGLE_PACKET("Failed to send UDP packet\n");
-    }
-
-    if (effective->dead_drop) {
-      status = 0;
-      break;
-    }
-
-    if (!app_transmit_wait_for_response(udp_fd, effective, &pkt, &session, &response_status)) {
-      break;
-    }
-
-    status = response_status;
-  } while (0);
-
-  if (udp_fd >= 0) {
-    lib.net.udp.close(udp_fd);
-  }
-
-  lib.openssl.session_free(&session);
-  return status;
+  (void)runtime_opts;
+  (void)status;
+  return app_transmit_single_packet_m7mux(effective);
 }
 
 static const AppTransmitLib app_transmit_instance = {

@@ -9,12 +9,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "../../../../shared/knock/codec/normalized.h"
-
 typedef struct SharedKnockCodecContext SharedKnockCodecContext;
 typedef struct M7MuxIngress M7MuxIngress;
 typedef struct M7MuxIngressIdentity M7MuxIngressIdentity;
 typedef struct M7MuxNormalizeAdapter M7MuxNormalizeAdapter;
+typedef struct M7MuxUserSendData M7MuxUserSendData;
+typedef struct M7MuxUserRecvData M7MuxUserRecvData;
 typedef struct M7MuxSendPacket M7MuxSendPacket;
 typedef struct M7MuxEgressData M7MuxEgressData;
 
@@ -25,17 +25,19 @@ typedef struct SharedKnockCodecBarrel {
   void (*shutdown)(void);
   int (*create_state)(void **out_state);
   void (*destroy_state)(void *state);
+  M7MuxUserRecvData *(*alloc_user_recv_data)(void);
+  void (*free_user_recv_data)(M7MuxUserRecvData *user);
   int (*detect)(const void *state,
                 const M7MuxIngress *ingress,
                 M7MuxIngressIdentity *identity);
   int (*decode)(const void *state,
                 const M7MuxIngress *ingress,
-                SharedKnockNormalizedUnit *out);
+                M7MuxUserRecvData *out);
   int (*wire_auth)(const void *state,
                    const M7MuxIngress *ingress,
-                   SharedKnockNormalizedUnit *normal);
+                   M7MuxUserRecvData *normal);
   int (*encode)(const void *state,
-                const SharedKnockNormalizedUnit *normal,
+                const M7MuxUserSendData *normal,
                 uint8_t *out_buf,
                 size_t *out_len);
   int (*pack)(const void *pkt, uint8_t *out_buf, size_t maxlen);

@@ -21,6 +21,7 @@ typedef struct {
 typedef struct {
   int complete;
   int should_reply;
+  int available;
   int synthetic_session;
   uint32_t wire_version;
   uint8_t wire_form;

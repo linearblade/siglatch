@@ -73,16 +73,8 @@ static int m7mux_outbox_stage(M7MuxState *state, const M7MuxSendPacket *send) {
   const M7MuxNormalizeAdapter *adapter = NULL;
   M7MuxEgressData serialized = {0};
 
-  if (!state || !send || !send->available) {
+  if (!state || !send) {
     return 0;
-  }
-
-  if (!send->complete) {
-    return 0;
-  }
-
-  if (!send->should_reply) {
-    return 1;
   }
 
   if (!g_ctx.internal || !g_ctx.internal->normalize || !g_ctx.internal->normalize->adapter.encode) {
@@ -96,6 +88,42 @@ static int m7mux_outbox_stage(M7MuxState *state, const M7MuxSendPacket *send) {
 
   if (!g_ctx.internal->normalize->adapter.encode(&g_ctx, adapter, send, &serialized)) {
     return 0;
+  }
+
+  if (!g_ctx.internal->egress->stage(&state->egress, &serialized)) {
+    return 0;
+  }
+
+  return 1;
+}
+
+static int m7mux_outbox_stage_bytes(M7MuxState *state, const M7MuxSendBytesPacket *send_bytes) {
+  M7MuxEgressData serialized = {0};
+
+  if (!state || !send_bytes) {
+    return 0;
+  }
+
+  if (send_bytes->bytes_len > sizeof(serialized.egress_buffer)) {
+    return 0;
+  }
+
+  serialized.trace_id = send_bytes->trace_id;
+  memcpy(serialized.label, send_bytes->label, sizeof(serialized.label));
+  serialized.wire_version = 0u;
+  serialized.wire_form = 0u;
+  serialized.received_ms = send_bytes->received_ms;
+  memcpy(serialized.ip, send_bytes->ip, sizeof(serialized.ip));
+  serialized.client_port = send_bytes->client_port;
+  serialized.encrypted = 0;
+  serialized.wire_auth = 0;
+  serialized.egress_len = send_bytes->bytes_len;
+
+  if (send_bytes->bytes_len > 0u) {
+    if (!send_bytes->bytes) {
+      return 0;
+    }
+    memcpy(serialized.egress_buffer, send_bytes->bytes, send_bytes->bytes_len);
   }
 
   return g_ctx.internal->egress->stage(&state->egress, &serialized);
@@ -117,6 +145,7 @@ static const M7MuxOutboxLib _instance = {
   .state_reset = m7mux_outbox_state_reset,
   .has_pending = m7mux_outbox_has_pending,
   .stage = m7mux_outbox_stage,
+  .stage_bytes = m7mux_outbox_stage_bytes,
   .flush = m7mux_outbox_flush
 };
 

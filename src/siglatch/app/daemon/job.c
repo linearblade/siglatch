@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "../app.h"
+#include "../../../shared/knock/codec/user.h"
 #include "../../../stdlib/protocol/udp/m7mux/normalize/normalize.h"
 
 #define APP_JOB_READY_QUEUE_CAPACITY 64u
@@ -163,6 +164,8 @@ static int app_job_reserve_response(AppConnectionJob *job, size_t min_cap) {
 
 static int app_job_load_from_normal(AppConnectionJob *job,
                                     const struct M7MuxRecvPacket *normal) {
+  const M7MuxUserRecvData *user = NULL;
+
   if (!job || !normal) {
     return 0;
   }
@@ -172,6 +175,7 @@ static int app_job_load_from_normal(AppConnectionJob *job,
 
   job->complete = normal->complete;
   job->should_reply = normal->should_reply;
+  job->available = 1;
   job->synthetic_session = normal->synthetic_session;
   job->wire_version = normal->wire_version;
   job->wire_form = normal->wire_form;
@@ -181,21 +185,42 @@ static int app_job_load_from_normal(AppConnectionJob *job,
   job->fragment_index = normal->fragment_index;
   job->fragment_count = normal->fragment_count;
   job->timestamp = normal->timestamp;
-  memcpy(job->ip, normal->user.ip, sizeof(job->ip));
+  memcpy(job->ip, normal->ip, sizeof(job->ip));
   job->ip[sizeof(job->ip) - 1] = '\0';
-  job->client_port = normal->user.client_port;
-  job->encrypted = normal->user.encrypted;
-  job->wire_auth = normal->user.wire_auth;
-  job->request.user_id = normal->user.user_id;
-  job->request.action_id = normal->user.action_id;
-  job->request.challenge = normal->user.challenge;
-  memcpy(job->request.hmac, normal->user.hmac, sizeof(job->request.hmac));
+  job->client_port = normal->client_port;
+  job->encrypted = normal->encrypted;
+  job->wire_auth = normal->wire_auth;
 
-  if (normal->user.payload_len > 0u) {
-    if (!app_job_copy_payload(job, normal->user.payload, normal->user.payload_len)) {
-      app_job_release_job(job);
-      memset(job, 0, sizeof(*job));
+  if (normal->wire_version == 0u) {
+    job->request.user_id = 0u;
+    job->request.action_id = 0u;
+    job->request.challenge = 0u;
+    memset(job->request.hmac, 0, sizeof(job->request.hmac));
+
+    if (normal->raw_bytes_len > 0u) {
+      if (!app_job_copy_payload(job, normal->raw_bytes, normal->raw_bytes_len)) {
+        app_job_release_job(job);
+        memset(job, 0, sizeof(*job));
+        return 0;
+      }
+    }
+  } else {
+    user = normal->user;
+    if (!user) {
       return 0;
+    }
+
+    job->request.user_id = user->user_id;
+    job->request.action_id = user->action_id;
+    job->request.challenge = user->challenge;
+    memcpy(job->request.hmac, user->hmac, sizeof(job->request.hmac));
+
+    if (user->payload_len > 0u) {
+      if (!app_job_copy_payload(job, user->payload, user->payload_len)) {
+        app_job_release_job(job);
+        memset(job, 0, sizeof(*job));
+        return 0;
+      }
     }
   }
 

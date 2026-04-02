@@ -15,6 +15,14 @@ static void m7mux_inbox_reset_context(void) {
   memset(&g_ctx, 0, sizeof(g_ctx));
 }
 
+static void m7mux_inbox_configure_stream_adapter(M7MuxState *state) {
+  if (!state || !g_ctx.internal || !g_ctx.internal->normalize) {
+    return;
+  }
+
+  state->stream.adapter_lib = &g_ctx.internal->normalize->adapter;
+}
+
 static int m7mux_inbox_init(const M7MuxContext *ctx) {
   if (!ctx) {
     m7mux_inbox_reset_context();
@@ -41,6 +49,7 @@ static void m7mux_inbox_state_reset(M7MuxState *state) {
   g_ctx.internal->ingress->state_reset(&state->ingress);
   g_ctx.internal->session->state_reset(&state->session);
   g_ctx.internal->stream->state_reset(&state->stream);
+  m7mux_inbox_configure_stream_adapter(state);
 }
 
 static int m7mux_inbox_state_init(M7MuxState *state) {
@@ -62,6 +71,8 @@ static int m7mux_inbox_state_init(M7MuxState *state) {
     m7mux_inbox_state_reset(state);
     return 0;
   }
+
+  m7mux_inbox_configure_stream_adapter(state);
 
   return 1;
 }
@@ -108,10 +119,12 @@ static int m7mux_inbox_pump(M7MuxState *state, uint64_t timeout_ms) {
     }
 
     if (!g_ctx.internal->session->ingest(&state->session, &normal)) {
+      m7mux_stream_release_user(&state->stream, &normal);
       return did_work;
     }
 
     if (!g_ctx.internal->stream->ingest(&state->stream, &normal)) {
+      m7mux_stream_release_user(&state->stream, &normal);
       return did_work;
     }
 

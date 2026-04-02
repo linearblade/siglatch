@@ -11,17 +11,13 @@
 /*
  * Shared codec-facing user data contract.
  *
- * This intentionally duplicates the current flat knock packet layout for now,
- * but keeps send/recv named separately so the app-side contract can diverge
- * later without touching m7mux.
+ * Timestamp lives on the m7mux packet envelope; this body carries the
+ * semantic request/response fields that the app layer consumes.
  */
 
-#define M7MUX_USER_DATA_VERSION 1u
 #define M7MUX_USER_DATA_PAYLOAD_MAX 199u
 
-typedef struct __attribute__((packed)) {
-  uint8_t version;
-  uint32_t timestamp;
+typedef struct __attribute__((packed)) M7MuxUserSendData {
   uint16_t user_id;
   uint8_t action_id;
   uint32_t challenge;
@@ -30,9 +26,7 @@ typedef struct __attribute__((packed)) {
   uint8_t payload[M7MUX_USER_DATA_PAYLOAD_MAX];
 } M7MuxUserSendData;
 
-typedef struct __attribute__((packed)) {
-  uint8_t version;
-  uint32_t timestamp;
+typedef struct __attribute__((packed)) M7MuxUserRecvData {
   uint16_t user_id;
   uint8_t action_id;
   uint32_t challenge;
