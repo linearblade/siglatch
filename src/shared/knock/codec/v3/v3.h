@@ -36,8 +36,12 @@ void shared_knock_codec_v3_shutdown(void);
 int shared_knock_codec_v3_detect(const void *state,
                                  const struct M7MuxIngress *ingress,
                                  M7MuxIngressIdentity *identity);
+size_t shared_knock_codec_v3_count_fragments(const void *state,
+                                             const SharedKnockNormalizedUnit *normal,
+                                             size_t force_fragment_count);
 int shared_knock_codec_v3_decode(const void *state,
                                  const struct M7MuxIngress *ingress,
+                                 M7MuxControl *control,
                                  SharedKnockNormalizedUnit *out);
 int shared_knock_codec_v3_wire_auth(const void *state,
                                     const struct M7MuxIngress *ingress,

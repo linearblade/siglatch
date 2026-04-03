@@ -43,7 +43,7 @@ static void app_help_print_help(void) {
   printf("  \033[36m--help\033[0m                     Show this help message and exit\n");
   printf("  \033[36m--port <num>\033[0m              Override UDP destination port (default: 50000)\n");
   printf("  \033[36m--hmac-key <path>\033[0m         Path to HMAC key file\n");
-  printf("  \033[36m--protocol <v1|v2|v3>\033[0m    Select wire protocol for structured sends (default: v1)\n");
+  printf("  \033[36m--protocol <v1|v2|v3|v4>\033[0m Select wire protocol for structured sends (default: v1)\n");
   printf("  \033[36m--server-key <path>\033[0m       Path to server public key file\n");
   printf("  \033[36m--client-key <path>\033[0m       Path to client private key file\n");
   printf("  \033[36m--no-hmac\033[0m                 Disable HMAC signing (for testing)\n");
@@ -52,6 +52,7 @@ static void app_help_print_help(void) {
   printf("  \033[36m--opts-dump\033[0m               Dump parsed options for debugging\n");
   printf("  \033[36m--no-encrypt\033[0m              Disable payload encryption\n");
   printf("  \033[36m--dead-drop\033[0m               Send raw payload without structure\n");
+  printf("  \033[36m--fragment <count>\033[0m        Split the request into the requested number of fragments\n");
   printf("  \033[36m--send-from <ipv4>\033[0m       Bind outbound UDP sends to a local IPv4\n");
   printf("  \033[36m--verbose <level>\033[0m         Set log verbosity (0-5, default 3 = INFO)\n");
   printf("  \033[36m--log <file>\033[0m              Log output to specified file (optional)\n\n");
@@ -121,6 +122,8 @@ static void app_help_print_help(void) {
   printf("  program localhost root login \"Hello World\"\n");
   printf("  program myserver.com guest openvpn \"Connect to VPN\"\n");
   printf("  program --protocol v3 localhost root login \"Hello World\"\n");
+  printf("  program --protocol v4 localhost root login \"Hello World\"\n");
+  printf("  program --protocol v4 --fragment 2 localhost root login \"Hello World\"\n");
   printf("  program --stdin localhost root login < input.txt\n");
   printf("  program --send-from 127.0.0.1 localhost root login \"Hello World\"\n");
   printf("  program --send-from-default localhost root 192.168.1.210\n");

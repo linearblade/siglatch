@@ -108,6 +108,8 @@ static const char *app_transmit_protocol_name(KnockProtocol protocol) {
       return "v2";
     case KNOCK_PROTOCOL_V3:
       return "v3";
+    case KNOCK_PROTOCOL_V4:
+      return "v4";
     default:
       return "unknown";
   }
@@ -193,6 +195,256 @@ static void app_transmit_dead_drop_print_raw_response(const M7MuxRecvPacket *rep
       fputc('\n', stdout);
     }
   }
+}
+
+static int app_transmit_m7mux_rehydrate_v1(const M7MuxRecvPacket *reply,
+                                           const M7MuxUserRecvData *user,
+                                           KnockPacket *out_pkt);
+static int app_transmit_m7mux_rehydrate_v2(const M7MuxRecvPacket *reply,
+                                           const M7MuxUserRecvData *user,
+                                           SharedKnockCodecV2Form1Packet *out_pkt);
+static int app_transmit_m7mux_rehydrate_v3(const M7MuxRecvPacket *reply,
+                                           const M7MuxUserRecvData *user,
+                                           SharedKnockNormalizedUnit *out_normal);
+static int app_transmit_v2_response_validate_signature(const Opts *opts,
+                                                       SiglatchOpenSSLSession *session,
+                                                       const SharedKnockCodecV2Form1Packet *pkt);
+static int app_transmit_v2_response_print(const SharedKnockCodecV2Form1Packet *reply_pkt,
+                                          int *out_status);
+static int app_transmit_v3_response_validate_signature(const Opts *opts,
+                                                       SiglatchOpenSSLSession *session,
+                                                       const SharedKnockNormalizedUnit *normal);
+static int app_transmit_v3_response_print(const SharedKnockNormalizedUnit *reply,
+                                          int *out_status);
+static int app_transmit_v4_response_validate_signature(const Opts *opts,
+                                                       SiglatchOpenSSLSession *session,
+                                                       const SharedKnockNormalizedUnit *normal);
+
+static int app_transmit_process_mux_response(const Opts *effective,
+                                             SiglatchOpenSSLSession *session,
+                                             const M7MuxRecvPacket *reply,
+                                             const M7MuxUserSendData *send_user,
+                                             const M7MuxUserRecvData *reply_user,
+                                             int *out_response_status) {
+#define RESPONSE_FAIL(...)                                                     \
+  do {                                                                         \
+    if (lib.log.emit) {                                                        \
+      lib.log.emit(LOG_ERROR, 1, __VA_ARGS__);                                 \
+    }                                                                          \
+    return 0;                                                                  \
+  } while (0)
+
+  if (!effective || !session || !reply || !send_user || !out_response_status) {
+    return 0;
+  }
+
+  if (effective->dead_drop) {
+    if (reply->wire_version != 0u) {
+      RESPONSE_FAIL("Received structured packet on dead-drop channel (wire=%u)\n",
+                    (unsigned int)reply->wire_version);
+    }
+
+    LOGI("Received response on raw dead-drop channel\n");
+    app_transmit_dead_drop_print_raw_response(reply);
+    *out_response_status = 0;
+    return 1;
+  }
+
+  switch (effective->protocol) {
+    case KNOCK_PROTOCOL_V1: {
+      KnockPacket reply_pkt = {0};
+
+      if (!reply_user) {
+        RESPONSE_FAIL("Missing reply user buffer for v1 response\n");
+      }
+
+      if (!app_transmit_m7mux_rehydrate_v1(reply, reply_user, &reply_pkt)) {
+        RESPONSE_FAIL("Failed to rehydrate v1 response packet\n");
+      }
+
+      if (reply_pkt.action_id != SL_KNOCK_RESPONSE_ACTION_ID) {
+        RESPONSE_FAIL("Received non-response packet on reply channel (action=%u)\n",
+                      (unsigned int)reply_pkt.action_id);
+      }
+
+      if (reply_pkt.user_id != send_user->user_id) {
+        RESPONSE_FAIL("Received response for unexpected user_id=%u\n",
+                      (unsigned int)reply_pkt.user_id);
+      }
+
+      if (reply_pkt.challenge != send_user->challenge) {
+        RESPONSE_FAIL("Received response for unexpected challenge=%u\n",
+                      (unsigned int)reply_pkt.challenge);
+      }
+
+      if (reply_pkt.payload_len < SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE) {
+        RESPONSE_FAIL("Received malformed response payload\n");
+      }
+
+      if (reply_pkt.payload[1] != send_user->action_id) {
+        RESPONSE_FAIL("Received response for unexpected request action=%u\n",
+                      (unsigned int)reply_pkt.payload[1]);
+      }
+
+      if (!app_transmit_response_validate_signature(effective, session, &reply_pkt)) {
+        RESPONSE_FAIL("Response signature validation failed\n");
+      }
+
+      LOGI("Received response on %s (%d)\n",
+           app_transmit_protocol_name(effective->protocol),
+           (int)effective->protocol);
+      if (!app_transmit_response_print(&reply_pkt, out_response_status)) {
+        FAIL_SINGLE_PACKET("Failed to print response packet\n");
+      }
+      return 1;
+    }
+    case KNOCK_PROTOCOL_V2: {
+      SharedKnockCodecV2Form1Packet reply_pkt = {0};
+
+      if (!reply_user) {
+        RESPONSE_FAIL("Missing reply user buffer for v2 response\n");
+      }
+
+      if (!app_transmit_m7mux_rehydrate_v2(reply, reply_user, &reply_pkt)) {
+        RESPONSE_FAIL("Failed to rehydrate v2 response packet\n");
+      }
+
+      if (reply_pkt.inner.action_id != SL_KNOCK_RESPONSE_ACTION_ID) {
+        RESPONSE_FAIL("Received non-response packet on reply channel (action=%u)\n",
+                      (unsigned int)reply_pkt.inner.action_id);
+      }
+
+      if (reply_pkt.inner.user_id != send_user->user_id) {
+        RESPONSE_FAIL("Received response for unexpected user_id=%u\n",
+                      (unsigned int)reply_pkt.inner.user_id);
+      }
+
+      if (reply_pkt.inner.challenge != send_user->challenge) {
+        RESPONSE_FAIL("Received response for unexpected challenge=%u\n",
+                      (unsigned int)reply_pkt.inner.challenge);
+      }
+
+      if (reply_pkt.inner.payload_len < SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE) {
+        RESPONSE_FAIL("Received malformed response payload\n");
+      }
+
+      if (reply_pkt.payload[1] != send_user->action_id) {
+        RESPONSE_FAIL("Received response for unexpected request action=%u\n",
+                      (unsigned int)reply_pkt.payload[1]);
+      }
+
+      if (!app_transmit_v2_response_validate_signature(effective, session, &reply_pkt)) {
+        RESPONSE_FAIL("Response signature validation failed\n");
+      }
+
+      LOGI("Received response on %s (%d)\n",
+           app_transmit_protocol_name(effective->protocol),
+           (int)effective->protocol);
+      if (!app_transmit_v2_response_print(&reply_pkt, out_response_status)) {
+        FAIL_SINGLE_PACKET("Failed to print response packet\n");
+      }
+      return 1;
+    }
+    case KNOCK_PROTOCOL_V3: {
+      SharedKnockNormalizedUnit reply_normal = {0};
+
+      if (!reply_user) {
+        RESPONSE_FAIL("Missing reply user buffer for v3 response\n");
+      }
+
+      if (!app_transmit_m7mux_rehydrate_v3(reply, reply_user, &reply_normal)) {
+        RESPONSE_FAIL("Failed to rehydrate v3 response packet\n");
+      }
+
+      if (reply_normal.action_id != SL_KNOCK_RESPONSE_ACTION_ID) {
+        RESPONSE_FAIL("Received non-response packet on reply channel (action=%u)\n",
+                      (unsigned int)reply_normal.action_id);
+      }
+
+      if (reply_normal.user_id != send_user->user_id) {
+        RESPONSE_FAIL("Received response for unexpected user_id=%u\n",
+                      (unsigned int)reply_normal.user_id);
+      }
+
+      if (reply_normal.challenge != send_user->challenge) {
+        RESPONSE_FAIL("Received response for unexpected challenge=%u\n",
+                      (unsigned int)reply_normal.challenge);
+      }
+
+      if (reply_normal.payload_len < SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE) {
+        RESPONSE_FAIL("Received malformed response payload\n");
+      }
+
+      if (reply_normal.payload[1] != send_user->action_id) {
+        RESPONSE_FAIL("Received response for unexpected request action=%u\n",
+                      (unsigned int)reply_normal.payload[1]);
+      }
+
+      if (!app_transmit_v3_response_validate_signature(effective, session, &reply_normal)) {
+        RESPONSE_FAIL("Response signature validation failed\n");
+      }
+
+      LOGI("Received response on %s (%d)\n",
+           app_transmit_protocol_name(effective->protocol),
+           (int)effective->protocol);
+      if (!app_transmit_v3_response_print(&reply_normal, out_response_status)) {
+        FAIL_SINGLE_PACKET("Failed to print response packet\n");
+      }
+      return 1;
+    }
+    case KNOCK_PROTOCOL_V4: {
+      SharedKnockNormalizedUnit reply_normal = {0};
+
+      if (!reply_user) {
+        RESPONSE_FAIL("Missing reply user buffer for v4 response\n");
+      }
+
+      if (!app_transmit_m7mux_rehydrate_v3(reply, reply_user, &reply_normal)) {
+        RESPONSE_FAIL("Failed to rehydrate v4 response packet\n");
+      }
+
+      if (reply_normal.action_id != SL_KNOCK_RESPONSE_ACTION_ID) {
+        RESPONSE_FAIL("Received non-response packet on reply channel (action=%u)\n",
+                      (unsigned int)reply_normal.action_id);
+      }
+
+      if (reply_normal.user_id != send_user->user_id) {
+        RESPONSE_FAIL("Received response for unexpected user_id=%u\n",
+                      (unsigned int)reply_normal.user_id);
+      }
+
+      if (reply_normal.challenge != send_user->challenge) {
+        RESPONSE_FAIL("Received response for unexpected challenge=%u\n",
+                      (unsigned int)reply_normal.challenge);
+      }
+
+      if (reply_normal.payload_len < SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE) {
+        RESPONSE_FAIL("Received malformed response payload\n");
+      }
+
+      if (reply_normal.payload[1] != send_user->action_id) {
+        RESPONSE_FAIL("Received response for unexpected request action=%u\n",
+                      (unsigned int)reply_normal.payload[1]);
+      }
+
+      if (!app_transmit_v4_response_validate_signature(effective, session, &reply_normal)) {
+        RESPONSE_FAIL("Response signature validation failed\n");
+      }
+
+      LOGI("Received response on %s (%d)\n",
+           app_transmit_protocol_name(effective->protocol),
+           (int)effective->protocol);
+      if (!app_transmit_v3_response_print(&reply_normal, out_response_status)) {
+        FAIL_SINGLE_PACKET("Failed to print response packet\n");
+      }
+      return 1;
+    }
+    default:
+      RESPONSE_FAIL("Unknown protocol selected\n");
+  }
+#undef RESPONSE_FAIL
+
+  return 0;
 }
 
 static int app_transmit_ensure_response_private_key(const Opts *opts,
@@ -283,6 +535,8 @@ static uint32_t app_transmit_protocol_wire_version(KnockProtocol protocol) {
       return SHARED_KNOCK_CODEC_V2_WIRE_VERSION;
     case KNOCK_PROTOCOL_V3:
       return SHARED_KNOCK_CODEC_V3_WIRE_VERSION;
+    case KNOCK_PROTOCOL_V4:
+      return SHARED_KNOCK_CODEC_V4_WIRE_VERSION;
     default:
       return SHARED_KNOCK_CODEC_V1_VERSION;
   }
@@ -294,6 +548,7 @@ static uint8_t app_transmit_protocol_wire_form(KnockProtocol protocol) {
       return 0u;
     case KNOCK_PROTOCOL_V2:
     case KNOCK_PROTOCOL_V3:
+    case KNOCK_PROTOCOL_V4:
       return SHARED_KNOCK_CODEC_FORM1_ID;
     default:
       return SHARED_KNOCK_CODEC_FORM1_ID;
@@ -308,6 +563,8 @@ static const M7MuxNormalizeAdapter *app_transmit_protocol_adapter(KnockProtocol 
       return shared.knock.codec.v2 ? shared.knock.codec.v2() : NULL;
     case KNOCK_PROTOCOL_V3:
       return shared.knock.codec.v3 ? shared.knock.codec.v3() : NULL;
+    case KNOCK_PROTOCOL_V4:
+      return shared.knock.codec.v4 ? shared.knock.codec.v4() : NULL;
     default:
       break;
   }
@@ -339,6 +596,11 @@ static int app_transmit_register_m7mux_adapters(void) {
   }
 
   adapter = app_transmit_protocol_adapter(KNOCK_PROTOCOL_V3);
+  if (!adapter || !normalize->register_adapter(adapter)) {
+    return 0;
+  }
+
+  adapter = app_transmit_protocol_adapter(KNOCK_PROTOCOL_V4);
   if (!adapter || !normalize->register_adapter(adapter)) {
     return 0;
   }
@@ -409,7 +671,12 @@ static int app_transmit_m7mux_prepare_runtime(const Opts *opts,
 
   if (!shared_knock_codec_v1_init(codec_context) ||
       !shared_knock_codec_v2_init(codec_context) ||
-      !shared_knock_codec_v3_init(codec_context)) {
+      !shared_knock_codec_v3_init(codec_context) ||
+      !shared_knock_codec_v4_init(codec_context)) {
+    shared_knock_codec_v4_shutdown();
+    shared_knock_codec_v3_shutdown();
+    shared_knock_codec_v2_shutdown();
+    shared_knock_codec_v1_shutdown();
     if (codec_context->has_server_key) {
       codec_context_lib->clear_server_key(codec_context);
     }
@@ -427,6 +694,7 @@ static int app_transmit_m7mux_prepare_runtime(const Opts *opts,
   m7mux_ctx.enforce_wire_auth = 0;
 
   if (!lib.m7mux.set_context(&m7mux_ctx)) {
+    shared_knock_codec_v4_shutdown();
     shared_knock_codec_v3_shutdown();
     shared_knock_codec_v2_shutdown();
     shared_knock_codec_v1_shutdown();
@@ -448,6 +716,7 @@ static void app_transmit_m7mux_release_runtime(SharedKnockCodecContext *codec_co
 
   codec_context_lib = &shared.knock.codec.context;
 
+  shared_knock_codec_v4_shutdown();
   shared_knock_codec_v3_shutdown();
   shared_knock_codec_v2_shutdown();
   shared_knock_codec_v1_shutdown();
@@ -494,11 +763,11 @@ static int app_transmit_build_m7mux_send_packet(const Opts *opts,
   out_send->wire_version = app_transmit_protocol_wire_version(protocol);
   out_send->wire_form = app_transmit_protocol_wire_form(protocol);
   out_send->received_ms = lib.time.monotonic_ms();
-  out_send->session_id = 0u;
-  out_send->message_id = 0u;
-  out_send->stream_id = 0u;
+  out_send->session_id = (protocol == KNOCK_PROTOCOL_V4) ? 1u : 0u;
+  out_send->message_id = (protocol == KNOCK_PROTOCOL_V4) ? 1u : 0u;
+  out_send->stream_id = (protocol == KNOCK_PROTOCOL_V4) ? 1u : 0u;
   out_send->fragment_index = 0u;
-  out_send->fragment_count = 1u;
+  out_send->fragment_count = opts->fragment_count;
   out_send->timestamp = (uint32_t)lib.time.unix_ts();
   memcpy(out_send->ip, target_ip, sizeof(out_send->ip));
   out_send->ip[sizeof(out_send->ip) - 1u] = '\0';
@@ -618,20 +887,10 @@ static int app_transmit_m7mux_rehydrate_v3(const M7MuxRecvPacket *reply,
   return 1;
 }
 
-static int app_transmit_v2_response_validate_signature(const Opts *opts,
-                                                       SiglatchOpenSSLSession *session,
-                                                       const SharedKnockCodecV2Form1Packet *pkt);
-static int app_transmit_v2_response_print(const SharedKnockCodecV2Form1Packet *reply_pkt,
-                                          int *out_status);
-static int app_transmit_v3_response_validate_signature(const Opts *opts,
-                                                       SiglatchOpenSSLSession *session,
-                                                       const SharedKnockNormalizedUnit *normal);
-static int app_transmit_v3_response_print(const SharedKnockNormalizedUnit *reply,
-                                          int *out_status);
-
 static int app_transmit_single_packet_m7mux(const Opts *opts) {
   int status = 1;
   int response_status = 0;
+  size_t response_count = 0u;
   int udp_fd = -1;
   M7MuxState *mux_state = NULL;
   SiglatchOpenSSLSession session = {0};
@@ -749,218 +1008,107 @@ static int app_transmit_single_packet_m7mux(const Opts *opts) {
     }
 
     if (!effective->dead_drop) {
-      if (!app_transmit_m7mux_prepare_runtime(effective, &session, &codec_context)) {
-        FAIL_SINGLE_PACKET("Failed to prepare mux runtime\n");
-      }
+    if (!app_transmit_m7mux_prepare_runtime(effective, &session, &codec_context)) {
+      FAIL_SINGLE_PACKET("Failed to prepare mux runtime\n");
+    }
 
-      if (!app_transmit_register_m7mux_adapters()) {
-        FAIL_SINGLE_PACKET("Failed to register mux adapters\n");
-      }
+    if (!app_transmit_register_m7mux_adapters()) {
+      FAIL_SINGLE_PACKET("Failed to register mux adapters\n");
+    }
 
-      mux_state = lib.m7mux.connect.connect_socket(udp_fd);
-      if (!mux_state) {
-        FAIL_SINGLE_PACKET("Failed to attach UDP socket to mux state\n");
-      }
+    mux_state = lib.m7mux.connect.connect_socket(udp_fd);
+    if (!mux_state) {
+      FAIL_SINGLE_PACKET("Failed to attach UDP socket to mux state\n");
+    }
 
-      if (!app_transmit_build_m7mux_send_packet(effective,
-                                                effective->protocol,
-                                                ip,
-                                                effective->port,
-                                                &send,
-                                                &send_user)) {
-        FAIL_SINGLE_PACKET("Failed to prepare mux send packet\n");
-      }
+    if (!app_transmit_build_m7mux_send_packet(effective,
+                                              effective->protocol,
+                                              ip,
+                                              effective->port,
+                                              &send,
+                                              &send_user)) {
+      FAIL_SINGLE_PACKET("Failed to prepare mux send packet\n");
+    }
 
+    if (effective->fragment_count > 1u && lib.log.emit) {
+      lib.log.emit(LOG_INFO, 1,
+                   "Fragmenting request into %u fragments\n",
+                   (unsigned)effective->fragment_count);
+    }
+
+    if (effective->fragment_count > 1u) {
+      if (!lib.m7mux.outbox.stage_fragments(mux_state, &send, effective->fragment_count)) {
+        FAIL_SINGLE_PACKET("Failed to stage fragmented request into mux outbox\n");
+      }
+    } else {
       if (!lib.m7mux.outbox.stage(mux_state, &send)) {
         FAIL_SINGLE_PACKET("Failed to stage request into mux outbox\n");
       }
+    }
 
-      if (effective->send_from_ip[0] != '\0' && lib.log.emit) {
-        lib.log.emit(LOG_INFO, 1,
-                     "Sending UDP packet to %s:%u from %s",
-                     ip, (unsigned int)effective->port, effective->send_from_ip);
-      }
+    if (effective->send_from_ip[0] != '\0' && lib.log.emit) {
+      lib.log.emit(LOG_INFO, 1,
+                   "Sending UDP packet to %s:%u from %s",
+                   ip,
+                   (unsigned int)effective->port,
+                   effective->send_from_ip);
+    }
 
-      LOGI("Sending request on %s (%d)\n",
-           app_transmit_protocol_name(effective->protocol),
-           (int)effective->protocol);
+    LOGI("Sending request on %s (%d)\n",
+         app_transmit_protocol_name(effective->protocol),
+         (int)effective->protocol);
 
-      if (lib.m7mux.pump(mux_state, 0u) < 0) {
-        FAIL_SINGLE_PACKET("Failed to flush mux request\n");
+    if (lib.m7mux.pump(mux_state, 0u) < 0) {
+      FAIL_SINGLE_PACKET("Failed to flush mux request\n");
+    }
+    }
+
+    {
+      uint64_t response_deadline = lib.time.monotonic_ms() + KNOCKER_RESPONSE_TIMEOUT_MS;
+
+      while (1) {
+        uint64_t now_ms = lib.time.monotonic_ms();
+        uint64_t remaining_ms = 0u;
+
+        if (now_ms >= response_deadline) {
+          break;
+        }
+
+        remaining_ms = response_deadline - now_ms;
+        if (lib.m7mux.pump(mux_state, remaining_ms) < 0) {
+          FAIL_SINGLE_PACKET("Failed to pump mux while waiting for response\n");
+        }
+
+        while (lib.m7mux.inbox.has_pending(mux_state)) {
+          memset(&reply, 0, sizeof(reply));
+          memset(&reply_user, 0, sizeof(reply_user));
+          if (!effective->dead_drop) {
+            reply.user = &reply_user;
+          }
+
+          if (!lib.m7mux.inbox.drain(mux_state, &reply)) {
+            FAIL_SINGLE_PACKET("Failed to drain mux response\n");
+          }
+
+          response_count++;
+          if (!app_transmit_process_mux_response(effective,
+                                                 &session,
+                                                 &reply,
+                                                 &send_user,
+                                                 effective->dead_drop ? NULL : &reply_user,
+                                                 &response_status)) {
+            FAIL_SINGLE_PACKET("Failed to process mux response\n");
+          }
+
+          status = response_status;
+        }
       }
     }
 
-    if (!lib.m7mux.pump(mux_state, KNOCKER_RESPONSE_TIMEOUT_MS)) {
-      if (!lib.m7mux.inbox.has_pending(mux_state)) {
-        lib.print.uc_printf(NULL, "No response from host\n");
-        status = 0;
-        break;
-      }
-    }
-
-    if (!lib.m7mux.inbox.has_pending(mux_state)) {
+    if (response_count == 0u) {
       lib.print.uc_printf(NULL, "No response from host\n");
       status = 0;
       break;
-    }
-
-    if (!effective->dead_drop) {
-      reply.user = &reply_user;
-    }
-    if (!lib.m7mux.inbox.drain(mux_state, &reply)) {
-      FAIL_SINGLE_PACKET("Failed to drain mux response\n");
-    }
-
-    if (effective->dead_drop) {
-      if (reply.wire_version != 0u) {
-        FAIL_SINGLE_PACKET("Received structured packet on dead-drop channel (wire=%u)\n",
-                           (unsigned int)reply.wire_version);
-      }
-
-      LOGI("Received response on raw dead-drop channel\n");
-      app_transmit_dead_drop_print_raw_response(&reply);
-      status = 0;
-      break;
-    }
-
-    switch (effective->protocol) {
-      case KNOCK_PROTOCOL_V1: {
-        KnockPacket reply_pkt = {0};
-
-        if (!app_transmit_m7mux_rehydrate_v1(&reply, &reply_user, &reply_pkt)) {
-          FAIL_SINGLE_PACKET("Failed to rehydrate v1 response packet\n");
-        }
-
-        if (reply_pkt.action_id != SL_KNOCK_RESPONSE_ACTION_ID) {
-          FAIL_SINGLE_PACKET("Received non-response packet on reply channel (action=%u)\n",
-                             (unsigned int)reply_pkt.action_id);
-        }
-
-        if (reply_pkt.user_id != send_user.user_id) {
-          FAIL_SINGLE_PACKET("Received response for unexpected user_id=%u\n",
-                             (unsigned int)reply_pkt.user_id);
-        }
-
-        if (reply_pkt.challenge != send_user.challenge) {
-          FAIL_SINGLE_PACKET("Received response for unexpected challenge=%u\n",
-                             (unsigned int)reply_pkt.challenge);
-        }
-
-        if (reply_pkt.payload_len < SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE) {
-          FAIL_SINGLE_PACKET("Received malformed response payload\n");
-        }
-
-        if (reply_pkt.payload[1] != send_user.action_id) {
-          FAIL_SINGLE_PACKET("Received response for unexpected request action=%u\n",
-                             (unsigned int)reply_pkt.payload[1]);
-        }
-
-        if (!app_transmit_response_validate_signature(effective, &session, &reply_pkt)) {
-          FAIL_SINGLE_PACKET("Response signature validation failed\n");
-        }
-
-        LOGI("Received response on %s (%d)\n",
-             app_transmit_protocol_name(effective->protocol),
-             (int)effective->protocol);
-        if (!app_transmit_response_print(&reply_pkt, &response_status)) {
-          FAIL_SINGLE_PACKET("Failed to print response packet\n");
-        }
-
-        status = response_status;
-        break;
-      }
-      case KNOCK_PROTOCOL_V2: {
-        SharedKnockCodecV2Form1Packet reply_pkt = {0};
-
-        if (!app_transmit_m7mux_rehydrate_v2(&reply, &reply_user, &reply_pkt)) {
-          FAIL_SINGLE_PACKET("Failed to rehydrate v2 response packet\n");
-        }
-
-        if (reply_pkt.inner.action_id != SL_KNOCK_RESPONSE_ACTION_ID) {
-          FAIL_SINGLE_PACKET("Received non-response packet on reply channel (action=%u)\n",
-                             (unsigned int)reply_pkt.inner.action_id);
-        }
-
-        if (reply_pkt.inner.user_id != send_user.user_id) {
-          FAIL_SINGLE_PACKET("Received response for unexpected user_id=%u\n",
-                             (unsigned int)reply_pkt.inner.user_id);
-        }
-
-        if (reply_pkt.inner.challenge != send_user.challenge) {
-          FAIL_SINGLE_PACKET("Received response for unexpected challenge=%u\n",
-                             (unsigned int)reply_pkt.inner.challenge);
-        }
-
-        if (reply_pkt.inner.payload_len < SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE) {
-          FAIL_SINGLE_PACKET("Received malformed response payload\n");
-        }
-
-        if (reply_pkt.payload[1] != send_user.action_id) {
-          FAIL_SINGLE_PACKET("Received response for unexpected request action=%u\n",
-                             (unsigned int)reply_pkt.payload[1]);
-        }
-
-        if (!app_transmit_v2_response_validate_signature(effective, &session, &reply_pkt)) {
-          FAIL_SINGLE_PACKET("Response signature validation failed\n");
-        }
-
-        LOGI("Received response on %s (%d)\n",
-             app_transmit_protocol_name(effective->protocol),
-             (int)effective->protocol);
-        if (!app_transmit_v2_response_print(&reply_pkt, &response_status)) {
-          FAIL_SINGLE_PACKET("Failed to print response packet\n");
-        }
-
-        status = response_status;
-        break;
-      }
-      case KNOCK_PROTOCOL_V3: {
-        SharedKnockNormalizedUnit reply_normal = {0};
-
-        if (!app_transmit_m7mux_rehydrate_v3(&reply, &reply_user, &reply_normal)) {
-          FAIL_SINGLE_PACKET("Failed to rehydrate v3 response packet\n");
-        }
-
-        if (reply_normal.action_id != SL_KNOCK_RESPONSE_ACTION_ID) {
-          FAIL_SINGLE_PACKET("Received non-response packet on reply channel (action=%u)\n",
-                             (unsigned int)reply_normal.action_id);
-        }
-
-        if (reply_normal.user_id != send_user.user_id) {
-          FAIL_SINGLE_PACKET("Received response for unexpected user_id=%u\n",
-                             (unsigned int)reply_normal.user_id);
-        }
-
-        if (reply_normal.challenge != send_user.challenge) {
-          FAIL_SINGLE_PACKET("Received response for unexpected challenge=%u\n",
-                             (unsigned int)reply_normal.challenge);
-        }
-
-        if (reply_normal.payload_len < SL_KNOCK_RESPONSE_PAYLOAD_HEADER_SIZE) {
-          FAIL_SINGLE_PACKET("Received malformed response payload\n");
-        }
-
-        if (reply_normal.payload[1] != send_user.action_id) {
-          FAIL_SINGLE_PACKET("Received response for unexpected request action=%u\n",
-                             (unsigned int)reply_normal.payload[1]);
-        }
-
-        if (!app_transmit_v3_response_validate_signature(effective, &session, &reply_normal)) {
-          FAIL_SINGLE_PACKET("Response signature validation failed\n");
-        }
-
-        LOGI("Received response on %s (%d)\n",
-             app_transmit_protocol_name(effective->protocol),
-             (int)effective->protocol);
-        if (!app_transmit_v3_response_print(&reply_normal, &response_status)) {
-          FAIL_SINGLE_PACKET("Failed to print response packet\n");
-        }
-
-        status = response_status;
-        break;
-      }
-      default:
-        FAIL_SINGLE_PACKET("Unknown protocol selected\n");
     }
   } while (0);
 
@@ -1030,6 +1178,37 @@ static int app_transmit_v3_response_validate_signature(const Opts *opts,
   switch (opts->hmac_mode) {
     case HMAC_MODE_NORMAL:
       if (!shared_knock_digest_generate_v3_form1(normal, digest)) {
+        return 0;
+      }
+      return shared.knock.digest.validate(session->hmac_key, digest, normal->hmac);
+
+    case HMAC_MODE_DUMMY:
+      memset(dummy_hmac, 0x42, sizeof(dummy_hmac));
+      return memcmp(normal->hmac, dummy_hmac, sizeof(dummy_hmac)) == 0;
+
+    case HMAC_MODE_NONE:
+      return 1;
+
+    default:
+      break;
+  }
+
+  return 0;
+}
+
+static int app_transmit_v4_response_validate_signature(const Opts *opts,
+                                                       SiglatchOpenSSLSession *session,
+                                                       const SharedKnockNormalizedUnit *normal) {
+  uint8_t digest[32] = {0};
+  uint8_t dummy_hmac[sizeof(normal->hmac)] = {0};
+
+  if (!opts || !session || !normal) {
+    return 0;
+  }
+
+  switch (opts->hmac_mode) {
+    case HMAC_MODE_NORMAL:
+      if (!shared_knock_digest_generate_v4_form1(normal, digest)) {
         return 0;
       }
       return shared.knock.digest.validate(session->hmac_key, digest, normal->hmac);

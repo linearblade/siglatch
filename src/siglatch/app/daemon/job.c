@@ -173,7 +173,6 @@ static int app_job_load_from_normal(AppConnectionJob *job,
   app_job_release_job(job);
   memset(job, 0, sizeof(*job));
 
-  job->complete = normal->complete;
   job->should_reply = normal->should_reply;
   job->available = 1;
   job->synthetic_session = normal->synthetic_session;
@@ -251,12 +250,12 @@ static void app_job_state_reset(AppJobState *state) {
 }
 
 /*
- * Job storage is a simple ordered queue of complete app units.
+ * Job storage is a simple ordered queue of delivered app units.
  *
  * The runner hands this module normalized packets that already carry transport
  * identity and ordered payload bytes. job.enqueue() materializes one owned job
  * from each normalized packet so later app code can drain work without
- * redoing transport reassembly.
+ * redoing transport framing.
  */
 static int app_job_enqueue(AppJobState *state, const struct M7MuxRecvPacket *normal) {
   AppConnectionJob *slot = NULL;

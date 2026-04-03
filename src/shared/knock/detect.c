@@ -12,6 +12,7 @@
 #include "codec/v1/v1_packet.h"
 #include "codec/v2/v2_form1.h"
 #include "codec/v3/v3_form1.h"
+#include "codec/v4/v4_form1.h"
 
 #define SHARED_KNOCK_DETECT_V1_TIMESTAMP_FUZZ 300
 
@@ -89,6 +90,7 @@ int shared_knock_detect(const uint8_t *buf, size_t buflen, SharedKnockRoutingInf
   uint8_t form = 0;
   uint16_t wrapped_cek_len = 0;
   uint32_t ciphertext_len = 0;
+  size_t v4_expected_size = 0;
   size_t v3_expected_size = 0;
 
   if (!buf || !out) {
@@ -101,6 +103,37 @@ int shared_knock_detect(const uint8_t *buf, size_t buflen, SharedKnockRoutingInf
     magic = shared_knock_detect_read_u32_be(buf + 0);
     version = shared_knock_detect_read_u32_be(buf + 4);
     form = buf[8];
+
+    if (magic == SHARED_KNOCK_PREFIX_MAGIC &&
+        version == SHARED_KNOCK_CODEC_V4_WIRE_VERSION &&
+        form == SHARED_KNOCK_CODEC_FORM1_ID) {
+      wrapped_cek_len = shared_knock_detect_read_u16_be(buf + 9);
+      ciphertext_len = shared_knock_detect_read_u32_be(buf + 23);
+
+      if (wrapped_cek_len > SHARED_KNOCK_CODEC_V4_FORM1_CEK_MAX ||
+          wrapped_cek_len == 0u ||
+          ciphertext_len > SHARED_KNOCK_CODEC_V4_FORM1_BODY_MAX ||
+          ciphertext_len < SHARED_KNOCK_CODEC_V4_FORM1_BODY_FIXED_SIZE) {
+        return 0;
+      }
+
+      v4_expected_size = SHARED_KNOCK_CODEC_V4_FORM1_HEADER_SIZE +
+                         (size_t)wrapped_cek_len +
+                         (size_t)ciphertext_len +
+                         SHARED_KNOCK_CODEC_V4_FORM1_TAG_SIZE;
+
+      if (buflen != v4_expected_size) {
+        return 0;
+      }
+
+      out->kind = SHARED_KNOCK_ROUTE_V4_FORM1;
+      out->version = version;
+      out->form = form;
+      out->expected_packet_size = v4_expected_size;
+      out->exact_size_required = 1;
+      out->identified_by_prefix = 1;
+      return 1;
+    }
 
     if (magic == SHARED_KNOCK_PREFIX_MAGIC &&
         version == SHARED_KNOCK_CODEC_V3_WIRE_VERSION &&
@@ -184,6 +217,8 @@ const char *shared_knock_detect_kind_name(SharedKnockRouteKind kind) {
     return "v2-form1";
   case SHARED_KNOCK_ROUTE_V3_FORM1:
     return "v3-form1";
+  case SHARED_KNOCK_ROUTE_V4_FORM1:
+    return "v4-form1";
   case SHARED_KNOCK_ROUTE_UNKNOWN:
   default:
     return "unknown";

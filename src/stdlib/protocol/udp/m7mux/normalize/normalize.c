@@ -15,6 +15,7 @@ static int m7mux_normalize_set_context(const M7MuxContext *ctx);
 static void m7mux_normalize_shutdown(void);
 static int m7mux_normalize_packet(const M7MuxState *state,
                                   const M7MuxIngress *ingress,
+                                  M7MuxControl *control,
                                   M7MuxRecvPacket *out);
 static int m7mux_normalize_encryption_allowed(const M7MuxState *state, int encrypted);
 static void m7mux_normalize_configure_ingress_identity(const M7MuxState *state,
@@ -202,6 +203,7 @@ static void m7mux_normalize_shutdown(void) {
 
 static int m7mux_normalize_packet(const M7MuxState *state,
                                   const M7MuxIngress *ingress,
+                                  M7MuxControl *control,
                                   M7MuxRecvPacket *out) {
   const M7MuxNormalizeAdapter *adapter = NULL;
   M7MuxIngressIdentity identity = {0};
@@ -231,7 +233,7 @@ static int m7mux_normalize_packet(const M7MuxState *state,
           (unsigned)configured_ingress.client_port,
           configured_ingress.encrypted,
           configured_ingress.len);
-  if (!_instance.adapter.decode(&g_ctx, adapter, &configured_ingress, out)) {
+  if (!_instance.adapter.decode(&g_ctx, adapter, &configured_ingress, control, out)) {
     return m7mux_normalize_raw_copy(state, ingress, out);
   }
 
@@ -256,20 +258,11 @@ static int m7mux_normalize_packet(const M7MuxState *state,
     return 0;
   }
 
-  /*
-   * TODO: route this through the eventual codec/mux log hook instead of
-   * emitting directly to stderr.
-   *
-   * fprintf(stderr,
-   *         "[m7mux.normalize] structured decode complete via %s label=%s session=%llu stream=%u message=%llu payload=%zu wire_auth=%d\n",
-   *         adapter->name,
-   *         out->label,
-   *         (unsigned long long)out->session_id,
-   *         out->stream_id,
-   *         (unsigned long long)out->message_id,
-   *         configured_ingress.len,
-   *         out->wire_auth);
-   */
+  fprintf(stderr,
+          "[m7mux.normalize] structured route session=%llu stream=%u message=%llu\n",
+          (unsigned long long)out->session_id,
+          (unsigned)out->stream_id,
+          (unsigned long long)out->message_id);
   return 1;
 }
 

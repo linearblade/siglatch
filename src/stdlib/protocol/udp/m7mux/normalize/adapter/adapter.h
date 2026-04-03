@@ -13,6 +13,7 @@
 
 typedef struct M7MuxIngress M7MuxIngress;
 typedef struct M7MuxIngressIdentity M7MuxIngressIdentity;
+typedef struct M7MuxControl M7MuxControl;
 typedef struct M7MuxUserSendData M7MuxUserSendData;
 typedef struct M7MuxUserRecvData M7MuxUserRecvData;
 typedef struct M7MuxRecvPacket M7MuxRecvPacket;
@@ -27,6 +28,9 @@ typedef struct M7MuxNormalizeAdapter {
   M7MuxUserRecvData *(*alloc_user_recv_data)(void);
   void (*free_user_recv_data)(M7MuxUserRecvData *user);
   int (*copy_user_recv_data)(M7MuxUserRecvData *dst, const M7MuxUserRecvData *src);
+  size_t (*count_fragments)(const M7MuxContext *ctx,
+                            const void *state,
+                            const M7MuxSendPacket *send);
   int (*detect)(const M7MuxContext *ctx,
                 const void *state,
                 const M7MuxIngress *ingress,
@@ -34,11 +38,18 @@ typedef struct M7MuxNormalizeAdapter {
   int (*decode)(const M7MuxContext *ctx,
                 const void *state,
                 const M7MuxIngress *ingress,
+                M7MuxControl *control,
                 M7MuxRecvPacket *out);
   int (*encode)(const M7MuxContext *ctx,
                 const void *state,
                 const M7MuxSendPacket *send,
                 M7MuxEgressData *out);
+  int (*encode_fragment)(const M7MuxContext *ctx,
+                         const void *state,
+                         const M7MuxSendPacket *send,
+                         size_t fragment_index,
+                         size_t fragment_count,
+                         M7MuxEgressData *out);
   void *state;
   void *reserved;
 } M7MuxNormalizeAdapter;
@@ -57,6 +68,7 @@ typedef struct {
   int (*decode)(const M7MuxContext *ctx,
                 const M7MuxNormalizeAdapter *adapter,
                 const M7MuxIngress *ingress,
+                M7MuxControl *control,
                 M7MuxRecvPacket *out);
   int (*encode)(const M7MuxContext *ctx,
                 const M7MuxNormalizeAdapter *adapter,

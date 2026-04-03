@@ -147,9 +147,11 @@ SRC_SIGLATCHD = \
     src/shared/knock/codec/v1/v1.c \
     src/shared/knock/codec/v2/v2.c \
     src/shared/knock/codec/v3/v3.c \
+    src/shared/knock/codec/v4/v4.c \
     src/shared/knock/codec/v1/v1.c \
     src/shared/knock/codec/v2/v2.c \
     src/shared/knock/codec/v3/v3.c \
+    src/shared/knock/codec/v4/v4.c \
     src/stdlib/log.c \
     src/stdlib/hmac_key.c \
     src/stdlib/nonce.c \
@@ -215,9 +217,11 @@ SRC_KNOCKER = \
     src/shared/knock/codec/v1/v1.c \
     src/shared/knock/codec/v2/v2.c \
     src/shared/knock/codec/v3/v3.c \
+    src/shared/knock/codec/v4/v4.c \
     src/shared/knock/codec/v1/v1.c \
     src/shared/knock/codec/v2/v2.c \
     src/shared/knock/codec/v3/v3.c \
+    src/shared/knock/codec/v4/v4.c \
     src/stdlib/argv.c \
     src/stdlib/parse/ini.c \
     src/stdlib/parse/parse.c \

@@ -66,7 +66,7 @@ static int m7mux_normalize_adapter_register(const M7MuxNormalizeAdapter *adapter
   size_t i = 0;
 
   if (!adapter || !adapter->name || !adapter->detect ||
-      !adapter->decode || !adapter->encode ||
+      !adapter->count_fragments || !adapter->decode || !adapter->encode ||
       !adapter->alloc_user_recv_data || !adapter->free_user_recv_data ||
       !adapter->copy_user_recv_data) {
     return 0;
@@ -175,6 +175,7 @@ static const M7MuxNormalizeAdapter *m7mux_normalize_adapter_demux(const M7MuxCon
 static int m7mux_normalize_adapter_decode(const M7MuxContext *ctx,
                                           const M7MuxNormalizeAdapter *adapter,
                                           const M7MuxIngress *ingress,
+                                          M7MuxControl *control,
                                           M7MuxRecvPacket *out) {
   M7MuxUserRecvData *owned_user = NULL;
 
@@ -195,7 +196,7 @@ static int m7mux_normalize_adapter_decode(const M7MuxContext *ctx,
     out->user = owned_user;
   }
 
-  if (!adapter->decode(ctx, adapter->state, ingress, out)) {
+  if (!adapter->decode(ctx, adapter->state, ingress, control, out)) {
     if (owned_user) {
       adapter->free_user_recv_data(owned_user);
     }

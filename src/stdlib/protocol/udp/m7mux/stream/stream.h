@@ -12,13 +12,31 @@
 #include "../normalize/normalize.h"
 
 #define M7MUX_STREAM_READY_QUEUE_CAPACITY 64u
+#define M7MUX_STREAM_SESSION_TRACKER_CAPACITY 64u
+#define M7MUX_STREAM_TRACKER_CAPACITY 64u
 /* Temporary fixed policy until mux config becomes first-class. */
 #define M7MUX_STREAM_EXPIRE_AFTER_MS 30000u
 
 typedef struct {
+  uint32_t stream_id;
+  uint64_t next_message_id;
+  uint64_t message_id;
+  uint32_t next_fragment_index;
+  uint32_t fragment_count;
+  int active;
+} M7MuxStreamMessageTracker;
+
+typedef struct {
+  uint64_t session_id;
+  uint32_t next_stream_id;
+  int active;
+  M7MuxStreamMessageTracker stream_trackers[M7MUX_STREAM_TRACKER_CAPACITY];
+} M7MuxStreamSessionTracker;
+
+typedef struct {
   M7MuxRecvPacket ready_queue[M7MUX_STREAM_READY_QUEUE_CAPACITY];
   size_t ready_count;
-  uint64_t next_message_id;
+  M7MuxStreamSessionTracker session_trackers[M7MUX_STREAM_SESSION_TRACKER_CAPACITY];
   const M7MuxNormalizeAdapterLib *adapter_lib;
 } M7MuxStreamState;
 

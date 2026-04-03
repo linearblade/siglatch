@@ -15,6 +15,7 @@
 #include "codec/normalized.h"
 #include "codec/v2/v2_form1.h"
 #include "codec/v3/v3_form1.h"
+#include "codec/v4/v4_form1.h"
 
 typedef struct {
   const Logger *log;
@@ -37,6 +38,8 @@ int shared_knock_digest_generate_oneshot(const KnockPacket *pkt, uint8_t *out_di
 int shared_knock_digest_generate_v2_form1(const SharedKnockCodecV2Form1Packet *pkt,
                                           uint8_t *out_digest);
 int shared_knock_digest_generate_v3_form1(const SharedKnockNormalizedUnit *normal,
+                                          uint8_t *out_digest);
+int shared_knock_digest_generate_v4_form1(const SharedKnockNormalizedUnit *normal,
                                           uint8_t *out_digest);
 int shared_knock_digest_sign(
     const uint8_t *hmac_key,

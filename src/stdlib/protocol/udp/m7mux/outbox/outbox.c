@@ -7,6 +7,7 @@
 
 #include "../internal.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 static M7MuxContext g_ctx = {0};
@@ -69,9 +70,16 @@ static const M7MuxNormalizeAdapter *m7mux_outbox_select_adapter(const M7MuxSendP
   return g_ctx.internal->normalize->adapter.lookup_adapter_wire_version(send->wire_version);
 }
 
-static int m7mux_outbox_stage(M7MuxState *state, const M7MuxSendPacket *send) {
+static int m7mux_outbox_stage_common(M7MuxState *state,
+                                     const M7MuxSendPacket *send,
+                                     size_t force_fragment_count) {
   const M7MuxNormalizeAdapter *adapter = NULL;
   M7MuxEgressData serialized = {0};
+  M7MuxEgressData *fragments = NULL;
+  size_t fragment_count = 0u;
+  size_t available_slots = 0u;
+  size_t i = 0u;
+  int use_forced_fragments = 0;
 
   if (!state || !send) {
     return 0;
@@ -86,15 +94,86 @@ static int m7mux_outbox_stage(M7MuxState *state, const M7MuxSendPacket *send) {
     return 0;
   }
 
-  if (!g_ctx.internal->normalize->adapter.encode(&g_ctx, adapter, send, &serialized)) {
+  use_forced_fragments = (force_fragment_count > 1u) ? 1 : 0;
+  if (use_forced_fragments) {
+    fragment_count = force_fragment_count;
+  } else {
+    fragment_count = adapter->count_fragments(&g_ctx, adapter->state, send);
+  }
+  if (fragment_count == 0u) {
     return 0;
   }
 
-  if (!g_ctx.internal->egress->stage(&state->egress, &serialized)) {
+  if (state->egress.count >= M7MUX_EGRESS_QUEUE_CAPACITY) {
     return 0;
   }
 
+  available_slots = M7MUX_EGRESS_QUEUE_CAPACITY - state->egress.count;
+  if (fragment_count > available_slots) {
+    return 0;
+  }
+
+  if (fragment_count == 1u) {
+    if (!g_ctx.internal->normalize->adapter.encode(&g_ctx, adapter, send, &serialized)) {
+      return 0;
+    }
+
+    if (!g_ctx.internal->egress->stage(&state->egress, &serialized)) {
+      return 0;
+    }
+
+    return 1;
+  }
+
+  if (!adapter->encode_fragment) {
+    return 0;
+  }
+
+  fragments = (M7MuxEgressData *)calloc(fragment_count, sizeof(*fragments));
+  if (!fragments) {
+    return 0;
+  }
+
+  for (i = 0u; i < fragment_count; ++i) {
+    M7MuxSendPacket fragment_send = *send;
+
+    fragment_send.fragment_index = (uint32_t)i;
+    fragment_send.fragment_count = (uint32_t)fragment_count;
+
+    if (!adapter->encode_fragment(&g_ctx,
+                                  adapter->state,
+                                  &fragment_send,
+                                  i,
+                                  use_forced_fragments ? force_fragment_count : 0u,
+                                  &fragments[i])) {
+      free(fragments);
+      return 0;
+    }
+  }
+
+  for (i = 0u; i < fragment_count; ++i) {
+    if (!g_ctx.internal->egress->stage(&state->egress, &fragments[i])) {
+      free(fragments);
+      return 0;
+    }
+  }
+
+  free(fragments);
   return 1;
+}
+
+static int m7mux_outbox_stage(M7MuxState *state, const M7MuxSendPacket *send) {
+  return m7mux_outbox_stage_common(state, send, 0u);
+}
+
+static int m7mux_outbox_stage_fragments(M7MuxState *state,
+                                        const M7MuxSendPacket *send,
+                                        size_t fragment_count) {
+  if (fragment_count <= 1u) {
+    return m7mux_outbox_stage(state, send);
+  }
+
+  return m7mux_outbox_stage_common(state, send, fragment_count);
 }
 
 static int m7mux_outbox_stage_bytes(M7MuxState *state, const M7MuxSendBytesPacket *send_bytes) {
@@ -145,6 +224,7 @@ static const M7MuxOutboxLib _instance = {
   .state_reset = m7mux_outbox_state_reset,
   .has_pending = m7mux_outbox_has_pending,
   .stage = m7mux_outbox_stage,
+  .stage_fragments = m7mux_outbox_stage_fragments,
   .stage_bytes = m7mux_outbox_stage_bytes,
   .flush = m7mux_outbox_flush
 };

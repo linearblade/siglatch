@@ -23,8 +23,20 @@ struct M7MuxIngressIdentity {
 #define M7MUX_NORMALIZED_PACKET_BUFFER_SIZE 1024u
 
 typedef struct M7MuxState M7MuxState;
+typedef struct M7MuxControl M7MuxControl;
 typedef struct M7MuxUserSendData M7MuxUserSendData;
 typedef struct M7MuxUserRecvData M7MuxUserRecvData;
+
+/*
+ * Implemented but inert for now.
+ * Future control ideas: terminate stream, request ACK, reset/cancel,
+ * end-of-message, fragmentation state, retransmit/keepalive hints,
+ * stream type / handshake metadata.
+ */
+typedef struct M7MuxControl {
+  uint8_t stream_type;
+  uint8_t session_by_client;
+} M7MuxControl;
 
 typedef struct M7MuxRecvPacket {
   int complete;
@@ -94,7 +106,10 @@ typedef struct {
   int (*init)(const M7MuxContext *ctx);
   int (*set_context)(const M7MuxContext *ctx);
   void (*shutdown)(void);
-  int (*normalize)(const M7MuxState *state, const M7MuxIngress *ingress, M7MuxRecvPacket *out);
+  int (*normalize)(const M7MuxState *state,
+                   const M7MuxIngress *ingress,
+                   M7MuxControl *control,
+                   M7MuxRecvPacket *out);
 } M7MuxNormalizeLib;
 
 const M7MuxNormalizeLib *get_protocol_udp_m7mux_normalize_lib(void);

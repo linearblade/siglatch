@@ -20,7 +20,13 @@ static const SharedCodecLib shared_knock_codec = {
   },
   .v1 = shared_knock_codec_v1_get_adapter,
   .v2 = shared_knock_codec_v2_get_adapter,
-  .v3 = shared_knock_codec_v3_get_adapter
+  .v3 = shared_knock_codec_v3_get_adapter,
+  .v4 = shared_knock_codec_v4_get_adapter,
+  .v1_count_fragments = shared_knock_codec_v1_count_fragments,
+  .v2_count_fragments = shared_knock_codec_v2_count_fragments,
+  .v3_count_fragments = shared_knock_codec_v3_count_fragments,
+  .v4_count_fragments = shared_knock_codec_v4_count_fragments,
+  .v4_encode_fragment = shared_knock_codec_v4_encode_fragment
 };
 
 const SharedCodecLib *get_shared_knock_codec_lib(void) {

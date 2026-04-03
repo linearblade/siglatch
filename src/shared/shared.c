@@ -42,6 +42,7 @@ int init_shared(const SharedContext *ctx) {
       !shared.knock.codec.context.set_openssl_session || !shared.knock.codec.context.clear_openssl_session ||
       !shared.knock.codec.context.add_keychain || !shared.knock.codec.context.remove_keychain ||
       !shared.knock.codec.v1 || !shared.knock.codec.v2 || !shared.knock.codec.v3 ||
+      !shared.knock.codec.v4 ||
       !shared.knock.debug.init || !shared.knock.debug.shutdown ||
       !shared.knock.debug.dump_packet_fields ||
       !shared.knock.detect.init || !shared.knock.detect.shutdown ||

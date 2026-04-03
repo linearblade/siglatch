@@ -12,6 +12,7 @@
 typedef struct SharedKnockCodecContext SharedKnockCodecContext;
 typedef struct M7MuxIngress M7MuxIngress;
 typedef struct M7MuxIngressIdentity M7MuxIngressIdentity;
+typedef struct M7MuxControl M7MuxControl;
 typedef struct M7MuxNormalizeAdapter M7MuxNormalizeAdapter;
 typedef struct M7MuxUserSendData M7MuxUserSendData;
 typedef struct M7MuxUserRecvData M7MuxUserRecvData;
@@ -32,6 +33,7 @@ typedef struct SharedKnockCodecBarrel {
                 M7MuxIngressIdentity *identity);
   int (*decode)(const void *state,
                 const M7MuxIngress *ingress,
+                M7MuxControl *control,
                 M7MuxUserRecvData *out);
   int (*wire_auth)(const void *state,
                    const M7MuxIngress *ingress,

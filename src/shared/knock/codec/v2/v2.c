@@ -445,15 +445,35 @@ static int shared_knock_codec_v2_adapter_detect(const M7MuxContext *ctx,
   return shared_knock_codec_v2_detect((const SharedKnockCodecV2State *)state, ingress, identity);
 }
 
+static size_t shared_knock_codec_v2_adapter_count_fragments(const M7MuxContext *ctx,
+                                                            const void *state,
+                                                            const M7MuxSendPacket *send) {
+  SharedKnockNormalizedUnit normal = {0};
+
+  (void)ctx;
+
+  if (!shared_knock_codec_v2_copy_send_packet(send, &normal)) {
+    return 0u;
+  }
+
+  return shared_knock_codec_v2_count_fragments((const SharedKnockCodecV2State *)state,
+                                               &normal,
+                                               0u);
+}
+
 static int shared_knock_codec_v2_adapter_decode(const M7MuxContext *ctx,
                                                  const void *state,
                                                  const M7MuxIngress *ingress,
+                                                 M7MuxControl *control,
                                                  M7MuxRecvPacket *out) {
   SharedKnockNormalizedUnit normal = {0};
 
   (void)ctx;
 
-  if (!shared_knock_codec_v2_decode((const SharedKnockCodecV2State *)state, ingress, &normal)) {
+  if (!shared_knock_codec_v2_decode((const SharedKnockCodecV2State *)state,
+                                     ingress,
+                                     control,
+                                     &normal)) {
     return 0;
   }
 
@@ -499,6 +519,7 @@ static const M7MuxNormalizeAdapter shared_knock_codec_v2_adapter = {
   .alloc_user_recv_data = shared_knock_codec_v2_alloc_user_recv_data,
   .free_user_recv_data = shared_knock_codec_v2_free_user_recv_data,
   .copy_user_recv_data = shared_knock_codec_v2_copy_user_recv_data,
+  .count_fragments = shared_knock_codec_v2_adapter_count_fragments,
   .detect = shared_knock_codec_v2_adapter_detect,
   .decode = shared_knock_codec_v2_adapter_decode,
   .encode = shared_knock_codec_v2_adapter_encode,
@@ -643,8 +664,29 @@ int shared_knock_codec_v2_detect(const void *state_,
   return 1;
 }
 
+size_t shared_knock_codec_v2_count_fragments(const void *state_,
+                                             const SharedKnockNormalizedUnit *normal,
+                                             size_t force_fragment_count) {
+  const SharedKnockCodecV2State *state = (const SharedKnockCodecV2State *)state_;
+  size_t payload_len = 0u;
+
+  (void)state;
+
+  if (!normal) {
+    return 0u;
+  }
+
+  if (force_fragment_count > 0u && force_fragment_count != 1u) {
+    return 0u;
+  }
+
+  payload_len = normal->payload_len;
+  return (payload_len <= SHARED_KNOCK_CODEC_V2_FORM1_PAYLOAD_MAX) ? 1u : 0u;
+}
+
 int shared_knock_codec_v2_decode(const void *state_,
                                  const struct M7MuxIngress *ingress,
+                                 M7MuxControl *control,
                                  SharedKnockNormalizedUnit *out) {
   const SharedKnockCodecV2State *state = (const SharedKnockCodecV2State *)state_;
   const uint8_t *payload = NULL;
@@ -661,6 +703,8 @@ int shared_knock_codec_v2_decode(const void *state_,
   if (!state || !out || !ingress) {
     return 0;
   }
+
+  (void)control;
 
   buf = ingress->buffer;
   buflen = ingress->len;
@@ -779,7 +823,7 @@ static int shared_knock_codec_v2_copy_send_packet(const M7MuxSendPacket *src,
   }
 
   memset(dst, 0, sizeof(*dst));
-  dst->complete = 1;
+  dst->complete = (src->fragment_count == 0u) ? 1 : ((src->fragment_index + 1u) >= src->fragment_count);
   dst->wire_version = src->wire_version;
   dst->wire_form = src->wire_form;
   dst->session_id = src->session_id;

@@ -1,0 +1,73 @@
+/*
+ * Copyright (c) 2025 m7.org
+ * License: MTL-10 (see LICENSE.md)
+ */
+
+#ifndef SIGLATCH_SHARED_KNOCK_CODEC_V4_H
+#define SIGLATCH_SHARED_KNOCK_CODEC_V4_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include "../context.h"
+#include "../normalized.h"
+#include "../../../../stdlib/protocol/udp/m7mux/barrel.h"
+#include "v4_inner.h"
+#include "v4_form1.h"
+
+typedef struct SharedKnockCodecV4State SharedKnockCodecV4State;
+struct M7MuxIngress;
+struct M7MuxNormalizeAdapter;
+typedef struct M7MuxIngressIdentity M7MuxIngressIdentity;
+
+#ifndef SL_PAYLOAD_OK
+#define SL_PAYLOAD_OK 0
+#define SL_PAYLOAD_ERR_NULL_PTR -1
+#define SL_PAYLOAD_ERR_UNPACK -2
+#define SL_PAYLOAD_ERR_VALIDATE -3
+#define SL_PAYLOAD_ERR_OVERFLOW -4
+#endif
+
+int shared_knock_codec_v4_create_state(void **out_state);
+void shared_knock_codec_v4_destroy_state(void *state);
+M7MuxUserRecvData *shared_knock_codec_v4_alloc_user_recv_data(void);
+void shared_knock_codec_v4_free_user_recv_data(M7MuxUserRecvData *user);
+int shared_knock_codec_v4_init(const SharedKnockCodecContext *context);
+void shared_knock_codec_v4_shutdown(void);
+int shared_knock_codec_v4_detect(const void *state,
+                                 const struct M7MuxIngress *ingress,
+                                 M7MuxIngressIdentity *identity);
+size_t shared_knock_codec_v4_count_fragments(const void *state,
+                                             const SharedKnockNormalizedUnit *normal,
+                                             size_t force_fragment_count);
+int shared_knock_codec_v4_decode(const void *state,
+                                 const struct M7MuxIngress *ingress,
+                                 M7MuxControl *control,
+                                 SharedKnockNormalizedUnit *out);
+int shared_knock_codec_v4_wire_auth(const void *state,
+                                    const struct M7MuxIngress *ingress,
+                                    SharedKnockNormalizedUnit *normal);
+int shared_knock_codec_v4_encode(const void *state,
+                                 const SharedKnockNormalizedUnit *normal,
+                                 uint8_t *out_buf,
+                                 size_t *out_len);
+int shared_knock_codec_v4_encode_fragment(const void *state,
+                                          const SharedKnockNormalizedUnit *normal,
+                                          size_t fragment_index,
+                                          size_t force_fragment_count,
+                                          uint8_t *out_buf,
+                                          size_t *out_len);
+int shared_knock_codec_v4_pack(const void *pkt,
+                               uint8_t *out_buf,
+                               size_t maxlen);
+int shared_knock_codec_v4_unpack(const uint8_t *buf,
+                                 size_t buflen,
+                                 void *pkt);
+int shared_knock_codec_v4_validate(const void *pkt);
+int shared_knock_codec_v4_deserialize(const uint8_t *decrypted_buffer,
+                                      size_t decrypted_len,
+                                      void *pkt);
+const char *shared_knock_codec_v4_deserialize_strerror(int code);
+const struct M7MuxNormalizeAdapter *shared_knock_codec_v4_get_adapter(void);
+
+#endif /* SIGLATCH_SHARED_KNOCK_CODEC_V4_H */

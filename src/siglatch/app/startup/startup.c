@@ -31,6 +31,7 @@ static void app_startup_shutdown(void) {
     return;
   }
 
+  shared_knock_codec_v4_shutdown();
   shared_knock_codec_v3_shutdown();
   shared_knock_codec_v2_shutdown();
   shared_knock_codec_v1_shutdown();
@@ -161,7 +162,7 @@ static int app_startup_register_codec_modules(const AppWorkspace *workspace) {
   }
 
   codec = &shared.knock.codec;
-  if (!codec || !codec->v1 || !codec->v2 || !codec->v3) {
+  if (!codec || !codec->v1 || !codec->v2 || !codec->v3 || !codec->v4) {
     LOGE("Codec module registry unavailable\n");
     return 0;
   }
@@ -184,10 +185,18 @@ static int app_startup_register_codec_modules(const AppWorkspace *workspace) {
     return 0;
   }
 
+  if (!shared_knock_codec_v4_init(workspace->codec_context)) {
+    LOGE("Failed to initialize codec.v4\n");
+    shared_knock_codec_v3_shutdown();
+    shared_knock_codec_v2_shutdown();
+    shared_knock_codec_v1_shutdown();
+    return 0;
+  }
+
   {
     const M7MuxNormalizeLib *normalize = NULL;
     const M7MuxNormalizeAdapter *adapter = NULL;
-    const char *registered_names[3] = {0};
+    const char *registered_names[4] = {0};
     size_t registered_count = 0u;
 
     normalize = get_protocol_udp_m7mux_normalize_lib();
@@ -218,6 +227,12 @@ static int app_startup_register_codec_modules(const AppWorkspace *workspace) {
     }
     registered_names[registered_count++] = adapter->name;
 
+    adapter = codec->v4 ? codec->v4() : NULL;
+    if (!adapter || !normalize->adapter.register_adapter(adapter)) {
+      goto fail_unregister_adapters;
+    }
+    registered_names[registered_count++] = adapter->name;
+
     return 1;
 
   fail_unregister_adapters:
@@ -228,6 +243,7 @@ static int app_startup_register_codec_modules(const AppWorkspace *workspace) {
       }
     }
 
+    shared_knock_codec_v4_shutdown();
     shared_knock_codec_v3_shutdown();
     shared_knock_codec_v2_shutdown();
     shared_knock_codec_v1_shutdown();

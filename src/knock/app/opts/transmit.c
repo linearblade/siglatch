@@ -27,6 +27,7 @@ enum {
   OPT_ID_DUMMY_HMAC,
   OPT_ID_NO_ENCRYPT,
   OPT_ID_DEAD_DROP,
+  OPT_ID_FRAGMENT,
   OPT_ID_SEND_FROM,
   OPT_ID_VERBOSE,
   OPT_ID_LOG,
@@ -46,6 +47,7 @@ static const ArgvOptionSpec option_specs[] = {
   { "--dummy-hmac",  OPT_ID_DUMMY_HMAC,  0, ARGV_OPT_FLAG,  0, 0, 1 },
   { "--no-encrypt",  OPT_ID_NO_ENCRYPT,  0, ARGV_OPT_FLAG,  0, 0, 1 },
   { "--dead-drop",   OPT_ID_DEAD_DROP,   0, ARGV_OPT_FLAG,  0, 0, 1 },
+  { "--fragment",    OPT_ID_FRAGMENT,    1, ARGV_OPT_KEYED, 0, 0, 1 },
   { "--send-from",   OPT_ID_SEND_FROM,   1, ARGV_OPT_KEYED, 0, 0, 1 },
   { "--verbose",     OPT_ID_VERBOSE,     1, ARGV_OPT_KEYED, 0, 0, 1 },
   { "--log",         OPT_ID_LOG,         1, ARGV_OPT_KEYED, 0, 0, 1 },
@@ -126,6 +128,25 @@ static int app_opts_transmit_parse_numeric_id(const char *value,
   return 1;
 }
 
+static int app_opts_transmit_parse_fragment(const ArgvParsedOption *opt,
+                                           Opts *out,
+                                           AppCommand *cmd) {
+  uint32_t fragment_count = 0u;
+
+  if (!opt || !out || !cmd) {
+    return 0;
+  }
+
+  if (!app_opts_transmit_parse_numeric_id(opt->args[1], 1u, UINT32_MAX, &fragment_count)) {
+    return app_opts_transmit_set_error(cmd, 2,
+                                       "Invalid --fragment count (expected positive integer)");
+  }
+
+  out->fragment_index = 0u;
+  out->fragment_count = fragment_count;
+  return 1;
+}
+
 static const char *app_opts_response_type_name(OptsResponseType value) {
   int idx = (int)value;
   int limit = (int)(sizeof(opts_response_type_names) / sizeof(opts_response_type_names[0]));
@@ -145,6 +166,8 @@ static const char *app_opts_protocol_name(KnockProtocol protocol) {
       return "v2";
     case KNOCK_PROTOCOL_V3:
       return "v3";
+    case KNOCK_PROTOCOL_V4:
+      return "v4";
     default:
       return "unknown";
   }
@@ -245,19 +268,24 @@ static int app_opts_transmit_validate(Opts *opts, AppCommand *cmd) {
     opts->hmac_mode = HMAC_MODE_NONE;
   }
 
-  if (opts->protocol == KNOCK_PROTOCOL_V3) {
+  if (opts->fragment_count == 0u) {
+    app_opts_transmit_set_error(cmd, 2, "Invalid fragment count");
+    valid = 0;
+  }
+
+  if (opts->protocol == KNOCK_PROTOCOL_V3 || opts->protocol == KNOCK_PROTOCOL_V4) {
     if (!opts->encrypt) {
-      app_opts_transmit_set_error(cmd, 2, "Protocol v3 requires encryption");
+      app_opts_transmit_set_error(cmd, 2, "Protocol v3/v4 requires encryption");
       valid = 0;
     }
 
     if (opts->hmac_mode != HMAC_MODE_NORMAL) {
-      app_opts_transmit_set_error(cmd, 2, "Protocol v3 requires normal HMAC signing");
+      app_opts_transmit_set_error(cmd, 2, "Protocol v3/v4 requires normal HMAC signing");
       valid = 0;
     }
 
     if (opts->dead_drop) {
-      app_opts_transmit_set_error(cmd, 2, "Protocol v3 does not support dead-drop mode");
+      app_opts_transmit_set_error(cmd, 2, "Protocol v3/v4 does not support dead-drop mode");
       valid = 0;
     }
   }
@@ -290,7 +318,8 @@ static int app_opts_transmit_apply_parsed(const ArgvParsed *parsed, Opts *out, A
       static const ArgvEnumMap protocol_map[] = {
         { "v1", KNOCK_PROTOCOL_V1 },
         { "v2", KNOCK_PROTOCOL_V2 },
-        { "v3", KNOCK_PROTOCOL_V3 }
+        { "v3", KNOCK_PROTOCOL_V3 },
+        { "v4", KNOCK_PROTOCOL_V4 }
       };
       int protocol = 0;
 
@@ -298,7 +327,7 @@ static int app_opts_transmit_apply_parsed(const ArgvParsed *parsed, Opts *out, A
                              sizeof(protocol_map) / sizeof(protocol_map[0]),
                              &protocol, &parse_err)) {
         snprintf(message, sizeof(message),
-                 "Invalid protocol: %s (expected 'v1', 'v2', or 'v3')",
+                 "Invalid protocol: %s (expected 'v1', 'v2', 'v3', or 'v4')",
                  lib.argv.option_value(opt, 0) ? lib.argv.option_value(opt, 0) : "(null)");
         return app_opts_transmit_set_error(cmd, 2, message);
       }
@@ -322,6 +351,11 @@ static int app_opts_transmit_apply_parsed(const ArgvParsed *parsed, Opts *out, A
       break;
     case OPT_ID_DEAD_DROP:
       out->dead_drop = 1;
+      break;
+    case OPT_ID_FRAGMENT:
+      if (!app_opts_transmit_parse_fragment(opt, out, cmd)) {
+        return 0;
+      }
       break;
     case OPT_ID_SEND_FROM:
       strncpy(out->send_from_ip, opt->args[1], sizeof(out->send_from_ip) - 1);
@@ -438,6 +472,7 @@ static void app_opts_transmit_dump(const Opts *opts) {
   lib.print.uc_printf(NULL, "  Protocol         : %s\n", app_opts_protocol_name(opts->protocol));
   lib.print.uc_printf(NULL, "  Encrypt Payload  : %s\n", opts->encrypt ? "Yes" : "No");
   lib.print.uc_printf(NULL, "  Dead Drop        : %s\n", opts->dead_drop ? "Yes" : "No");
+  lib.print.uc_printf(NULL, "  Fragment Count   : %u\n", (unsigned)opts->fragment_count);
   lib.print.uc_printf(NULL, "  Stdin Requested  : %s\n", opts->stdin_requested ? "Yes" : "No");
   lib.print.uc_printf(NULL, "  Output Mode      : %s\n",
                       opts->output_mode ? lib.print.output_mode_name(opts->output_mode)
@@ -482,6 +517,8 @@ static int app_opts_transmit_parse(const char *mode_selector, const ArgvParsed *
   opts_out->hmac_mode = HMAC_MODE_NORMAL;
   opts_out->protocol = KNOCK_PROTOCOL_V1;
   opts_out->encrypt = 1;
+  opts_out->fragment_count = 1u;
+  opts_out->fragment_index = 0u;
   opts_out->verbose = 3;
   opts_out->output_mode = 0;
 

@@ -23,7 +23,8 @@ typedef enum {
 typedef enum {
   KNOCK_PROTOCOL_V1 = 1,
   KNOCK_PROTOCOL_V2 = 2,
-  KNOCK_PROTOCOL_V3 = 3
+  KNOCK_PROTOCOL_V3 = 3,
+  KNOCK_PROTOCOL_V4 = 4
 } KnockProtocol;
 
 typedef enum {
@@ -60,6 +61,8 @@ typedef struct {
 
   uint32_t user_id;
   uint32_t action_id;
+  uint32_t fragment_index;
+  uint32_t fragment_count;
   uint8_t payload[MAX_PAYLOAD_SIZE];
   size_t payload_len;
 

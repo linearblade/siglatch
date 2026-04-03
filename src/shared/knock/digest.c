@@ -214,6 +214,49 @@ int shared_knock_digest_generate_v3_form1(const SharedKnockNormalizedUnit *norma
   return g_shared_knock_digest_ctx.openssl->digest_array(items, item_count, out_digest);
 }
 
+int shared_knock_digest_generate_v4_form1(const SharedKnockNormalizedUnit *normal,
+                                          uint8_t *out_digest) {
+  DigestItem items[] = {
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0},
+    {NULL, 0}
+  };
+  size_t item_count = 0;
+
+  if (!normal || !out_digest || !g_shared_knock_digest_ctx.openssl) {
+    return 0;
+  }
+
+  if (normal->wire_version != SHARED_KNOCK_CODEC_V4_WIRE_VERSION) {
+    return 0;
+  }
+
+  if (normal->wire_form != SHARED_KNOCK_CODEC_FORM1_ID) {
+    return 0;
+  }
+
+  if (normal->payload_len > sizeof(normal->payload)) {
+    return 0;
+  }
+
+  items[0] = (DigestItem){&normal->wire_version, sizeof(normal->wire_version)};
+  items[1] = (DigestItem){&normal->wire_form, sizeof(normal->wire_form)};
+  items[2] = (DigestItem){&normal->timestamp, sizeof(normal->timestamp)};
+  items[3] = (DigestItem){&normal->user_id, sizeof(normal->user_id)};
+  items[4] = (DigestItem){&normal->action_id, sizeof(normal->action_id)};
+  items[5] = (DigestItem){&normal->challenge, sizeof(normal->challenge)};
+  items[6] = (DigestItem){&normal->payload_len, sizeof(normal->payload_len)};
+  items[7] = (DigestItem){normal->payload, normal->payload_len};
+  item_count = sizeof(items) / sizeof(items[0]);
+
+  return g_shared_knock_digest_ctx.openssl->digest_array(items, item_count, out_digest);
+}
+
 int shared_knock_digest_sign(
     const uint8_t *hmac_key,
     const uint8_t *digest,

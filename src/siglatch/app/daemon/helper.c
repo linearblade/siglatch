@@ -19,43 +19,6 @@ static int app_daemon_helper_init(void) {
 static void app_daemon_helper_shutdown(void) {
 }
 
-static int app_daemon_copy_job_to_knock_packet(const AppConnectionJob *job,
-                                                KnockPacket *out_pkt) {
-  if (!job || !out_pkt) {
-    return 0;
-  }
-
-  if ((job->request.payload_len > 0u && !job->request.payload_buffer) ||
-      job->request.payload_len > sizeof(out_pkt->payload)) {
-    return 0;
-  }
-
-  memset(out_pkt, 0, sizeof(*out_pkt));
-
-  /*
-   * //$fixup - legacy shim to keep older request-side helpers working while
-   * // they still depend on KnockPacket. Payload sizing will need repair once
-   * // the last packet-shaped consumers are removed.
-   *
-   * The current app-side consume path still speaks the legacy flat knock
-   * packet contract. The listener normalizer gives us versioned transport
-   * metadata, but the app semantics are still expressed through v1 fields.
-   */
-  out_pkt->version = 1u;
-  out_pkt->timestamp = job->timestamp;
-  out_pkt->user_id = job->request.user_id;
-  out_pkt->action_id = job->request.action_id;
-  out_pkt->challenge = job->request.challenge;
-  memcpy(out_pkt->hmac, job->request.hmac, sizeof(out_pkt->hmac));
-  out_pkt->payload_len = (uint16_t)job->request.payload_len;
-
-  if (job->request.payload_len > 0u) {
-    memcpy(out_pkt->payload, job->request.payload_buffer, job->request.payload_len);
-  }
-
-  return 1;
-}
-
 static int app_daemon_copy_job_reply_to_send(const AppConnectionJob *job,
                                               M7MuxSendPacket *out_send,
                                               M7MuxUserSendData *out_user) {
@@ -77,10 +40,20 @@ static int app_daemon_copy_job_reply_to_send(const AppConnectionJob *job,
   out_send->wire_form = job->wire_form;
   out_send->received_ms = job->timestamp;
   out_send->session_id = job->session_id;
-  out_send->message_id = job->message_id;
+  /*
+   * Keep reply packets distinct in the transport queue.
+   * The request tuple may be shared by multiple fragment jobs, so reply
+   * message ids are offset by the inbound fragment index.
+   */
+  out_send->message_id = job->message_id + (uint64_t)job->fragment_index;
   out_send->stream_id = job->stream_id;
-  out_send->fragment_index = job->fragment_index;
-  out_send->fragment_count = job->fragment_count;
+  /*
+   * Replies are singular packets for now.
+   * Fragment metadata belongs to the inbound request path and should not be
+   * inherited by response envelopes.
+   */
+  out_send->fragment_index = 0u;
+  out_send->fragment_count = 1u;
   out_send->timestamp = job->timestamp;
   memcpy(out_send->ip, job->ip, sizeof(out_send->ip));
   out_send->ip[sizeof(out_send->ip) - 1] = '\0';
@@ -111,7 +84,6 @@ static uint64_t app_daemon_time_until_ms(uint64_t next_tick_at, uint64_t now_ms)
 static const AppDaemonHelperLib app_daemon_helper_instance = {
   .init = app_daemon_helper_init,
   .shutdown = app_daemon_helper_shutdown,
-  .copy_job_to_knock_packet = app_daemon_copy_job_to_knock_packet,
   .copy_job_reply_to_send = app_daemon_copy_job_reply_to_send,
   .time_until_ms = app_daemon_time_until_ms
 };

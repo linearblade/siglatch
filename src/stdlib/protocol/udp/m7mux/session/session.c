@@ -5,6 +5,7 @@
 
 #include "session.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "../../../../../siglatch/lib.h"
@@ -22,6 +23,39 @@ static M7MuxSession *m7mux_session_find(M7MuxSessionState *state,
         state->sessions[i].session_id == session_id) {
       return &state->sessions[i];
     }
+  }
+
+  return NULL;
+}
+
+static M7MuxSession *m7mux_session_find_by_client_session(M7MuxSessionState *state,
+                                                          uint64_t client_session_id,
+                                                          uint32_t wire_version,
+                                                          uint8_t wire_form) {
+  size_t i = 0;
+
+  if (!state || client_session_id == 0u) {
+    return NULL;
+  }
+
+  for (i = 0; i < M7MUX_SESSION_SESSION_CAPACITY; ++i) {
+    if (!state->sessions[i].active) {
+      continue;
+    }
+
+    if (state->sessions[i].client_session_id != client_session_id) {
+      continue;
+    }
+
+    if (state->sessions[i].wire_version != wire_version) {
+      continue;
+    }
+
+    if (state->sessions[i].wire_form != wire_form) {
+      continue;
+    }
+
+    return &state->sessions[i];
   }
 
   return NULL;
@@ -77,17 +111,45 @@ static void m7mux_session_clear(M7MuxSessionState *state,
 }
 
 static int m7mux_session_register(M7MuxSessionState *state,
-                                           const M7MuxRecvPacket *normal,
+                                           const M7MuxControl *control,
+                                           M7MuxRecvPacket *normal,
                                            M7MuxSession **out_session) {
   size_t i = 0;
+  int client_owned_session = 0;
+  M7MuxSession *session = NULL;
 
   if (!state || !normal || !out_session) {
     return 0;
   }
 
   *out_session = NULL;
+  client_owned_session = (control && control->session_by_client != 0u);
 
-  if (normal->session_id != 0) {
+  if (client_owned_session) {
+    session = m7mux_session_find_by_client_session(state,
+                                                   normal->session_id,
+                                                   normal->wire_version,
+                                                   normal->wire_form);
+    if (session) {
+      session->wire_version = normal->wire_version;
+      session->wire_form = normal->wire_form;
+      memcpy(session->ip, normal->ip, sizeof(session->ip));
+      session->ip[sizeof(session->ip) - 1] = '\0';
+      session->client_port = normal->client_port;
+      session->encrypted = normal->encrypted;
+      if (normal->session_id != session->session_id) {
+        fprintf(stderr,
+                "[m7mux.session] client session=%llu mapped to server session=%llu\n",
+                (unsigned long long)normal->session_id,
+                (unsigned long long)session->session_id);
+      }
+      normal->session_id = session->session_id;
+      *out_session = session;
+      return 1;
+    }
+  }
+
+  if (!client_owned_session && normal->session_id != 0) {
     *out_session = m7mux_session_find(state, normal->session_id);
     if (*out_session) {
       (*out_session)->wire_version = normal->wire_version;
@@ -114,7 +176,23 @@ static int m7mux_session_register(M7MuxSessionState *state,
   for (i = 0; i < M7MUX_SESSION_SESSION_CAPACITY; ++i) {
     if (!state->sessions[i].active) {
       memset(&state->sessions[i], 0, sizeof(state->sessions[i]));
-      state->sessions[i].session_id = normal->session_id != 0 ? normal->session_id : state->next_session_id++;
+      if (client_owned_session) {
+        state->sessions[i].session_id = state->next_session_id++;
+        state->sessions[i].client_session_id = normal->session_id != 0u
+                                                   ? normal->session_id
+                                                   : state->sessions[i].session_id;
+        normal->session_id = state->sessions[i].session_id;
+        if (normal->session_id != state->sessions[i].client_session_id) {
+          fprintf(stderr,
+                  "[m7mux.session] client session=%llu mapped to server session=%llu\n",
+                  (unsigned long long)state->sessions[i].client_session_id,
+                  (unsigned long long)state->sessions[i].session_id);
+        }
+      } else {
+        state->sessions[i].session_id = normal->session_id != 0
+                                            ? normal->session_id
+                                            : state->next_session_id++;
+      }
       if (state->sessions[i].session_id >= state->next_session_id) {
         state->next_session_id = state->sessions[i].session_id + 1u;
       }
@@ -124,6 +202,9 @@ static int m7mux_session_register(M7MuxSessionState *state,
       state->sessions[i].encrypted = normal->encrypted;
       state->sessions[i].wire_version = normal->wire_version;
       state->sessions[i].wire_form = normal->wire_form;
+      if (!client_owned_session) {
+        state->sessions[i].client_session_id = 0u;
+      }
       state->sessions[i].active = 1;
       state->session_count++;
       *out_session = &state->sessions[i];
@@ -177,21 +258,28 @@ static void m7mux_session_state_reset(M7MuxSessionState *state) {
  */
 
 static int m7mux_session_ingest(M7MuxSessionState *state,
+                                const M7MuxControl *control,
                                 M7MuxRecvPacket *normal) {
   M7MuxSession *session = NULL;
   int synthetic_session = 0;
+  int client_owned_session = 0;
 
   if (!state || !normal) {
     return 0;
   }
 
+  client_owned_session = (control && control->session_by_client != 0u);
   synthetic_session = (normal->session_id == 0);
 
-  if (!m7mux_session_register(state, normal, &session)) {
+  if (!m7mux_session_register(state, control, normal, &session)) {
     return 0;
   }
 
-  if (synthetic_session) {
+  if (synthetic_session && session && !client_owned_session) {
+    normal->session_id = session->session_id;
+  }
+
+  if (client_owned_session && session) {
     normal->session_id = session->session_id;
   }
 

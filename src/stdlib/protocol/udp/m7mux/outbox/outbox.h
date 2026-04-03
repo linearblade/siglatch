@@ -33,6 +33,9 @@ typedef struct {
   void (*state_reset)(M7MuxState *state);
   int (*has_pending)(const M7MuxState *state);
   int (*stage)(M7MuxState *state, const M7MuxSendPacket *send);
+  int (*stage_fragments)(M7MuxState *state,
+                         const M7MuxSendPacket *send,
+                         size_t fragment_count);
   int (*stage_bytes)(M7MuxState *state, const M7MuxSendBytesPacket *send_bytes);
   int (*flush)(M7MuxState *state, int sock, uint64_t now_ms);
 } M7MuxOutboxLib;

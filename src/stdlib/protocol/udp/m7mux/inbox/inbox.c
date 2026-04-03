@@ -88,6 +88,7 @@ static int m7mux_inbox_has_pending(const M7MuxState *state) {
 static int m7mux_inbox_pump(M7MuxState *state, uint64_t timeout_ms) {
   M7MuxIngress raw = {0};
   M7MuxRecvPacket normal = {0};
+  M7MuxControl control = {0};
   uint64_t now_ms = 0u;
   int rc = 0;
   int did_work = 0;
@@ -114,11 +115,11 @@ static int m7mux_inbox_pump(M7MuxState *state, uint64_t timeout_ms) {
   while (g_ctx.internal->ingress->drain(&state->ingress, &raw)) {
     memset(&normal, 0, sizeof(normal));
 
-    if (!g_ctx.internal->normalize->normalize(state, &raw, &normal)) {
+    if (!g_ctx.internal->normalize->normalize(state, &raw, &control, &normal)) {
       continue;
     }
 
-    if (!g_ctx.internal->session->ingest(&state->session, &normal)) {
+    if (!g_ctx.internal->session->ingest(&state->session, &control, &normal)) {
       m7mux_stream_release_user(&state->stream, &normal);
       return did_work;
     }

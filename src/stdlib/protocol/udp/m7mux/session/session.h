@@ -17,6 +17,7 @@
 
 typedef struct {
   uint64_t session_id;
+  uint64_t client_session_id;
   uint64_t last_active_ms;
   uint64_t expires_at_ms;
   uint32_t wire_version;
@@ -40,7 +41,9 @@ typedef struct {
   void (*shutdown)(void);
   int (*state_init)(M7MuxSessionState *state);
   void (*state_reset)(M7MuxSessionState *state);
-  int (*ingest)(M7MuxSessionState *state, M7MuxRecvPacket *normal);
+  int (*ingest)(M7MuxSessionState *state,
+                const M7MuxControl *control,
+                M7MuxRecvPacket *normal);
   int (*release)(M7MuxSessionState *state, uint64_t session_id);
   int (*expire)(M7MuxSessionState *state, uint64_t now_ms);
 } M7MuxSessionLib;

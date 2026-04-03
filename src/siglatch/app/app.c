@@ -107,7 +107,6 @@ int init_app(void) {
       !app.config.username_by_id ||
       !app.daemon.init || !app.daemon.shutdown || !app.daemon.process ||
       !app.daemon.helper.init || !app.daemon.helper.shutdown ||
-      !app.daemon.helper.copy_job_to_knock_packet ||
       !app.daemon.helper.copy_job_reply_to_send ||
       !app.daemon.helper.time_until_ms ||
       !app.daemon.auth.init || !app.daemon.auth.shutdown ||
