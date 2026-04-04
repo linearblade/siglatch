@@ -15,7 +15,7 @@ It provides:
 * Builtin actions for hot reloads and live reconfiguration
 * Plugin-style execution via shell scripts, static objects, or dynamic objects
 * Policy controls for IP allowlists, user gating, action gating, and wire validation
-* Full-duplex authenticated UDP transport with user-defined protocol families and protocol demux
+* Bidirectional fragmented UDP transport with user-defined protocol families and protocol demux
 * Multi-packet support for larger payloads, including stream-like or batched file-style submission
 
 ---
@@ -26,7 +26,7 @@ It provides:
 * Current version: `2.0-dev`.
 * Stable version: see tag `1.0`.
 * `v1`: single-packet RSA-2048 encrypted transport.
-* `v2`: stateless hybrid transport with full-duplex multi-packet payload support.
+* `v2`: stateless hybrid bidirectional fragmented transport.
 * `v3`: (projected) DTLS-based session transport with QUIC/HTTP/3 support and commercial-grade polish.
 
 ---
