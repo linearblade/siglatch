@@ -31,8 +31,32 @@ It provides:
 
 ---
 
+## 🚀 Quickstart
+
+Start the daemon:
+
+```bash
+./siglatchd
+```
+
+In another terminal, send a test request:
+
+```bash
+./knocker localhost root 60 --protocol v4
+```
+
+---
+
+## 🧱 Dependencies
+
+* OpenSSL 3.x
+* See [Dependencies](docs/DEPENDENCIES.md) for the full build/runtime list.
+
+---
+
 ## 📚 Documentation
 These guides are being actively updated, check back often for updates!
+* [🧱 DEPENDENCIES](docs/DEPENDENCIES.md) — Build/runtime requirements and OpenSSL 3 setup notes.
 * [📦 FEATURES](docs/FEATURE_SPEC.md) — Full feature specification (current and planned).
 * [📝 CHANGELOG (2026-03-12)](docs/CHANGELOG_2026-03-07.md) — Recent development changes since `1.0`.
 * [🔐 SECURITY](docs/SECURITY.md) — Security model, mitigations, and threat considerations.
