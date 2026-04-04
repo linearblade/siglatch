@@ -42,7 +42,7 @@ Start the daemon:
 In another terminal, send a test request:
 
 ```bash
-./knocker localhost root 60 --protocol v4
+./knocker localhost root 59 --protocol v4 "some payload here"
 ```
 
 ---
@@ -85,4 +85,4 @@ Please read the above documents carefully to understand setup procedures, operat
 * 💼 Commercial, resale, or SaaS use requires a license  
 * 📩 Contact: legal@m7.org
 
-(Updated: 2025)
+(Updated: 2026)
