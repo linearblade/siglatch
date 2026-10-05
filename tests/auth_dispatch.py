@@ -14,13 +14,19 @@ from pathlib import Path
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 
 
 def command(args, **kwargs):
-    return subprocess.run(args, check=True, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE, **kwargs)
+    try:
+        return subprocess.run(args, check=True, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, **kwargs)
+    except subprocess.CalledProcessError as error:
+        if error.stderr:
+            print(error.stderr.decode(errors='replace'), file=sys.stderr)
+        raise
 
 
 def labels(path):
@@ -68,16 +74,20 @@ def main():
             openssl = '/opt/homebrew/opt/openssl@3/bin/openssl'
         assert openssl, 'OpenSSL command not found'
         build_args = ['make', 'all']
+        openssl_env = os.environ.copy()
         if prefix:
             libdir = prefix / ('lib64' if (prefix / 'lib64').is_dir() else 'lib')
             build_args += ['OPENSSL_CFLAGS=-I' + str(prefix / 'include'),
                            'OPENSSL_LDFLAGS=-L' + str(libdir) + ' -Wl,-rpath,' + str(libdir)]
+            # A custom OpenSSL executable may lack the rpath used by our build.
+            previous = openssl_env.get('LD_LIBRARY_PATH', '')
+            openssl_env['LD_LIBRARY_PATH'] = str(libdir) + (os.pathsep + previous if previous else '')
         built = command(build_args, cwd=str(fixture))
         (fixture / 'build.log').write_bytes(built.stdout + built.stderr)
         command([openssl, 'genpkey', '-algorithm', 'RSA', '-pkeyopt', 'rsa_keygen_bits:2048',
-                 '-out', str(fixture / 'private.pem')])
+                 '-out', str(fixture / 'private.pem')], env=openssl_env)
         command([openssl, 'pkey', '-in', str(fixture / 'private.pem'), '-pubout',
-                 '-out', str(fixture / 'public.pem')])
+                 '-out', str(fixture / 'public.pem')], env=openssl_env)
         (fixture / 'hmac.key').write_bytes(os.urandom(32))
         (fixture / 'wrong.key').write_bytes(os.urandom(32))
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reservation:
@@ -151,7 +161,7 @@ actions = marker
                    'dummy_hmac_executed': False, 'wrong_key_executed': False,
                    'no_hmac_executed': False, 'rejected_signature_count': 3,
                    'daemon_stopped': daemon.poll() is not None,
-                   'openssl': command([openssl, 'version']).stdout.decode().strip()}
+                   'openssl': command([openssl, 'version'], env=openssl_env).stdout.decode().strip()}
         (fixture / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
         print('PASS: valid requests execute before/after three invalid signatures; all invalid requests rejected.')
         passed = True
