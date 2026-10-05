@@ -101,7 +101,8 @@ static int handle_packet( const KnockPacket *pkt, const char *ip_addr,  int vali
   if (valid_signature){
     LOGT("✅ sigature validated");
   }else {
-    LOGE("⚠️  invalid signature");
+    LOGE("⚠️  invalid signature\n");
+    return 0;
   }
   // --- 1. Lookup user ---
   const char * username = lib.config.username_by_id( pkt->user_id);
