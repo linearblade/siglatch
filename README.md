@@ -1,5 +1,9 @@
 # 📖 README.md — `siglatch`
 
+> [!IMPORTANT]
+> Use tag `1.0.1` for the maintained 1.0 release. It rejects failed HMACs
+> before action dispatch; see [the release notes](docs/RELEASE_1.0.1.md).
+
 ## 🔒 Project Overview
 
 **Siglatch** — Tight, scriptable, and cryptographically enforced access controller for connectionless protocols and remote infrastructure management in hostile network environments.
