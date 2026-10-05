@@ -4,7 +4,9 @@
 
 > [!WARNING]
 > `2.0-dev` is a development release.
-> For stable production use, pin to the `1.0` tag.
+> For stable production use, pin to the `1.0.1` tag.
+> It fixes action dispatch after failed HMAC verification in `1.0`; see
+> [the 1.0.1 release notes](docs/RELEASE_1.0.1.md).
 
 ## 🔒 Project Overview
 
@@ -24,7 +26,7 @@ It provides:
 
 * This project is under active development.
 * Current version: `2.0-dev`.
-* Stable version: see tag `1.0`.
+* Stable version: see tag `1.0.1`.
 * `v1`: single-packet RSA-2048 encrypted transport.
 * `v2`: stateless hybrid bidirectional fragmented transport.
 * `v3`: (projected) DTLS-based session transport with QUIC/HTTP/3 support and commercial-grade polish.
